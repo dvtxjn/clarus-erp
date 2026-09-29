@@ -16,6 +16,7 @@ const ICONS = {
   dashboard: icon(<><rect x="2" y="2" width="5" height="5" rx="1" /><rect x="9" y="2" width="5" height="5" rx="1" /><rect x="2" y="9" width="5" height="5" rx="1" /><rect x="9" y="9" width="5" height="5" rx="1" /></>),
   shipments: icon(<><rect x="2" y="3" width="12" height="10" rx="1.5" /><path d="M2 6.5h12M6 6.5V13" /></>),
   rates: icon(<><path d="M3 2.5h7l3 3v8H3z" /><path d="M6 8h4M6 10.5h4" /></>),
+  invoices: icon(<><path d="M4 1.5h8v13l-2-1.3-2 1.3-2-1.3-2 1.3z" /><path d="M6 5h4M6 7.5h4M6 10h2.5" /></>),
   deleted: icon(<><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9" /></>),
   users: icon(<><circle cx="6" cy="5.5" r="2.5" /><path d="M1.5 13.5c.6-2.4 2.3-3.5 4.5-3.5s3.9 1.1 4.5 3.5M11 3.5a2.2 2.2 0 0 1 0 4.2M12.5 10.3c1 .5 1.7 1.6 2 3.2" /></>),
 };
@@ -87,6 +88,7 @@ export default function AppLayout() {
           {user?.role === "admin" && (
             <>
               <div className="app-nav-section">Admin</div>
+              <Item to="/invoices" label="Invoices" i="invoices" />
               <Item to="/rates" label="Rates" i="rates" />
               <Item to="/users" label="Users" i="users" />
               <Item to="/deleted" label="Recently deleted" i="deleted" />

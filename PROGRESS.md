@@ -691,3 +691,6 @@ The client will pick features they like from other software and feed them in. Re
 - Themes (2026-09-30): calm light (sage-grey, sage-teal accent), Dim (semi-dark) and Dark — switch in the sidebar,
   remembered per browser; status colours are theme tokens; the invoice page stays white paper; text keeps AA contrast.
 - 📝 The Maersk cost-inclusion rule (INR + not freight) is open to change — to discuss (client, 2026-09-30).
+- Invoices page (admin, 2026-09-30): every tax / reimbursement invoice across shipments; filter by FY, month, type,
+  status, client, number / job / MBL / BE / IRN; totals; tick invoices → one PDF to print (or all filtered);
+  register as Excel. API: GET /final-invoices, /final-invoices/export.pdf?ids=, /final-invoices/register.xlsx.

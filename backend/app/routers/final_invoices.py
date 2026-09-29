@@ -20,7 +20,7 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
 from app.core.locking import locked_proforma
-from app.invoice.final import TAX_TYPES, alter_until, compute, create_from_proforma, issue
+from app.invoice.final import TAX_TYPES, alter_until, compute, create_from_proforma, fy_of, issue
 from app.models.settings import get_setting
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
@@ -97,6 +97,113 @@ def create_final_invoices(proforma_id: int, db: Session = Depends(get_db),
         record_change(db, "final_invoices", inv.id, "created", None, f"{inv.kind} from proforma {proforma_id}", user.id)
     db.commit()
     return [compute(i) for i in created]
+
+
+def _register_row(inv: FinalInvoice) -> dict:
+    """One line of the invoice register (the Invoices page)."""
+    d = compute(inv)
+    s = inv.shipment
+    return {
+        "id": inv.id, "kind": inv.kind, "status": inv.status, "number": inv.number, "seq": inv.seq, "fy": inv.fy,
+        "invoice_date": d["invoice_date"], "customer": d["customer"].get("name") or "", "gstin": d["customer"].get("gstin") or "",
+        "shipment_id": inv.shipment_id, "job": s.job if s else None, "mbl": s.mbl if s else None,
+        "be_no": (inv.header or {}).get("be_no"), "not_applicable": d["not_applicable"],
+        "taxable": d["totals"]["sub_taxable"], "non_gst": d["totals"]["sub_non_gst"], "gst": d["totals"]["gst"],
+        "net_payable": d["totals"]["net_payable"], "irn": inv.irn,
+    }
+
+
+def _register(db: Session, fy: Optional[str], month: Optional[str], kind: Optional[str], status: Optional[str],
+              client: Optional[str], q: Optional[str], ids: Optional[str] = None) -> list[FinalInvoice]:
+    query = db.query(FinalInvoice)
+    if ids:
+        wanted = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+        query = query.filter(FinalInvoice.id.in_(wanted))
+    if kind in ("tax", "reimbursement"):
+        query = query.filter(FinalInvoice.kind == kind)
+    if status in ("draft", "issued", "cancelled"):
+        query = query.filter(FinalInvoice.status == status)
+    rows = query.order_by(FinalInvoice.invoice_date.desc().nullslast(), FinalInvoice.seq.desc().nullslast(),
+                          FinalInvoice.kind.desc()).all()
+    out = []
+    for inv in rows:
+        d = inv.invoice_date
+        if fy and (inv.fy or (fy_of(d) if d else None)) != fy:
+            continue
+        if month and (not d or f"{d:%Y-%m}" != month):
+            continue
+        if client and client.lower() not in ((inv.customer or {}).get("name") or "").lower():
+            continue
+        if q:
+            s = inv.shipment
+            hay = " ".join(str(x or "") for x in (inv.number, s.job if s else "", s.mbl if s else "",
+                                                     (inv.header or {}).get("be_no"), inv.irn)).lower()
+            if q.lower() not in hay:
+                continue
+        out.append(inv)
+    return out
+
+
+@router.get("/final-invoices")
+def invoice_register(fy: Optional[str] = None, month: Optional[str] = None, kind: Optional[str] = None,
+                     status: Optional[str] = None, client: Optional[str] = None, q: Optional[str] = None,
+                     db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """Every final invoice (tax + reimbursement) across shipments, filtered — the Invoices page
+    (client, 2026-09-30: print / extract without opening each shipment)."""
+    rows = _register(db, fy, month, kind, status, client, q)
+    fys = sorted({r.fy or fy_of(r.invoice_date) for r in db.query(FinalInvoice).all() if r.fy or r.invoice_date}, reverse=True)
+    return {"invoices": [_register_row(i) for i in rows], "financial_years": fys}
+
+
+@router.get("/final-invoices/export.pdf")
+def export_pdf(ids: str, db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """The chosen invoices in one PDF (one per page, in the order listed) — to print or send."""
+    import pypdfium2
+
+    rows = _register(db, None, None, None, None, None, None, ids=ids)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No invoices chosen")
+    out = pypdfium2.PdfDocument.new()
+    for inv in sorted(rows, key=lambda i: (i.fy or "", i.seq or 0, i.kind != "tax", i.id)):
+        out.import_pages(pypdfium2.PdfDocument(render_final_pdf(compute(inv))))
+    buf = io.BytesIO()
+    out.save(buf)
+    filename = f"Invoices ({len(rows)}).pdf"
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename",
+    })
+
+
+@router.get("/final-invoices/register.xlsx")
+def export_register(fy: Optional[str] = None, month: Optional[str] = None, kind: Optional[str] = None,
+                    status: Optional[str] = None, client: Optional[str] = None, q: Optional[str] = None,
+                    db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """The filtered register as an Excel sheet (number, date, client, GSTIN, job, BE, amounts, IRN)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    rows = [_register_row(i) for i in _register(db, fy, month, kind, status, client, q)]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Invoices"
+    heads = ["Number", "Type", "Status", "Date", "Client", "GSTIN", "Job", "MBL", "BE No", "Taxable", "Non-GST", "GST",
+             "Net payable", "IRN"]
+    ws.append(heads)
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    for r in rows:
+        ws.append([r["number"] or "Draft", "Tax" if r["kind"] == "tax" else "Reimbursement", r["status"],
+                   r["invoice_date"], r["customer"], r["gstin"], r["job"], r["mbl"], r["be_no"],
+                   float(r["taxable"]), float(r["non_gst"]), float(r["gst"]), float(r["net_payable"]), r["irn"]])
+    for col, w in zip("ABCDEFGHIJKLMN", (18, 14, 10, 12, 34, 18, 8, 20, 12, 13, 13, 12, 14, 30)):
+        ws.column_dimensions[col].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    filename = f"Invoice register{' ' + fy if fy else ''}.xlsx"
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+                             "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename"})
 
 
 @router.get("/shipments/{shipment_id}/final-invoices")

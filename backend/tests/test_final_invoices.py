@@ -152,3 +152,38 @@ def test_settings_are_admin_only(client, admin_headers):
     assert client.put("/settings/e_invoicing", json={"value": "yes"}, headers=admin_headers).status_code == 422
     assert client.put("/settings/nope", json={"value": True}, headers=admin_headers).status_code == 404
     assert client.get("/settings").status_code == 401
+
+
+def test_invoice_register_filters_and_exports(client, admin_headers):
+    """Client, 2026-09-30: one Invoices page — every tax / reimbursement invoice, filtered by year,
+    type, status, client, number; printed as one PDF or exported as a register, without opening shipments."""
+    import io
+
+    import pypdfium2
+    from openpyxl import load_workbook
+
+    h = admin_headers
+    for name, gst in (("Register Alpha Ltd", "24AAAAA3333A1Z5"), ("Register Beta Ltd", "24AAAAA4444A1Z5")):
+        client.post("/organizations", json={"name": name, "gstin": gst}, headers=h)
+        sid = client.post("/shipments", json={"mbl": f"REG{gst[7:11]}", "consignee": name, "container": "1", "job": gst[7:10]},
+                          headers=h).json()["id"]
+        pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+        client.post(f"/proformas/{pid}/final-invoices", headers=h)
+        client.post(f"/proformas/{pid}/final-invoices/issue", headers=h)
+
+    reg = client.get("/final-invoices", params={"client": "register alpha"}, headers=h).json()
+    assert {r["kind"] for r in reg["invoices"]} == {"tax", "reimbursement"} and all(r["customer"] == "Register Alpha Ltd" for r in reg["invoices"])
+    assert reg["financial_years"]
+    tax_only = client.get("/final-invoices", params={"client": "register", "kind": "tax"}, headers=h).json()["invoices"]
+    assert len(tax_only) == 2 and all(r["kind"] == "tax" for r in tax_only)
+    one = client.get("/final-invoices", params={"q": tax_only[0]["number"]}, headers=h).json()["invoices"]
+    # a number finds the pair (they share it): CL/n and RI/CL/n
+    assert sorted(r["number"] for r in one) == sorted([tax_only[0]["number"], "RI/" + tax_only[0]["number"]])
+
+    ids = ",".join(str(r["id"]) for r in client.get("/final-invoices", params={"client": "register"}, headers=h).json()["invoices"])
+    pdf = client.get("/final-invoices/export.pdf", params={"ids": ids}, headers=h)
+    assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 4
+    xl = client.get("/final-invoices/register.xlsx", params={"client": "register"}, headers=h)
+    ws = load_workbook(io.BytesIO(xl.content)).active
+    assert ws.max_row == 5 and ws["A1"].value == "Number"
+    assert client.get("/final-invoices").status_code == 401

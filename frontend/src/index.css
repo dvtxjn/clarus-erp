@@ -1286,3 +1286,14 @@ input { padding: 6px 9px; }
 }
 .theme-switch button.on { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-sm); }
 .sidebar-collapsed .theme-switch { display: none; }
+
+/* Invoices page */
+.inv-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.inv-filters select, .inv-filters input { font-size: 13px; padding: 5px 8px; height: 32px; }
+.inv-filters input[placeholder] { width: 200px; }
+.inv-filters-actions { margin-left: auto; display: flex; gap: 6px; }
+.inv-filters-actions button { height: 32px; padding: 0 12px; font-size: 12.5px; }
+.inv-register td.num, .inv-register th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.inv-register .inv-no { font-weight: 600; font-variant-numeric: tabular-nums; }
+.inv-register tr.is-picked td { background: var(--color-accent-soft); }
+.inv-register tfoot td { border-top: 2px solid var(--color-border); background: var(--color-subtle); }

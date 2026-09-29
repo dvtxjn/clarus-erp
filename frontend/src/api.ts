@@ -601,3 +601,46 @@ export async function setSetting<K extends keyof AppSettings>(key: K, value: App
   const { data } = await client.put(`/settings/${key}`, { value });
   return data;
 }
+
+/** Invoice register: every final invoice across shipments (the Invoices page). */
+export interface RegisterRow {
+  id: number;
+  kind: "tax" | "reimbursement";
+  status: "draft" | "issued" | "cancelled";
+  number: string | null;
+  seq: number | null;
+  fy: string | null;
+  invoice_date: string | null;
+  customer: string;
+  gstin: string;
+  shipment_id: number;
+  job: string | null;
+  mbl: string | null;
+  be_no: string | null;
+  not_applicable: boolean;
+  taxable: string;
+  non_gst: string;
+  gst: string;
+  net_payable: string;
+  irn: string | null;
+}
+export interface RegisterFilters {
+  fy?: string;
+  month?: string;
+  kind?: string;
+  status?: string;
+  client?: string;
+  q?: string;
+}
+const clean = (f: RegisterFilters) => Object.fromEntries(Object.entries(f).filter(([, v]) => v));
+export async function getInvoiceRegister(f: RegisterFilters): Promise<{ invoices: RegisterRow[]; financial_years: string[] }> {
+  const { data } = await client.get("/final-invoices", { params: clean(f) });
+  return data;
+}
+export async function downloadInvoicesPdf(ids: number[]): Promise<void> {
+  await downloadBlob(`/final-invoices/export.pdf?ids=${ids.join(",")}`, "invoices.pdf");
+}
+export async function downloadInvoiceRegister(f: RegisterFilters): Promise<void> {
+  const qs = new URLSearchParams(clean(f) as Record<string, string>).toString();
+  await downloadBlob(`/final-invoices/register.xlsx${qs ? `?${qs}` : ""}`, "invoice-register.xlsx");
+}

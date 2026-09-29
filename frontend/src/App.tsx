@@ -10,6 +10,7 @@ import ShipmentDetailPage from "./ShipmentDetailPage";
 import RatesPage from "./RatesPage";
 import DeletedPage from "./DeletedPage";
 import UsersPage from "./UsersPage";
+import InvoicesPage from "./InvoicesPage";
 import { UploadQueueProvider } from "./uploadQueue";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/shipments" element={<ShipmentGridPage />} />
             <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
+            <Route path="/invoices" element={<AdminRoute><InvoicesPage /></AdminRoute>} />
             <Route path="/rates" element={<AdminRoute><RatesPage /></AdminRoute>} />
             <Route path="/deleted" element={<AdminRoute><DeletedPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
