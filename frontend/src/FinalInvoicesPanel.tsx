@@ -4,7 +4,9 @@ import {
   createFinalInvoices,
   deleteFinalInvoice,
   downloadFinalInvoice,
+  downloadFinalPair,
   issueFinalInvoice,
+  issueFinalPair,
   listFinalInvoices,
   updateFinalInvoice,
 } from "./api";
@@ -37,6 +39,36 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
   useEffect(() => {
     load();
   }, [shipmentId]);
+
+  // this proforma's pair (newest of each kind, not cancelled): tax first
+  const pair = (["tax", "reimbursement"] as const)
+    .map((k) => items.find((i) => i.proforma_id === proforma?.id && i.kind === k && i.status !== "cancelled"))
+    .filter((i): i is FinalInvoice => !!i);
+  const others = items.filter((i) => !pair.includes(i));
+  const pairDraft = pair.some((i) => i.status === "draft");
+
+  async function issuePair() {
+    if (!proforma) return;
+    const na = pair.find((i) => i.not_applicable);
+    const ok = await confirm({
+      title: "Issue both invoices?",
+      message:
+        "The tax and reimbursement invoices get the next number together and are locked — only IRN / ACK can be added after this." +
+        (na ? ` The ${na.kind} invoice has no charges: it's issued as BILL CANCELLED — NOT APPLICABLE so the numbers stay paired.` : ""),
+      confirmLabel: "Issue both",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await issueFinalPair(proforma.id);
+      await load();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function create() {
     if (!proforma) return;
@@ -81,14 +113,52 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
       </div>
       {error && <div className="invoice-error">{error}</div>}
       {items.length === 0 && <p className="tracker-subtitle">No final invoices yet.</p>}
-      {items.map((inv) => (
+
+      {/* the pair from this proforma: one number, issued together, one PDF or two (client, 2026-09-30) */}
+      {pair.length > 0 && (
+        <div className="final-pair">
+          <div className="final-pair-head">
+            <strong>{pair[0].number ? pair.map((i) => i.number).join("  +  ") : "Draft pair — tax + reimbursement"}</strong>
+            <span className="final-pair-actions">
+              {pairDraft && (
+                <button onClick={issuePair} disabled={busy}>
+                  Issue both
+                </button>
+              )}
+              <button className="btn-secondary" onClick={() => proforma && downloadFinalPair(proforma.id).catch((e) => setError(errorText(e)))}>
+                One PDF (both)
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={async () => {
+                  for (const inv of pair) await downloadFinalInvoice(inv.id).catch((e) => setError(errorText(e)));
+                }}
+              >
+                Two PDFs
+              </button>
+            </span>
+          </div>
+          {pair.map(card)}
+        </div>
+      )}
+      {others.length > 0 && <div className="final-others-head">Earlier / cancelled</div>}
+      {others.map(card)}
+    </section>
+  );
+
+  function card(inv: FinalInvoice) {
+    return (
         <div key={inv.id} className={`final-card final-${inv.status}`}>
           <div className="final-card-head" onClick={() => setOpenId(openId === inv.id ? null : inv.id)}>
             <span className="final-kind">{inv.kind === "tax" ? "Tax Invoice" : "Reimbursement Invoice"}</span>
             <span className="final-number">{inv.number ?? "Draft"}</span>
             <span className={`final-status s-${inv.status}`}>{inv.status}</span>
             <span className="final-cust">{inv.customer.name}</span>
-            <strong className="final-amount">₹{inr(inv.totals.net_payable)}</strong>
+            {inv.not_applicable ? (
+              <strong className="final-amount final-na">Not applicable</strong>
+            ) : (
+              <strong className="final-amount">₹{inr(inv.totals.net_payable)}</strong>
+            )}
             <span className="final-toggle">{openId === inv.id ? "▾" : "▸"}</span>
           </div>
           {openId === inv.id && (
@@ -103,9 +173,8 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
             />
           )}
         </div>
-      ))}
-    </section>
-  );
+    );
+  }
 }
 
 function FinalInvoiceEditor({
@@ -318,7 +387,7 @@ function FinalInvoiceEditor({
         <button className="btn-secondary" onClick={() => downloadFinalInvoice(inv.id).catch((e) => setMsg({ kind: "error", text: errorText(e) }))}>
           Download PDF{draft ? " (draft)" : ""}
         </button>
-        {draft && <button onClick={() => act("issue")}>Issue invoice</button>}
+        {draft && <span className="field-note">Issue both invoices together from the top.</span>}
         {draft && <button className="btn-secondary link-danger" onClick={() => act("delete")}>Delete draft</button>}
         {inv.status === "issued" && user?.role === "admin" && (
           <button className="btn-secondary link-danger" onClick={() => act("cancel")}>Cancel invoice</button>

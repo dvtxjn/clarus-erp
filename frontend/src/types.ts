@@ -527,6 +527,7 @@ export interface FinalInvoiceLine {
   total?: string;
 }
 export interface FinalInvoice {
+  not_applicable: boolean; // no charges of this kind: issued anyway as BILL CANCELLED — NOT APPLICABLE
   id: number;
   kind: "tax" | "reimbursement";
   title: string;

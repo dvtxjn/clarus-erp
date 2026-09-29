@@ -948,7 +948,9 @@ input { padding: 6px 9px; }
 }
 .charge-popover-head { font-size: 11px; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px; }
 
-.doc-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.doc-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+/* both columns end on one line, like the overview: the last card in each stretches */
+.doc-col > .doc-group:last-child { flex: 1; }
 .doc-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .doc-group { overflow: hidden; }
 .doc-group-head { display: flex; align-items: center; gap: 4px; padding: 7px 10px; font-weight: 600; font-size: 12.5px; border-bottom: 1px solid var(--color-border); background: var(--color-subtle); }
@@ -1196,9 +1198,18 @@ input { padding: 6px 9px; }
   background: none; border: none; box-shadow: none; color: var(--color-text-muted); padding: 4px 10px; font-size: 12.5px; border-radius: var(--radius);
 }
 .pf-pane-tabs button.on { background: var(--color-surface); color: var(--color-text); box-shadow: 0 0 0 1px var(--color-border); }
-.pf-final-pane { width: min(1000px, calc(100vw - 520px)); }
+.pf-final-pane { width: clamp(560px, calc(100vw - 216px - 420px - 64px), 1000px); overflow-x: auto; }
+.sidebar-collapsed .pf-final-pane { width: clamp(560px, calc(100vw - 52px - 420px - 64px), 1000px); }
 @media (max-width: 1300px) {
   .pf-split { grid-template-columns: 1fr; }
   .pf-right { position: static; }
   .invoice-preview { max-width: none; width: auto !important; }
 }
+
+/* final invoices: the pair */
+.final-pair { border: 1px solid var(--color-border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--color-surface); }
+.final-pair-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.final-pair-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.final-pair-actions button { font-size: 12.5px; padding: 0 12px; height: 30px; }
+.final-na { color: var(--color-danger); }
+.final-others-head { font-size: 11px; font-weight: 600; color: var(--color-text-muted); margin-top: 10px; }

@@ -189,10 +189,25 @@ export async function deleteFinalInvoice(id: number): Promise<void> {
   await client.delete(`/final-invoices/${id}`);
 }
 
+/** Tax + reimbursement of one proforma: numbered and locked together (they share the number). */
+export async function issueFinalPair(proformaId: number): Promise<FinalInvoice[]> {
+  const { data } = await client.post(`/proformas/${proformaId}/final-invoices/issue`);
+  return data;
+}
+
+/** Both invoices of the pair in one PDF (tax, then reimbursement). */
+export async function downloadFinalPair(proformaId: number): Promise<void> {
+  await downloadBlob(`/proformas/${proformaId}/final-invoices.pdf`, `invoices-${proformaId}.pdf`);
+}
+
 export async function downloadFinalInvoice(id: number): Promise<void> {
-  const res = await client.get(`/final-invoices/${id}.pdf`, { responseType: "blob" });
+  await downloadBlob(`/final-invoices/${id}.pdf`, `invoice-${id}.pdf`);
+}
+
+async function downloadBlob(path: string, fallback: string): Promise<void> {
+  const res = await client.get(path, { responseType: "blob" });
   const header = res.headers["x-filename"];
-  const name = header ? decodeURIComponent(header) : `invoice-${id}.pdf`;
+  const name = header ? decodeURIComponent(header) : fallback;
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;
