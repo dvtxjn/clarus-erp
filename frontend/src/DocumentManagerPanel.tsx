@@ -330,32 +330,36 @@ export default function DocumentManagerPanel({
                     <td>
                       {row.documents.length === 0
                         ? "—"
-                        : row.documents.map((d) => (
+                        : row.documents.map((d, n) => (
                             <div key={d.id} className="doc-file-line">
-                              {d.generated_filename} <PdfKindBadge kind={d.pdf_kind} />
+                              {/* the file name is on hover only — it takes unpredictable width (client, 2026-09-30) */}
+                              <span className="doc-file-chip" title={d.generated_filename}>
+                                {row.documents.length > 1 ? `File ${n + 1}` : "File"}
+                              </span>{" "}
+                              <PdfKindBadge kind={d.pdf_kind} />
                               {d.extraction?.fields?.gst_missing === true && (
                                 <span className="pdf-kind pdf-kind-scanned" title="These invoices always have GST — check the figures (Overview → correct amounts)">
-                                  GST not found
+                                  No GST
                                 </span>
                               )}
                               {d.extraction?.duplicate_of && (
                                 <span className="pdf-kind pdf-kind-partly" title="Same invoice number as another file here — its amounts are counted once">
-                                  Duplicate — counted once
+                                  Duplicate
                                 </span>
                               )}{" "}
                               <button type="button" className="link-btn" onClick={() => openDocumentFile(shipment.id, d.id)}>
                                 View
                               </button>
                               {d.drive_sync_pending && (
-                                <span className="exception-badge" title={d.drive_error ?? ""}>
-                                  {" "}not in Drive yet — retrying
+                                <span className="exception-badge" title={`Not in Drive yet — retrying. ${d.drive_error ?? ""}`}>
+                                  {" "}Drive pending
                                 </span>
                               )}
                               {d.drive_link && (
                                 <>
                                   {" "}
-                                  <a href={d.drive_link} target="_blank" rel="noreferrer" className="drive-link">
-                                    open in Drive ↗
+                                  <a href={d.drive_link} target="_blank" rel="noreferrer" className="drive-link" title="Open in Google Drive">
+                                    Drive ↗
                                   </a>
                                 </>
                               )}
@@ -367,7 +371,9 @@ export default function DocumentManagerPanel({
                         ? "—"
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
-                              {new Date(d.uploaded_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                              <span title={new Date(d.uploaded_at).toLocaleString("en-IN")}>
+                                {new Date(d.uploaded_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                              </span>
                               {READ_ON_UPLOAD.includes(d.document_type) && (
                                 <>
                                   {" "}
@@ -375,10 +381,11 @@ export default function DocumentManagerPanel({
                                     type="button"
                                     className="link-btn"
                                     disabled={uploading}
-                                    title="Read this document again and update the shipment"
+                                    title="Re-read: read this document again and update the shipment"
+                                    aria-label="Re-read"
                                     onClick={() => handleReread(d)}
                                   >
-                                    Re-read
+                                    ↻
                                   </button>
                                 </>
                               )}
@@ -389,9 +396,10 @@ export default function DocumentManagerPanel({
                                     type="button"
                                     className="link-btn link-danger"
                                     title="Remove this document from the shipment"
+                                    aria-label="Remove"
                                     onClick={() => handleRemove(d)}
                                   >
-                                    Remove
+                                    ✕
                                   </button>
                                 </>
                               )}
