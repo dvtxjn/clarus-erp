@@ -44,9 +44,9 @@ Skipped for launch: Phase 5 (hide Ctrl+Z undo instead), weekly/monthly backup ti
 | 4 | Locking for uploads, autofill, challans, CSV import, proformas | [x] Fast Track scope (+ CSV import), 2026-09-29 |
 | 5 | Safe undo + live-ish updates (polling) | Safe undo done 2026-09-29; polling/change feed Later |
 | 6 | Concurrency tests | [x] Fast Track (1, 2, 5, 6; 3-4 wait for Phase 3), 2026-09-29 |
-| 7 | Google Drive storage (Shared Drive) + invoice PDF saved on Issue | [ ] |
-| 8 | Backups (12-hourly, weekly, monthly) + restore drill | [ ] |
-| 9 | Production readiness | [ ] |
+| 7 | Google Drive storage (Shared Drive) + invoice PDF saved on Issue | [x] 2026-09-29 (read + save only, never delete) |
+| 8 | Backups (12-hourly, weekly, monthly) + restore drill | [x] 12-hourly, never pruned; drill passed 2026-09-29 |
+| 9 | Production readiness | [x] 2026-09-29 (Docker image not built locally yet) |
 | 10 | Deploy on Render + domain + go-live | [ ] |
 | | **Part B: after launch (do not start before the go-live checklist is ticked)** | |
 | 11 | Safety net: end-to-end tests + real-PDF fixtures | [ ] |

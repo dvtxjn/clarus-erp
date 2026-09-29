@@ -293,6 +293,11 @@ export default function DocumentManagerPanel({
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
                               {d.generated_filename} <PdfKindBadge kind={d.pdf_kind} />
+                              {d.extraction?.fields?.gst_missing === true && (
+                                <span className="pdf-kind pdf-kind-scanned" title="These invoices always have GST — check the figures (Overview → correct amounts)">
+                                  GST not found
+                                </span>
+                              )}
                               {d.extraction?.duplicate_of && (
                                 <span className="pdf-kind pdf-kind-partly" title="Same invoice number as another file here — its amounts are counted once">
                                   Duplicate — counted once

@@ -1,24 +1,25 @@
-# Customs Clearance ERP
+# Clarus ERP
 
-A shipment tracker + document manager + proforma/billing engine for a
-customs clearance agency, built around the client's confirmed workflow.
+Customs-clearance ERP for Clarus Logistics: live shipment tracker, documents (read from PDFs,
+linked to Google Drive), proformas and invoices, duty challans, backups.
+Status and every decision: **PROGRESS.md**. Launch plan: **DEPLOYMENT_PLAN.md**.
 
-## Where to start
-1. **`ERP_Spec.md`** — the full requirements spec. Read §0 first.
-2. **`PROGRESS.md`** — what's actually built and tested vs. what's next.
-3. **`reference/`** — the client's working reference tool
-   (`be_expense_sheet.py`), invoice template (`.xlsm`), and charges export
-   (`.csv`). Ground truth for Module 3's extraction/calculation logic.
+## Run on this Mac (development)
+1. Postgres.app running (databases `erp_db`, `erp_test`, user `erp`).
+2. Backend: `cd backend && .venv/bin/python -m uvicorn app.main:app --reload --port 8000 --timeout-graceful-shutdown 3`
+3. Frontend: `cd frontend && npm run dev` → http://localhost:5173
+4. Settings: `backend/.env` and `frontend/.env` (copy the `.env.example` files; never commit them).
 
-## Stack
-- Backend: Python, FastAPI, SQLAlchemy (Postgres in prod, SQLite for local dev)
-- Frontend: React, TypeScript, Vite
+## Tests
+- SQLite: `cd backend && .venv/bin/python -m pytest -q`
+- Postgres (includes the concurrency and backup tests):
+  `TEST_DATABASE_URL=postgresql://erp:erp-local-only@localhost:5432/erp_test .venv/bin/python -m pytest -q`
+- Tests never touch the real Google Drive or real backups.
 
-## Structure
-```
-backend/    FastAPI app — models, routers, auth, extraction logic
-frontend/   React app — login, shipment tracker grid
-reference/  Client-provided source files (do not modify — read for logic)
-ERP_Spec.md Full requirements document
-PROGRESS.md Build status + next steps
-```
+## Production (Render, Docker)
+- `Dockerfile` builds the screens and serves them from the backend on one address; `render.yaml` describes
+  the web service + Postgres. Secrets go in the Render dashboard (list in DEPLOYMENT_PLAN.md section 6).
+- Start: `scripts/start.sh` → dump + migrate (`pre_migration_backup.sh`) → settings check → uvicorn.
+- First admin: `ADMIN_EMAIL=… ADMIN_PASSWORD=… python scripts/create_admin.py` (Render shell).
+- Backups: every 12 h to Drive `Backups/`; restore: `docs/RESTORE_RUNBOOK.md`.
+- Google Drive: read and save only — the ERP never deletes anything there.

@@ -1,0 +1,49 @@
+# Render Blueprint (launch Phase 10). Secrets are set in the Render dashboard, never here.
+services:
+  - type: web
+    name: clarus-erp
+    runtime: docker
+    plan: starter
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: false          # deploy by hand after checking a build
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: AUTO_MIGRATE
+        value: "0"
+      - key: STORAGE_BACKEND
+        value: drive
+      - key: PUBLIC_URL
+        sync: false            # https://erp.claruslogistics.in
+      - key: DATABASE_URL
+        fromDatabase:
+          name: clarus-erp-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false            # paste the key file's JSON text
+      - key: DRIVE_ROOT_FOLDER_ID
+        sync: false
+      - key: DRIVE_INVOICES_FOLDER_ID
+        sync: false
+      - key: DRIVE_BACKUPS_FOLDER_ID
+        sync: false
+      - key: DRIVE_SHIPMENTS_FOLDER_ID
+        sync: false
+      - key: BACKUP_ENCRYPTION_KEY
+        sync: false            # the same key as in the password manager
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      - key: VITE_GOOGLE_API_KEY
+        sync: false
+      - key: VITE_GOOGLE_APP_ID
+        sync: false
+
+databases:
+  - name: clarus-erp-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: erp_db
+    postgresMajorVersion: "17"

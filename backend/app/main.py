@@ -1,5 +1,7 @@
 import asyncio
+import logging
 import os
+import sys
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -7,21 +9,31 @@ from sqlalchemy.orm.exc import StaleDataError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import backups
-from app.core import jobs, realtime
+from sqlalchemy import text
+
+from app.core import jobs, realtime, web
+from app.core.database import engine
+from app.core.production import check_or_exit, is_production
 from app.core.deps import require_admin
 from app.models.user import User
 from app.core.migrate import run_migrations
 from app import models  # noqa: F401 — populates Base.metadata
 from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router
 
-app = FastAPI(title="Customs Clearance ERP API", version="0.1.0")
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), stream=sys.stdout,
+                    format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+app = FastAPI(title="Customs Clearance ERP API", version="0.1.0",
+              docs_url=None if is_production() else "/docs", redoc_url=None)
+
+web.install(app)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten before production
-    allow_credentials=True,
+    allow_origins=web.cors_origins(),  # production: PUBLIC_URL only
+    allow_credentials=False,  # the login token travels in a header, never a cookie
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Filename"],
 )
 
 app.include_router(auth.router)
@@ -48,6 +60,7 @@ def stale_write(_request: Request, _exc: StaleDataError):
 
 @app.on_event("startup")
 def on_startup():
+    check_or_exit()  # APP_ENV=production: refuse unsafe settings
     # Production sets AUTO_MIGRATE=0 and runs scripts/pre_migration_backup.sh instead,
     # so the database is dumped before every schema change.
     if os.getenv("AUTO_MIGRATE", "1") != "0":
@@ -68,4 +81,10 @@ def backup_health(_admin: User = Depends(require_admin)):
 
 @app.get("/health")
 def health_check():
+    """For Render / uptime checks: the app is up AND the database answers."""
+    try:
+        with engine.connect() as c:
+            c.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001
+        return JSONResponse(status_code=503, content={"status": "database unreachable"})
     return {"status": "ok"}

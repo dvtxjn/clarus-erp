@@ -149,6 +149,11 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         sync.set("assessable_value", _money(fields.get("tot_ass_val")))
         sync.set("igst_amount", _money(fields.get("igst")))
         sync.set("duty_amount", _money(fields.get("tot_amount")))
+        # Client rule (2026-09-29): customs duty always carries IGST — none found = a problem to check
+        if fields.get("tot_amount") and not _money(fields.get("igst")):
+            fields["gst_missing"] = True
+            sync.notes.append("IGST not found on this Bill of Entry — duty always includes IGST; check the figures "
+                              "(scan or unusual layout?).")
         if not fields.get("be_no"):
             sync.notes.append("Couldn't find the BE number on this document — please check it's the right file.")
 
@@ -171,6 +176,11 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         if all(fields.get(k) is None for k in ("cfs_before_tax", "cfs_gst", "cfs_after_tax")):
             sync.notes.append(f"Couldn't read any amounts from this {what} — it may be a scan or an "
                               "unfamiliar layout. Enter the amounts by hand (Overview → Edit) or send us a sample.")
+        # Client rule (2026-09-29): every CFS / shipping line invoice has GST — none found = a problem
+        if (fields.get("cfs_before_tax") or fields.get("cfs_after_tax")) and not _money(fields.get("cfs_gst")):
+            fields["gst_missing"] = True
+            sync.notes.append(f"GST not found on this {what} — these invoices always have GST; check the figures "
+                              "(scan, wrong document, or a layout we don't read yet).")
         if fields.get("cfs_sanity_ok") is False:
             sync.notes.append(f"The {what} amounts don't add up (before tax + GST ≠ total) — please check the figures.")
 

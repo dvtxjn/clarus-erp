@@ -24,7 +24,8 @@ import type {
   ColumnDataType,
 } from "./types";
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// "" in production (screens and API on one address); the dev server talks to :8000
+export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 const client = axios.create({ baseURL: API_BASE_URL });
 

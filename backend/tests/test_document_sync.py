@@ -314,3 +314,14 @@ def test_same_invoice_added_twice_counts_once(client, admin_headers):
     assert _cfs_totals(client, h, sid) == (80000.0, 14400.0, 94400.0)
     client.delete(f"/shipments/{sid}/documents/{a['id']}", headers=h)  # first copy removed: the other one counts
     assert _cfs_totals(client, h, sid) == (80000.0, 14400.0, 94400.0)
+
+
+def test_invoice_without_gst_is_flagged(client, admin_headers):
+    """Client, 2026-09-29: CFS / shipping line invoices (and BE duty) always have GST — flag it when missing."""
+    h = admin_headers
+    sid = _new_shipment(client, h)
+    doc = _upload(client, h, sid, "cfs_tax_invoice", cfs_pdf(before="1,000.00", gst="0.00", after="1,000.00"))
+    assert doc["extraction"]["fields"].get("gst_missing") is True
+    assert any("GST not found" in n for n in doc["extraction"]["notes"])
+    ok = _upload(client, h, sid, "cfs_tax_invoice", cfs_pdf())
+    assert not ok["extraction"]["fields"].get("gst_missing")

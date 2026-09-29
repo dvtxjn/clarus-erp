@@ -99,3 +99,12 @@ def admin_headers(client):
     r = client.post("/auth/login", data={"username": "admin@example.com", "password": "changeme"})
     assert r.status_code == 200
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+@pytest.fixture(autouse=True)
+def _fresh_login_limits():
+    """Login throttling is per process; each test starts with a clean slate."""
+    from app.core import ratelimit
+
+    ratelimit.reset()
+    yield

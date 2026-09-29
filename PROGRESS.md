@@ -575,3 +575,19 @@ The client will pick features they like from other software and feed them in. Re
 - Tests: `test_line_cost_inclusion_client_default_and_shipment_switch`. 116 pass on Postgres.
 
 **Incident, same day:** after `STORAGE_BACKEND=drive` was set in backend/.env, two test runs read it and saved ~74 test files/folders and one test-database backup into the real Shared Drive (10:35–10:38). The app can't delete, so they were renamed `TEST – delete me – …` for the client to remove by hand. Fixed: `tests/conftest.py` now forces local storage, blanks every DRIVE_* / key setting and uses a temp BACKUP_DIR. Real data untouched.
+
+---
+
+## ✅ Launch Phase 9 — production readiness (2026-09-29, branch `prod/phase-9`)
+
+- `app/core/production.py`: with `APP_ENV=production` the app **refuses to start** (clear list) when: JWT secret default/short; DATABASE_URL not Postgres; PUBLIC_URL not https; STORAGE_BACKEND not drive; any Drive id / service-account key / BACKUP_ENCRYPTION_KEY missing; AUTO_MIGRATE ≠ 0; any active user with the default login (admin@example.com or password "changeme"); database unreachable. Checked on this Mac: refuses (PUBLIC_URL, AUTO_MIGRATE, default admin).
+- `scripts/create_admin.py` (ADMIN_EMAIL / ADMIN_PASSWORD ≥ 12) — production has no default admin.
+- Login throttle (`app/core/ratelimit.py`): 5 attempts/min per IP+email → 429; 10 wrong passwords in 15 min locks the email 15 min (even with the right password). In memory, one instance.
+- `app/core/web.py`: security headers (nosniff, DENY frames, referrer, permissions, HSTS on https), request size limit (MAX_UPLOAD_MB 30 → 413), CORS = PUBLIC_URL only (dev: Vite), and the backend **serves the built screens**: a page load (GET accepting text/html) gets index.html, API calls (JSON) still reach the API on the same paths; `/assets/*` cached forever. `/docs` off in production. Logs to stdout. `/health` checks the database (503 if not).
+- Frontend: `VITE_API_BASE_URL` "" in production (same address; `??` not `||`). Verified: a production-style build served from the backend on :8010 — page reload on /shipments/58, data, live tracker all worked.
+- `Dockerfile` (node build stage → python:3.11-slim + postgresql-client-17 + DejaVu fonts, non-root user, healthcheck), `.dockerignore` (no .env / secrets / data), `scripts/start.sh` (dump + migrate → settings check → uvicorn with proxy headers and graceful-shutdown 3 s), `render.yaml` (Docker web service + Postgres 17, Singapore; secrets `sync: false`). **Docker isn't installed on this Mac — the image hasn't been built yet** (first build on Render or after installing Docker Desktop).
+- README rewritten; `.env.example` has the production settings. Sentry: skipped (optional).
+- **GST rule (client, same day):** CFS and shipping line invoices, and the BE duty (IGST), always have GST; stamp duty doesn't. None found → note in the upload result + red "GST not found" badge (`fields.gst_missing`). Existing documents checked: 1 flagged — shipment 65 `SL-PI - OOLU2333975920` (likely the misread shipping line invoice; samples zip coming).
+- Tests `tests/test_production.py` (6) + GST test. 123 pass on Postgres.
+
+**Next: Phase 10 — deploy.** Needs: Render account in the client's name (H2), domain DNS at Dynadot (H1: auto-renew + 2FA), then: create services from render.yaml, set secrets, move the data (pg_dump → Render Postgres), create the real admin, add `https://erp.<domain>` to the Google OAuth origins and API-key websites, soft launch.

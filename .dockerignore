@@ -1,0 +1,17 @@
+**/.env
+**/.env.*
+!**/.env.example
+**/secrets
+**/.local-credentials
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/*.db
+**/*.dump
+**/*.dump.enc
+backend/storage
+backend/backups
+reference
+.git
+.claude
