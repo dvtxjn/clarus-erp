@@ -88,6 +88,29 @@ function loadView(): ViewMode {
     return "client";
   }
 }
+/**
+ * Column views (client, 2026-09-29): one click shows only the columns a job needs.
+ * "Full grid" shows everything, like the sheet. Picking columns by hand makes it "Custom".
+ */
+const COLUMN_VIEWS = {
+  clearance: {
+    label: "Clearance",
+    cols: ["job", "mbl", "hbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "status", "cleared_date", "remarks"],
+  },
+  movement: {
+    label: "Movement",
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "igm", "container", "gross_wt", "container_status", "cfs", "poc",
+      "delivery_status", "shipping_line", "remark"],
+  },
+  billing: {
+    label: "Billing",
+    cols: ["job", "mbl", "consignee", "license", "is_hss", "be_no", "be_dt", "cleared_date", "checklist", "cfs_tds", "is_billed", "status"],
+  },
+  grid: { label: "Full grid", cols: null },
+} as const;
+type ColumnView = keyof typeof COLUMN_VIEWS | "custom";
+const COLVIEW_KEY = "tracker.columnView"; // + "." + tab
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "2026-08-27" -> "27 Aug" ("27 Aug 25" when it isn't this year) — compact dates, denser columns. */
@@ -478,6 +501,13 @@ export default function ShipmentGridPage() {
   const [showImport, setShowImport] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
+  const [colView, setColView] = useState<ColumnView>(() => {
+    try {
+      return (localStorage.getItem(`${COLVIEW_KEY}.${tab}`) as ColumnView | null) ?? "custom";
+    } catch {
+      return "custom";
+    }
+  });
   const columnStateKey = `${COLUMN_STATE_KEY}.${tab}`;
   // Saved widths/order/pinning go into the definitions, so every grid first renders at its
   // final layout — applying them after load re-wrapped and re-measured every row (visible jump).
@@ -785,7 +815,17 @@ export default function ShipmentGridPage() {
     syncHidden();
   }
 
+  // each tab (ongoing / cleared) remembers its own column view
+  useEffect(() => {
+    try {
+      setColView((localStorage.getItem(`${COLVIEW_KEY}.${tab}`) as ColumnView | null) ?? "custom");
+    } catch {
+      setColView("custom");
+    }
+  }, [tab]);
+
   function resetLayout() {
+    rememberColView("grid");
     try {
       localStorage.removeItem(columnStateKey);
     } catch {
@@ -1005,13 +1045,37 @@ export default function ShipmentGridPage() {
         removable: colId !== "mbl" && colId !== "checklist" && colId !== "cfs_tds",
       };
     });
+  function rememberColView(v: ColumnView) {
+    setColView(v);
+    try {
+      localStorage.setItem(`${COLVIEW_KEY}.${tab}`, v);
+    } catch {
+      /* private window */
+    }
+  }
+  function applyColumnView(v: keyof typeof COLUMN_VIEWS) {
+    const all = panelColumns.map((c) => c.colId);
+    const keep: readonly string[] = COLUMN_VIEWS[v].cols ?? all;
+    const show = all.filter((id) => keep.includes(id));
+    const hide = all.filter((id) => !keep.includes(id));
+    for (const api of [headerRef.current?.api, ...sectionApis()]) {
+      if (!api) continue;
+      api.setColumnsVisible(hide, false);
+      api.setColumnsVisible(show, true);
+    }
+    syncHidden();
+    saveColumnState();
+    rememberColView(v);
+  }
   function toggleColumn(colId: string, visible: boolean) {
+    rememberColView("custom");
     headerRef.current?.api.setColumnsVisible([colId], visible);
     sectionApis().forEach((api) => api.setColumnsVisible([colId], visible));
     syncHidden();
     saveColumnState();
   }
   function showAllColumns() {
+    rememberColView("grid");
     const ids = panelColumns.map((c) => c.colId);
     headerRef.current?.api.setColumnsVisible(ids, true);
     sectionApis().forEach((api) => api.setColumnsVisible(ids, true));
@@ -1124,6 +1188,20 @@ export default function ShipmentGridPage() {
           ))}
         </div>
         )}
+        <div className="view-switch" role="tablist" aria-label="Columns shown">
+          {(Object.keys(COLUMN_VIEWS) as (keyof typeof COLUMN_VIEWS)[]).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={colView === v}
+              className={colView === v ? "view-switch-btn active" : "view-switch-btn"}
+              onClick={() => applyColumnView(v)}
+              title={v === "grid" ? "Every column, like the sheet" : `Only the ${COLUMN_VIEWS[v].label.toLowerCase()} columns`}
+            >
+              {COLUMN_VIEWS[v].label}
+            </button>
+          ))}
+        </div>
         <div className="tracker-search">
           <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
         </div>
