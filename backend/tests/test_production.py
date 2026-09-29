@@ -95,10 +95,10 @@ def test_sandbox_never_wipes_a_real_database(monkeypatch):
         sandbox.reset()
 
 
-def test_health_says_sandbox_with_the_demo_login(client, monkeypatch):
+def test_health_says_sandbox_but_never_the_demo_login(client, monkeypatch):
     monkeypatch.setenv("SANDBOX", "1")
     body = client.get("/health").json()
-    assert body["sandbox"] is True and body["demo_email"] and body["demo_password"]
+    assert body == {"status": "ok", "sandbox": True}  # the admin hands the login out
 
 
 def test_sandbox_reads_the_database_name_from_a_cloud_sql_url():

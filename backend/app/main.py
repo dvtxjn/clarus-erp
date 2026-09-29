@@ -102,8 +102,8 @@ def health_check():
             c.execute(text("SELECT 1"))
     except Exception:  # noqa: BLE001
         return JSONResponse(status_code=503, content={"status": "database unreachable"})
-    from app.sandbox import DEMO_EMAIL, DEMO_PASSWORD, is_sandbox
+    from app.sandbox import is_sandbox
 
-    if is_sandbox():  # the login page shows the demo login and the app a "sandbox" banner
-        return {"status": "ok", "sandbox": True, "demo_email": DEMO_EMAIL, "demo_password": DEMO_PASSWORD}
+    if is_sandbox():  # the app shows a "sandbox" banner; the login itself is handed out by the admin
+        return {"status": "ok", "sandbox": True}
     return {"status": "ok", "sandbox": False}

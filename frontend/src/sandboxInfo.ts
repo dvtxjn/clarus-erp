@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "./api";
 
-/** Is this the sandbox copy (P4)? From the public /health endpoint; with its demo login. */
+/** Is this the sandbox copy (P4)? From the public /health endpoint. */
 export interface SandboxInfo {
   sandbox: boolean;
-  demo_email?: string;
-  demo_password?: string;
 }
 
 let cached: Promise<SandboxInfo> | null = null;

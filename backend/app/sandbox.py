@@ -1,7 +1,7 @@
 """
 Sandbox (client, 2026-09-30, P4): a separate copy of the app, with its own database, for staff
 to try things on made-up data. SANDBOX=1 on that deployment:
-  - a "Sandbox — sample data" banner and the demo login on the login page;
+  - a "Sandbox — sample data" banner (the demo login is handed out by the admin, not shown);
   - no admin login and no rates / licences / pricing rules (invoicing is kept private);
   - reset() loads the one small showcase data set (run once when the sandbox is set up; again
     only if someone wants it back to the start).
@@ -18,7 +18,8 @@ from sqlalchemy import text
 from app.core.database import DATABASE_URL, SessionLocal, engine
 
 DEMO_EMAIL = "demo@sandbox.claruslogistics.in"
-DEMO_PASSWORD = "try-clarus-erp"  # public on purpose: shown on the sandbox login page
+# given out by the admin (not shown anywhere on the site); SANDBOX_DEMO_PASSWORD overrides it
+DEMO_PASSWORD = os.getenv("SANDBOX_DEMO_PASSWORD") or "try-clarus-erp"
 DEMO_NAME = "Sandbox Demo"
 
 

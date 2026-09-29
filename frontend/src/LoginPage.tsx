@@ -56,18 +56,8 @@ export default function LoginPage() {
         <p className="auth-subtitle">Sign in to your ERP</p>
         {sandbox.sandbox && (
           <div className="sandbox-login">
-            <strong>Sandbox — try it with sample data</strong>
-            <span>Nothing here is real, and nothing you do here reaches the real system.</span>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => {
-                setEmail(sandbox.demo_email ?? "");
-                setPassword(sandbox.demo_password ?? "");
-              }}
-            >
-              Use the demo login
-            </button>
+            <strong>Sandbox — sample data</strong>
+            <span>Nothing here is real. Ask the admin for the sandbox login.</span>
           </div>
         )}
 
