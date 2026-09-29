@@ -58,19 +58,33 @@ export default function ShipmentDetailPage() {
             {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
           </span>
         </div>
-      {/* BL and BE are the two keys everything is filed and searched by */}
+        {/* left: the two keys everything is filed and searched by; right: where the clearance stands */}
         <div className="key-ids">
-          <div className="key-id">
-            <span className="key-id-label">BL No (MBL / HBL)</span>
-            <span className="key-id-value">{shipment.mbl}</span>
-            {shipment.hbl && <span className="key-id-sub">HBL {shipment.hbl}</span>}
+          <div className="key-id key-id-keys">
+            <div className={`key-id-cell${(shipment.mbl ?? "").length + (shipment.hbl ?? "").length > 26 ? " key-id-long" : ""}`}>
+              <span className="key-id-label">BL No (MBL{shipment.hbl ? " / HBL" : ""})</span>
+              <span className="key-id-value" title={[shipment.mbl, shipment.hbl].filter(Boolean).join(" / ")}>
+                {shipment.mbl}
+                {shipment.hbl && <span className="key-id-date"> / {shipment.hbl}</span>}
+              </span>
+            </div>
+            <div className={`key-id-cell${shipment.be_no ? "" : " key-id-missing"}`}>
+              <span className="key-id-label">BE No · BE Date</span>
+              <span className="key-id-value">
+                {shipment.be_no ?? "Not filed yet"}
+                {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
+              </span>
+            </div>
           </div>
-          <div className={`key-id${shipment.be_no ? "" : " key-id-missing"}`}>
-            <span className="key-id-label">BE No · BE Date</span>
-            <span className="key-id-value">
-              {shipment.be_no ?? "Not filed yet"}
-              {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
-            </span>
+          <div className="key-id key-id-flags">
+            <span className="key-id-label">Clearance</span>
+            <div className="flag-row">
+              {statusFlags(shipment).map(([label, value]) => (
+                <span className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label} title={value ? "Done" : "Pending"}>
+                  <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
         <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
@@ -126,13 +140,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
     ["tds_deducted", "TDS cut on the shipment"],
     ["tds_on_cfs", "TDS cut on CFS payment"],
   ];
-  const flagFields: [string, boolean][] = [
-    ["Duty Paid", s.duty_paid],
-    ["OOC", s.ooc],
-    ["CFS Invoice", s.cfs_inv_received],
-    ["Line Paid", s.line_paid],
-    ["DO", s.do],
-  ];
   const examination =
     s.under_examination == null
       ? null
@@ -148,14 +155,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       <div className="detail-col">
         <section className="detail-section">
           <h3>Status</h3>
-          <div className="flag-grid">
-            {flagFields.map(([label, value]) => (
-              <div className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label}>
-                <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
-                {!value && <span className="flag-pending-text">Pending</span>}
-              </div>
-            ))}
-          </div>
           <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
           <Field label="Examination" value={examination} hint="Read from the OOC copy" />
           <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
@@ -800,6 +799,17 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
       {error && <span className="auth-error">{error}</span>}
     </div>
   );
+}
+
+/** The clearance checks, shown as chips at the top of the shipment page. */
+function statusFlags(s: Shipment): [string, boolean][] {
+  return [
+    ["Duty Paid", s.duty_paid],
+    ["OOC", s.ooc],
+    ["CFS Invoice", s.cfs_inv_received],
+    ["Line Paid", s.line_paid],
+    ["DO", s.do],
+  ];
 }
 
 function Field({ label, value, hint, strong }: { label: string; value: string | null; hint?: string; strong?: boolean }) {
