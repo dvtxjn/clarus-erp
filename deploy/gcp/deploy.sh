@@ -28,5 +28,5 @@ echo "== 3/3 deploy"
 gcloud run deploy "$SERVICE" --image "$TAG" --region "$REGION" --service-account "$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" \
   --add-cloudsql-instances "$CONN" --set-env-vars "$ENV" --set-secrets "$SECRETS" \
   --memory 1Gi --cpu 1 --timeout 3600 --concurrency 80 --min-instances 0 --max-instances 3 \
-  --allow-unauthenticated --quiet
+  --no-invoker-iam-check --quiet
 echo "Released: $(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
