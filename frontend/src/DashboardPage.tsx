@@ -141,7 +141,7 @@ export default function DashboardPage() {
           <div className="dash-pair">
             <section className="dash-card">
               <div className="dash-card-head dash-card-head-row">
-                <span>Cleared by port</span>
+                <span>Containers cleared by port</span>
                 <select value={clearedPick} onChange={(e) => setClearedMonth(e.target.value)} aria-label="Month">
                   {clearedMonths.map((m) => (
                     <option key={m} value={m}>
@@ -150,7 +150,8 @@ export default function DashboardPage() {
                   ))}
                 </select>
               </div>
-              <PortDonut month={cleared} metric={metric} colors={colors} portLabel={portLabel} />
+              {/* always containers (client, 2026-09-29) */}
+              <PortDonut month={cleared} metric="containers" colors={colors} portLabel={portLabel} />
             </section>
             <section className="dash-card">
               <div className="dash-card-head">Arriving in {monthName(summary.this_month)} by port (ETA)</div>
