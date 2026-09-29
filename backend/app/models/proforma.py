@@ -1,3 +1,4 @@
+from sqlalchemy.sql.expression import false as sa_false
 from sqlalchemy import (
     Boolean,
     Column, Integer, String, Numeric, DateTime, ForeignKey, Enum as SAEnum, JSON
@@ -33,6 +34,9 @@ class Proforma(SoftDeleteMixin, Base):
     bill_to_org_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     # HSS: sale rate per kg on the HSS bill; drives the GST Difference line
     bill_rate = Column(Numeric(12, 2), nullable=True)
+    # False: the rate follows the rules (suggested, re-worked whenever costs change);
+    # True: typed by hand — kept, but never allowed below the rule minimum (client, 2026-09-30)
+    bill_rate_manual = Column(Boolean, nullable=False, default=False, server_default=sa_false())
     # document-derived lines someone removed (e.g. "CFS", "DO:996711") — the automatic
     # refresh doesn't put them back; "Fill / refresh from shipment" clears this
     suppressed = Column(JSON, nullable=True)

@@ -186,6 +186,8 @@ def render_xlsx(inv: dict) -> bytes:
         if col in (1, 5) and v is not None:
             vc.number_format = "#,##0"
     r += 3
+    # value of goods / GST input / bill rate next to the assessable value (client, 2026-09-30)
+    r = _value_block(ws, r, inv["value"])
 
     # CHARGES
     bar("CHARGES")
@@ -250,7 +252,6 @@ def render_xlsx(inv: dict) -> bytes:
                 ws.cell(r, col).fill = PatternFill("solid", fgColor=BRAND)
             ws.row_dimensions[r].height = 22
             r += 2
-            r = _value_block(ws, r, inv["value"])
     assert grand_row is not None
 
     bar("NOTES")

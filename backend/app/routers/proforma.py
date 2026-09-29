@@ -461,6 +461,9 @@ def update_proforma_status(
         _require_draft(proforma)
     if changes.get("bill_to_org_id") is not None and not db.get(OrganizationEntry, changes["bill_to_org_id"]):
         raise HTTPException(status_code=404, detail="Organization not found")
+    if "bill_rate" in changes:
+        # typed rate: kept (never below the rule minimum); cleared: back to the automatic rate
+        proforma.bill_rate_manual = changes["bill_rate"] is not None
     for field, value in changes.items():
         if field in ("name", "bill_to") and isinstance(value, str):
             value = value.strip() or None

@@ -126,9 +126,43 @@ def test_sample_hss_invoice_matches_client_sheet(client, admin_headers):
     assert (float(v["value_of_goods"]), float(v["gst_input"]), float(v["value_per_kg"])) == (1389431.0, 245319.0, 14.5)
     assert float(v["gst_output"]) == 258660.0 and inv["customs_duty"]["challan_today"] is True
 
-    # bill rate cleared -> the GST Difference line goes
+    # bill rate cleared -> back to the automatic rate (the rules), not "no rate" (client, 2026-09-30)
     p = client.patch(f"/proformas/{pid}", json={"bill_rate": None}, headers=h).json()
-    assert not any(li["description"] == "GST Difference" for li in p["line_items"])
+    assert p["bill_rate_manual"] is False and float(p["bill_rate"]) == float(inv["value"]["suggested_bill_rate"])
+
+
+def test_bill_rate_follows_the_costs(client, admin_headers):
+    """Client, 2026-09-30: the HSS bill rate is always pre-filled by the rules and re-worked
+    (up or down) when costs change; a rate typed by hand stays unless the costs pass it."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "RATETEST0001", "consignee": "HKR - Mahrishi", "container": "2"},
+                      headers=h).json()["id"]
+    client.patch(f"/shipments/{sid}", json={"gross_wt": "50.000 MTS", "assessable_value": "500000"}, headers=h)
+    pid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
+    client.post(f"/proformas/{pid}/fill-from-shipment", headers=h)
+    charges = {c["code"]: c["id"] for c in client.get("/charge-master", headers=h).json()}
+    rate = lambda: next(p for p in client.get(f"/shipments/{sid}/proformas", headers=h).json() if p["id"] == pid)  # noqa: E731
+
+    first = rate()
+    assert first["bill_rate"] is not None and first["bill_rate_manual"] is False   # pre-filled
+    after = client.post(f"/proformas/{pid}/line-items", json={"charge_master_id": charges["DC"], "rate": 200000,
+                                                                "quantity": 1}, headers=h).json()
+    li = max((x for x in after["line_items"] if float(x["rate"]) == 200000), key=lambda x: x["id"])
+    up = rate()
+    assert float(up["bill_rate"]) > float(first["bill_rate"])                        # costs up: rate up
+    client.delete(f"/proformas/{pid}/line-items/{li['id']}", headers=h)
+    assert float(rate()["bill_rate"]) == float(first["bill_rate"])                   # and back down
+
+    typed = float(first["bill_rate"]) + 5
+    client.patch(f"/proformas/{pid}", json={"bill_rate": str(typed)}, headers=h)
+    client.post(f"/proformas/{pid}/line-items", json={"charge_master_id": charges["SBOND"], "rate": 1000,
+                                                       "quantity": 1}, headers=h)
+    kept = rate()
+    assert kept["bill_rate_manual"] is True and float(kept["bill_rate"]) == typed     # small change: kept
+    client.post(f"/proformas/{pid}/line-items", json={"charge_master_id": charges["DC"], "rate": 900000,
+                                                       "quantity": 1}, headers=h)
+    raised = rate()
+    assert float(raised["bill_rate"]) > typed                                          # costs passed it: raised
 
 
 def test_bill_to_details_from_organization_repository(client, admin_headers):
