@@ -170,7 +170,7 @@ def render_final_pdf(inv: dict) -> bytes:
             return
         canvas.saveState()
         canvas.setFillColor(colors.HexColor("#B42318"), alpha=0.13)
-        canvas.setFont("Helvetica-Bold", 38)
+        canvas.setFont("Helvetica-Bold", 30)
         canvas.translate(A4[0] / 2, A4[1] / 2)
         canvas.rotate(35)
         canvas.drawCentredString(0, 0, NOT_APPLICABLE)
