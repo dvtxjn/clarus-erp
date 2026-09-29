@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import Receivables from "./Receivables";
 import {
   downloadInvoiceRegister,
   downloadInvoicesPdf,
@@ -24,7 +25,7 @@ const date = (v: string | null) =>
 export default function InvoicesPage() {
   // two sections: proformas, and the final (issued) tax / reimbursement invoices
   const [params, setParams] = useSearchParams();
-  const section = params.get("section") === "proformas" ? "proformas" : "final";
+  const section = (["proformas", "outstanding"] as const).find((x) => x === params.get("section")) ?? "final";
   const [orgs, setOrgs] = useState<string[]>([]);
   useEffect(() => {
     listOrganizations()
@@ -44,6 +45,9 @@ export default function InvoicesPage() {
         <button className={section === "final" ? "tab active" : "tab"} onClick={() => setParams({})}>
           Final invoices (tax + reimbursement)
         </button>
+        <button className={section === "outstanding" ? "tab active" : "tab"} onClick={() => setParams({ section: "outstanding" })}>
+          Outstanding &amp; payments
+        </button>
       </div>
       {/* client: pick from the organization repository, or type to search */}
       <datalist id="org-names">
@@ -51,7 +55,7 @@ export default function InvoicesPage() {
           <option key={n} value={n} />
         ))}
       </datalist>
-      {section === "proformas" ? <ProformaRegister /> : <FinalRegister />}
+      {section === "proformas" ? <ProformaRegister /> : section === "outstanding" ? <Receivables /> : <FinalRegister />}
     </div>
   );
 }
@@ -168,20 +172,21 @@ function FinalRegister() {
               <th className="num">Non-GST</th>
               <th className="num">GST</th>
               <th className="num">Net payable</th>
+              <th className="num">Outstanding</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {rows === null && (
               <tr>
-                <td colSpan={12} className="tracker-empty">
+                <td colSpan={13} className="tracker-empty">
                   Loading…
                 </td>
               </tr>
             )}
             {rows?.length === 0 && (
               <tr>
-                <td colSpan={12} className="tracker-empty">
+                <td colSpan={13} className="tracker-empty">
                   No invoices match.
                 </td>
               </tr>
@@ -217,6 +222,9 @@ function FinalRegister() {
                     </td>
                   </>
                 )}
+                <td className={`num${Number(r.outstanding) > 0 ? " recv-due" : ""}`}>
+                  {r.status !== "issued" || r.not_applicable ? "—" : Number(r.outstanding) > 0 ? inr(r.outstanding) : "Paid"}
+                </td>
                 <td>
                   <span className={`final-status s-${r.status}`}>{r.status}</span>
                 </td>
@@ -235,6 +243,7 @@ function FinalRegister() {
                 <td className="num">
                   <strong>{inr(totals.net)}</strong>
                 </td>
+                <td className="num">{inr(all.reduce((a, r) => a + Number(r.outstanding || 0), 0))}</td>
                 <td />
               </tr>
             </tfoot>
