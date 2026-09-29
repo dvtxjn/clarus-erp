@@ -39,6 +39,7 @@ class ShipmentBase(BaseModel):
     voyage: Optional[str] = None
     cont: Optional[str] = None
     shipping_line: Optional[str] = None
+    eta_is_deadline: bool = False
 
     duty_paid: bool = False
     cfs_inv_received: bool = False
@@ -134,6 +135,7 @@ class ShipmentUpdate(BaseModel):
     duty_amount: Optional[Decimal] = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     drive_folder_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{10,200}$")
     drive_folder_link: Optional[str] = None
+    eta_is_deadline: Optional[bool] = None
     remarks: Optional[str] = None
     fta_info: Optional[str] = None
     is_stuck: Optional[bool] = None

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
+import DateCellEditor from "./dateEditor";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -97,7 +98,7 @@ function loadView(): ViewMode {
 const COLUMN_VIEWS = {
   clearance: {
     label: "Clearance",
-    cols: ["job", "mbl", "hbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "status", "cleared_date", "remarks"],
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "status", "cleared_date", "remarks"],
   },
   movement: {
     label: "Movement",
@@ -159,6 +160,9 @@ const dateCol = (field: keyof Shipment, headerName: string, width = 76): ColDef<
   headerName,
   width,
   cellDataType: "dateString",
+  cellEditor: DateCellEditor, // Google-Sheets style calendar (client, 2026-09-29)
+  cellEditorPopup: true,
+  cellEditorParams: { format: "iso" },
   valueFormatter: formatDate,
   comparator: dateComparator,
 });
@@ -198,7 +202,7 @@ const FLAG_LABELS = Object.fromEntries([...FLAGS, ...CFS_TDS_FLAGS].map(([f, , t
 
 interface GridContext {
   toggleFlag: (s: Shipment, field: FlagField) => void;
-  saveText: (s: Shipment, field: MiniField, value: string | null, label: string) => Promise<void>;
+  saveText: (s: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => Promise<void>;
 }
 
 function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & { flags: FlagList }) {
@@ -250,7 +254,9 @@ function customColumn(c: TrackerColumn): ColDef<Shipment> {
       p.data.custom_fields = { ...(p.data.custom_fields ?? {}), [c.key]: p.newValue };
       return true;
     },
-    ...(c.data_type === "date" ? { valueFormatter: formatDate, comparator: dateComparator } : {}),
+    ...(c.data_type === "date"
+      ? { valueFormatter: formatDate, comparator: dateComparator, cellEditor: DateCellEditor, cellEditorPopup: true, cellEditorParams: { format: "iso" } }
+      : {}),
   };
 }
 
@@ -338,12 +344,23 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         </span>
       ),
     },
-    text("hbl", "HBL", 150),
     { ...text("be_description", "Desc", 200), headerTooltip: "BE Description" },
-    { ...dateCol("eta", "ETA"), sort: "asc" },
+    {
+      ...dateCol("eta", "ETA", 118),
+      minWidth: 112, // "d" + date + deadline
+      sort: "asc",
+      // redraw when the deadline switch changes too (the ETA value itself doesn't)
+      equals: () => false,
+      headerTooltip: "d = deadline: the shipment must be moved to the CFS 4 days before the ETA",
+      cellRenderer: (p: ICellRendererParams<Shipment, string, GridContext>) =>
+        p.data ? <EtaCell row={p.data} ctx={p.context} /> : null,
+    },
     {
       // INW with the sheet's Day count as a badge (Day is calculated from INW)
       ...text("inw", "INW", 118),
+      cellEditor: DateCellEditor, // INW is typed text ("08-Oct-2026"); the calendar writes it the same way
+      cellEditorPopup: true,
+      cellEditorParams: { format: "sheet" },
       headerTooltip: "Day = today − INW (+1 if INW is today or past)",
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
@@ -1047,7 +1064,7 @@ export default function ShipmentGridPage() {
     }
   }, [record, saveShipment]);
   // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
-  const saveText = useCallback(async (row: Shipment, field: MiniField, value: string | null, label: string) => {
+  const saveText = useCallback(async (row: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => {
     try {
       const { shipment: saved, kept } = await saveShipment(row, { [field]: value } as Partial<Shipment>, label);
       setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
@@ -1780,5 +1797,45 @@ function MiniFieldPopover({
         </button>
       </div>
     </div>
+  );
+}
+
+const DEADLINE_DAYS = 4;
+
+/** ETA − 4 days: the deadline to move the shipment to the CFS (client, 2026-09-29). */
+export function etaDeadline(eta: string | null): string | null {
+  if (!eta) return null;
+  const [y, m, d] = eta.split("-").map(Number);
+  const dl = new Date(y, m - 1, d - DEADLINE_DAYS);
+  return `${dl.getFullYear()}-${String(dl.getMonth() + 1).padStart(2, "0")}-${String(dl.getDate()).padStart(2, "0")}`;
+}
+
+/** ETA cell: the small "d" in front turns the deadline on/off; the deadline shows beside the ETA. */
+function EtaCell({ row, ctx }: { row: Shipment; ctx: GridContext }) {
+  const dl = row.eta_is_deadline ? etaDeadline(row.eta) : null;
+  const today = new Date(new Date().toDateString()).getTime();
+  const left = dl ? Math.round((new Date(`${dl}T00:00:00`).getTime() - today) / 86_400_000) : null;
+  const tone = left == null ? "" : left < 0 ? " dl-past" : left <= 2 ? " dl-soon" : "";
+  return (
+    <span className="eta-cell">
+      <button
+        type="button"
+        className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}`}
+        title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.saveText(row, "eta_is_deadline", !row.eta_is_deadline, "Deadline").catch(() => {});
+        }}
+      >
+        d
+      </button>
+      <span>{shortDate(row.eta)}</span>
+      {dl && (
+        <span className={`dl-date${tone}`} title={left != null && left < 0 ? "Deadline passed" : `Deadline in ${left} day(s)`}>
+          {shortDate(dl)}
+        </span>
+      )}
+    </span>
   );
 }

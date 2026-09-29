@@ -1126,3 +1126,36 @@ input { padding: 6px 9px; }
 .mini-popover input, .mini-popover textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 8px; }
 .mini-popover-actions { display: flex; gap: 6px; }
 .mini-popover-actions button { padding: 4px 10px; font-size: 12.5px; }
+
+/* ETA: "d" deadline toggle + deadline date */
+.eta-cell { display: flex; align-items: center; gap: 5px; }
+.dl-toggle {
+  flex: none; width: 15px; height: 15px; padding: 0; font-size: 9.5px; font-weight: 700; line-height: 13px; text-align: center;
+  border-radius: 3px; border: 1px dashed var(--color-border); background: transparent; color: var(--color-text-muted); box-shadow: none;
+}
+.dl-toggle:hover { border-color: var(--color-text-muted); color: var(--color-text); background: transparent; }
+.dl-toggle.dl-on { border: 1px solid var(--color-accent); background: var(--color-accent); color: #fff; }
+.dl-date { font-size: 11px; font-weight: 600; color: var(--color-accent-text); background: var(--color-accent-soft); padding: 0 4px; border-radius: 3px; }
+.dl-date.dl-soon { color: #8A5A00; background: #FFF4DB; }
+.dl-date.dl-past { color: var(--color-danger); background: var(--color-danger-bg); }
+
+/* calendar editor for date cells */
+.date-editor {
+  width: 236px; padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(16, 17, 20, .16); display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;
+}
+.date-editor-input { width: 100%; padding: 5px 8px; font-size: 13px; }
+.date-editor-hint { font-size: 11px; color: var(--color-danger); }
+.date-editor-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
+.date-editor-head button, .date-editor-day {
+  background: none; border: none; box-shadow: none; color: var(--color-text); padding: 0; border-radius: 4px; font-weight: 400;
+}
+.date-editor-head button { width: 24px; height: 24px; font-size: 16px; }
+.date-editor-head button:hover, .date-editor-day:hover { background: var(--color-hover); }
+.date-editor-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.date-editor-dow { font-size: 10.5px; color: var(--color-text-muted); padding: 2px 0; }
+.date-editor-day { height: 26px; font-size: 12.5px; }
+.date-editor-day.is-today { box-shadow: inset 0 0 0 1px var(--color-accent); }
+.date-editor-day.is-chosen { background: var(--color-accent); color: #fff; font-weight: 600; }
+.date-editor-foot { display: flex; justify-content: space-between; }
+.date-editor-foot button { padding: 3px 10px; font-size: 12px; }

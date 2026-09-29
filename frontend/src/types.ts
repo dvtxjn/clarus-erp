@@ -90,6 +90,7 @@ export interface Shipment {
   cfs_payment_after_tds: string | null; // basic + GST - TDS
   remarks: string | null;
   fta_info: string | null; // FTA certificate no / notes (the small FTA button on the MBL)
+  eta_is_deadline: boolean; // "d" on the ETA: deadline = ETA − 4 days to move the shipment to the CFS
   is_stuck: boolean;
   status: ShipmentStatus;
   port: string | null;

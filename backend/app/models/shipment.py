@@ -4,6 +4,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.sql.expression import false as sa_false
 from datetime import date, datetime
 from typing import Optional
 from decimal import Decimal, ROUND_HALF_UP
@@ -62,6 +63,8 @@ class Shipment(SoftDeleteMixin, Base):
     # --- Core descriptive fields ---
     be_description = Column(String, nullable=True)
     eta = Column(Date, nullable=True)
+    # the ETA is a deadline, not just an expected date — the "d" on the ETA (client, 2026-09-29)
+    eta_is_deadline = Column(Boolean, default=False, nullable=False, server_default=sa_false())
     inw = Column(String, nullable=True)  # inward — format TBD with client, kept as string for now
     day = Column(String, nullable=True)
     license = Column(String, nullable=True)
