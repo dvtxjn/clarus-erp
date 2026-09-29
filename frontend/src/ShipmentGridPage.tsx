@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AgGridReact } from "ag-grid-react";
 import {
@@ -105,6 +105,7 @@ const text = (field: keyof Shipment, headerName: string, width = 130): ColDef<Sh
   headerName,
   width,
   cellDataType: "text",
+  autoHeight: true, // text can wrap; see defaultColDef
 });
 const dateCol = (field: keyof Shipment, headerName: string, width = 92): ColDef<Shipment> => ({
   field,
@@ -190,6 +191,7 @@ function customColumn(c: TrackerColumn): ColDef<Shipment> {
     headerName: c.label,
     width: c.data_type === "boolean" ? 100 : 140,
     cellDataType: CUSTOM_TYPES[c.data_type],
+    autoHeight: c.data_type === "text",
     valueGetter: (p) => p.data?.custom_fields?.[c.key] ?? null,
     valueSetter: (p) => {
       p.data.custom_fields = { ...(p.data.custom_fields ?? {}), [c.key]: p.newValue };
@@ -197,6 +199,37 @@ function customColumn(c: TrackerColumn): ColDef<Shipment> {
     },
     ...(c.data_type === "date" ? { valueFormatter: formatDate, comparator: dateComparator } : {}),
   };
+}
+
+function withSavedState(defs: ColDef<Shipment>[], key: string): ColDef<Shipment>[] {
+  let saved: ColumnState[];
+  try {
+    saved = JSON.parse(localStorage.getItem(key) ?? "[]");
+  } catch {
+    return defs;
+  }
+  if (!Array.isArray(saved) || saved.length === 0) return defs;
+  const byId = new Map(saved.map((c, i) => [c.colId, { ...c, i }]));
+  const idOf = (d: ColDef<Shipment>) => d.colId ?? (d.field as string | undefined) ?? "";
+  const hasSort = saved.some((c) => c.sort);
+  return defs
+    .map((d, i) => {
+      const c = byId.get(idOf(d));
+      const order = c ? c.i : saved.length + i; // new columns go to the end, as applyOrder does
+      if (!c) return { d, order };
+      return {
+        d: {
+          ...d,
+          ...(c.width ? { width: c.width } : {}),
+          hide: !!c.hide,
+          pinned: c.pinned ?? null,
+          ...(hasSort ? { sort: c.sort ?? null, sortIndex: c.sortIndex ?? null } : {}),
+        },
+        order,
+      };
+    })
+    .sort((a, b) => a.order - b.order)
+    .map((x) => x.d);
 }
 
 function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]): ColDef<Shipment>[] {
@@ -263,6 +296,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
       headerName: "POD",
+      autoHeight: true,
       width: 132,
       cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["", ...ports.map((p) => p.code)] },
@@ -308,6 +342,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
     {
       field: "status",
       headerName: "Status",
+      autoHeight: true,
       width: 108,
       headerTooltip:
         "Updates itself from the evidence: IGM no → IGM Filed, BE no → BE Filed, duty amount → BE Assessed, Duty Paid → Duty Paid, OOC → OOC Done, Cleared Date → Cleared. You can still set it by hand.",
@@ -380,12 +415,15 @@ const defaultColDef: ColDef<Shipment> = {
   suppressFloatingFilterButton: true, // narrower filter boxes
   wrapHeaderText: true, // two-line headers, like Excel, so columns can be narrow
   autoHeaderHeight: true,
-  // Nothing is ever cut off: long values wrap and the row grows to fit
+  // Nothing is ever cut off: long values wrap and the row grows to fit. Only text columns
+  // measure their height (autoHeight) — measuring makes the grid render that column for
+  // every row even off-screen, and doing it for all ~40 columns froze the page ~1s on load.
+  // Dates, flags and chips are fixed-size and never need it.
   wrapText: true,
-  autoHeight: true,
+  autoHeight: false,
 };
 // Client/month sections have no visible header row
-const sectionColDef: ColDef<Shipment> = { ...defaultColDef, wrapHeaderText: false, autoHeaderHeight: false };
+const sectionColDef: ColDef<Shipment> = { ...defaultColDef, wrapHeaderText: false, autoHeaderHeight: false, floatingFilter: false };
 
 type GridRef = RefObject<AgGridReact<Shipment> | null>;
 
@@ -416,8 +454,13 @@ export default function ShipmentGridPage() {
   const [showColumns, setShowColumns] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
-  const columnDefs = useMemo(() => buildColumnDefs(ports, tab, trackerCols), [ports, tab, trackerCols]);
   const columnStateKey = `${COLUMN_STATE_KEY}.${tab}`;
+  // Saved widths/order/pinning go into the definitions, so every grid first renders at its
+  // final layout — applying them after load re-wrapped and re-measured every row (visible jump).
+  const columnDefs = useMemo(
+    () => withSavedState(buildColumnDefs(ports, tab, trackerCols), `${COLUMN_STATE_KEY}.${tab}`),
+    [ports, tab, trackerCols],
+  );
 
   const refresh = useCallback(async () => {
     const data = await listShipments({
@@ -912,7 +955,7 @@ export default function ShipmentGridPage() {
       {shipments === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : (
-        <div className="client-grid-stack" key={`${tab}.${view}`}>
+        <SettledStack key={`${tab}.${view}`}>
           <div className="client-grid-header">
             <AgGridReact<Shipment>
               ref={headerRef}
@@ -987,8 +1030,40 @@ export default function ShipmentGridPage() {
           ))}
 
           {shownGroups.length === 0 && <div className="tracker-empty">No shipments match this view.</div>}
-        </div>
+        </SettledStack>
       )}
+    </div>
+  );
+}
+
+/**
+ * The grids first draw every row at the default height, then grow rows whose text wraps.
+ * Keep the stack invisible until its size stops changing so rows appear at their final
+ * height instead of jumping (capped, so a slow machine still shows the tracker).
+ */
+function SettledStack({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let quiet: number | undefined;
+    const reveal = () => setSettled(true);
+    const cap = window.setTimeout(reveal, 1500);
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(quiet);
+      if (el.querySelector(".ag-row")) quiet = window.setTimeout(reveal, 80);
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(quiet);
+      window.clearTimeout(cap);
+    };
+  }, []);
+  return (
+    <div ref={ref} className={settled ? "client-grid-stack" : "client-grid-stack grid-settling"}>
+      {children}
     </div>
   );
 }

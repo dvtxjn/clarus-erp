@@ -265,6 +265,7 @@ input {
   border-radius: 8px 8px 0 0;
 }
 .client-section-count { font-weight: 500; font-size: 12px; text-transform: none; opacity: .75; }
+.client-grid-stack.grid-settling { visibility: hidden; }
 .client-grid-stack .row-stuck { background: #FEF2F2; }
 .client-grid-stack .grid-computed { color: var(--color-text-muted); font-style: italic; }
 .grid-open-link { text-decoration: none; font-size: 15px; color: var(--color-accent); }
