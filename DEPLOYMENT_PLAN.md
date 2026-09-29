@@ -40,7 +40,7 @@ Skipped for launch: Phase 5 (hide Ctrl+Z undo instead), weekly/monthly backup ti
 | 0 | Postgres locally + move existing data | [x] 2026-09-29 |
 | 1 | Data-safety rules (soft delete, locked invoices, permanent audit) | [x] Fast Track scope, 2026-09-29 |
 | 2 | Conflict protection on tracker edits | [ ] |
-| 3 | Safe invoice numbering + one-shot actions | [ ] |
+| 3 | Safe invoice numbering + one-shot actions | Deferred 2026-09-29: final invoices are issued in another software (LiveImpex) for now; build before the app issues real invoice numbers |
 | 4 | Locking for uploads, autofill, challans, CSV import, proformas | [ ] |
 | 5 | Safe undo + live-ish updates (polling) | [ ] |
 | 6 | Concurrency tests | [ ] |

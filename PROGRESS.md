@@ -21,6 +21,12 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ⏸ Launch Phase 3 — deferred (2026-09-29)
+
+Client: final invoices are issued through another software (LiveImpex) for now, so safe invoice numbering is not a concern yet. **Do Phase 3 before the app issues a real final invoice number.** Design already worked out: in one transaction lock the proforma row (`FOR UPDATE`, serialises a tax/reimbursement pair), lock the invoice and require `draft` (else 409), reuse the pair's seq or take `UPDATE invoice_counters SET next_seq = next_seq + 1 ... RETURNING`, then one guarded `UPDATE ... WHERE status='draft'` that sets status + number together (the Phase 1 trigger forbids changing a row after it is issued). Unique (fy, seq, kind). Same compare-and-set for cancel, bill/unbill, proforma Sent, create final invoices (lock the proforma).
+
+---
+
 ## ✅ Launch Phase 1 (Fast Track) — data-safety rules (2026-09-29, branch `safety/phase-1`)
 
 - **Invoicing is admin-only, including viewing** (client, 2026-09-29: "nobody else can even access view"). `require_billing_access` now means role = admin; the per-user `can_access_billing` flag grants nothing. Applied at router level to `proforma`, `final_invoices`, `challans`, `extraction` (orgs) — every route, reads included. Frontend hides Rates, Recently deleted, the Proforma & Billing tab and the Daily updates (challans / organisations) cards for non-admins; `/rates` and `/deleted` redirect them.
