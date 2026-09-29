@@ -644,3 +644,26 @@ export async function downloadInvoiceRegister(f: RegisterFilters): Promise<void>
   const qs = new URLSearchParams(clean(f) as Record<string, string>).toString();
   await downloadBlob(`/final-invoices/register.xlsx${qs ? `?${qs}` : ""}`, "invoice-register.xlsx");
 }
+
+/** Proforma register: every proforma across shipments (Invoices page → Proformas). */
+export interface ProformaRegisterRow {
+  id: number;
+  shipment_id: number;
+  job: string | null;
+  mbl: string | null;
+  be_no: string | null;
+  version: number;
+  name: string | null;
+  status: "draft" | "sent" | "superseded";
+  role: string | null;
+  bill_to: string | null;
+  date: string | null;
+  grand_total: string;
+}
+export async function getProformaRegister(f: RegisterFilters): Promise<{ proformas: ProformaRegisterRow[]; financial_years: string[] }> {
+  const { data } = await client.get("/proformas", { params: clean(f) });
+  return data;
+}
+export async function downloadProformasPdf(ids: number[]): Promise<void> {
+  await downloadBlob(`/proformas/export.pdf?ids=${ids.join(",")}`, "proformas.pdf");
+}

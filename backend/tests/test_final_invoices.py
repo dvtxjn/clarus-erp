@@ -187,3 +187,18 @@ def test_invoice_register_filters_and_exports(client, admin_headers):
     ws = load_workbook(io.BytesIO(xl.content)).active
     assert ws.max_row == 5 and ws["A1"].value == "Number"
     assert client.get("/final-invoices").status_code == 401
+
+
+def test_proforma_register(client, admin_headers):
+    import pypdfium2
+
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "PFREG0001", "consignee": "Proforma Register Co", "job": "881"},
+                      headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    rows = client.get("/proformas", params={"q": "881"}, headers=h).json()
+    assert [r["id"] for r in rows["proformas"]] == [pid] and rows["proformas"][0]["status"] == "draft"
+    assert rows["proformas"][0]["grand_total"] and rows["financial_years"]
+    assert client.get("/proformas", params={"q": "881", "status": "sent"}, headers=h).json()["proformas"] == []
+    pdf = client.get("/proformas/export.pdf", params={"ids": str(pid)}, headers=h)
+    assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 1

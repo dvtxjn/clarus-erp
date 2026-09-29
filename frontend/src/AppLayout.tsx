@@ -88,7 +88,7 @@ export default function AppLayout() {
           {user?.role === "admin" && (
             <>
               <div className="app-nav-section">Admin</div>
-              <Item to="/invoices" label="Invoices" i="invoices" />
+              <Item to="/invoices" label="Invoicing" i="invoices" />
               <Item to="/rates" label="Rates" i="rates" />
               <Item to="/users" label="Users" i="users" />
               <Item to="/deleted" label="Recently deleted" i="deleted" />
