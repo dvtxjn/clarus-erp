@@ -17,7 +17,8 @@ ENV VITE_API_BASE_URL="" \
 RUN npm run build
 
 # --- 2. backend ---
-FROM python:3.11-slim
+# pinned to Debian 12 (bookworm): the Postgres apt repo line below must match the Debian release
+FROM python:3.11-slim-bookworm
 # pg_dump / pg_restore 18 (same as the database), fonts for the PDFs
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates gnupg fonts-dejavu-core \
