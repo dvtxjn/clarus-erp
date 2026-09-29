@@ -14,6 +14,13 @@ KEY_FILE="${1:?usage: bash deploy/gcp/setup.sh <path to the service-account key 
 gcloud config set project "$PROJECT" >/dev/null
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
 exists() { "$@" >/dev/null 2>&1; }
+grant() {  # grant <member> <role>, retrying: a just-created identity takes a moment to exist everywhere
+  for try in 1 2 3 4 5 6; do
+    gcloud projects add-iam-policy-binding "$PROJECT" --member "$1" --role "$2" --condition None -q >/dev/null 2>&1 && return 0
+    echo "   waiting for Google to register $1 ($try/5)"; sleep 20
+  done
+  gcloud projects add-iam-policy-binding "$PROJECT" --member "$1" --role "$2" --condition None -q >/dev/null
+}
 
 echo "== 1. services (one at a time — Google limits how many can be switched on per minute)"
 ENABLED=$(gcloud services list --enabled --format='value(config.name)')
@@ -31,15 +38,14 @@ exists gcloud artifacts repositories describe "$REPO" --location "$REGION" || \
   gcloud artifacts repositories create "$REPO" --repository-format docker --location "$REGION"
 BUILD_SA="$PROJECT_NUMBER-compute@developer.gserviceaccount.com"
 for role in roles/artifactregistry.writer roles/logging.logWriter roles/storage.objectViewer; do
-  gcloud projects add-iam-policy-binding "$PROJECT" --member "serviceAccount:$BUILD_SA" --role "$role" --condition None -q >/dev/null
+  grant "serviceAccount:$BUILD_SA" "$role"
 done
 
 echo "== 3. the app's identity"
 exists gcloud iam service-accounts describe "$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" || \
   gcloud iam service-accounts create "$RUNTIME_SA" --display-name "Clarus ERP app"
 for role in roles/cloudsql.client roles/secretmanager.secretAccessor; do
-  gcloud projects add-iam-policy-binding "$PROJECT" --member "serviceAccount:$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" \
-    --role "$role" --condition None -q >/dev/null
+  grant "serviceAccount:$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" "$role"
 done
 
 echo "== 4. database (Cloud SQL — the first time takes ~10 minutes)"
