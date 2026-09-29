@@ -818,3 +818,6 @@ input {
 .folder-candidate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 
 .backup-banner { background: #FDECEC; color: #8A1F1F; border-bottom: 1px solid #F3C4C4; padding: 8px 24px; font-size: 13px; }
+
+.auth-forgot { margin-top: 10px; align-self: center; }
+.row-inactive td { color: var(--color-text-muted); }

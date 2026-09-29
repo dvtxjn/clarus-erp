@@ -3,6 +3,7 @@ import type {
   Shipment,
   ShipmentCreateInput,
   User,
+  UserRole,
   DashboardSummary,
   ShipmentDocument,
   DocumentChecklistItem,
@@ -550,4 +551,25 @@ export interface BackupHealth {
 export async function getBackupHealth(): Promise<BackupHealth> {
   const { data } = await client.get("/health/backups");
   return data;
+}
+
+// --- users (admin controls every password) ---
+export async function listUsers(): Promise<User[]> {
+  const { data } = await client.get("/auth/users");
+  return data;
+}
+export async function createUser(payload: { email: string; full_name: string; role: UserRole; password: string }): Promise<User> {
+  const { data } = await client.post("/auth/users", payload);
+  return data;
+}
+export async function updateUser(id: number, payload: Partial<Pick<User, "full_name" | "role" | "is_active">>): Promise<User> {
+  const { data } = await client.patch(`/auth/users/${id}`, payload);
+  return data;
+}
+export async function setUserPassword(id: number, newPassword: string): Promise<User> {
+  const { data } = await client.post(`/auth/users/${id}/password`, { new_password: newPassword });
+  return data;
+}
+export async function forgotPassword(email: string): Promise<void> {
+  await client.post("/auth/forgot-password", { email });
 }

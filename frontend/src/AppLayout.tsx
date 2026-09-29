@@ -39,6 +39,9 @@ export default function AppLayout() {
                 <NavLink to="/deleted" className={({ isActive }) => (isActive ? "active" : "")}>
                   Recently deleted
                 </NavLink>
+                <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>
+                  Users
+                </NavLink>
               </>
             )}
           </nav>

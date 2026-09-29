@@ -591,3 +591,16 @@ The client will pick features they like from other software and feed them in. Re
 - Tests `tests/test_production.py` (6) + GST test. 123 pass on Postgres.
 
 **Next: Phase 10 — deploy.** Needs: Render account in the client's name (H2), domain DNS at Dynadot (H1: auto-renew + 2FA), then: create services from render.yaml, set secrets, move the data (pg_dump → Render Postgres), create the real admin, add `https://erp.<domain>` to the Google OAuth origins and API-key websites, soft launch.
+
+---
+
+## ✅ Users: admin controls every password (2026-09-29)
+
+- Client: logins — **divit@claruslogistics.in = Admin (boss)**, **impdoc@claruslogistics.in = Import Manager**; sub-accounts later. Passwords are set by the admin only; users can't change their own; "Forgot password" just flags the account.
+- Backend (`routers/auth.py`): `/auth/change-password` → 403; `POST /auth/forgot-password` (always 204, rate-limited) sets `users.password_reset_requested_at`; admin: `GET/POST /auth/users`, `PATCH /auth/users/{id}` (name, role, on/off — can't switch off or demote yourself), `POST /auth/users/{id}/password` (clears the request). Emails stored lower-case, login case-insensitive, `last_login_at`. Everything audit-logged. Migration 0034. Tests `tests/test_users.py`.
+- Frontend: **Users** page (admin nav) — add user with a suggested 14-character password to hand over, role select, Set password, Switch off/on, "Reset requested" badge + banner; login page **Forgot password?** and clear lock-out messages.
+- Production: create divit@ with `scripts/create_admin.py` on Render, then add impdoc@ from the Users page. Remove / never create admin@example.com there (the production check refuses it).
+
+**Render (Phase 10) status:** client is creating the account (Google sign-up; workspace "Clarus Logistics"; impdoc@ created it — invite divit@ as Admin, ownership can be transferred on the Members page or by Render support). Next: New → Blueprint from `dvtxjn/clarus-erp`, secrets pasted by the client, data moved, DNS `erp.claruslogistics.in`.
+
+**Client wish (2026-09-29): generate proforma invoices on the phone.** Proforma screens are desktop-sized today → mobile layout for the proforma panel (create, fill, check totals, download PDF / share) — add to the design work.

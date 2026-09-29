@@ -22,6 +22,10 @@ class User(Base):
 
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Passwords are set by the admin only (client, 2026-09-29): "Forgot password" on the login
+    # page just flags the account here for the admin to reset.
+    password_reset_requested_at = Column(DateTime(timezone=True), nullable=True)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
 
     # Port scoping (spec §2.4): if a user has no rows here, they see all ports.
     # If they have rows, visibility is restricted to just those ports.

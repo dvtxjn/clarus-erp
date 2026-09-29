@@ -9,6 +9,7 @@ import ShipmentGridPage from "./ShipmentGridPage";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import RatesPage from "./RatesPage";
 import DeletedPage from "./DeletedPage";
+import UsersPage from "./UsersPage";
 import { UploadQueueProvider } from "./uploadQueue";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -45,6 +46,7 @@ export default function App() {
             <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
             <Route path="/rates" element={<AdminRoute><RatesPage /></AdminRoute>} />
             <Route path="/deleted" element={<AdminRoute><DeletedPage /></AdminRoute>} />
+            <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

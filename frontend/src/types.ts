@@ -34,6 +34,9 @@ export interface User {
   full_name: string;
   role: UserRole;
   can_access_billing: boolean;
+  is_active: boolean;
+  password_reset_requested_at: string | null; // "Forgot password" pressed — the admin sets a new one
+  last_login_at: string | null;
 }
 
 export interface Shipment {
