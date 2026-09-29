@@ -974,3 +974,38 @@ input { padding: 6px 9px; }
 .detail-remarks > span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 1100px) { .detail-wide-foot { grid-template-columns: 1fr; } }
 .invoice-list { display: flex; flex-direction: column; gap: 6px; max-height: 270px; overflow-y: auto; padding-right: 2px; }
+
+/* --- Dashboard (design refresh): numbers + pipeline + upcoming left, daily updates + ports right --- */
+.dash-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.dash-head h1 { margin: 0; font-size: 17px; font-weight: 600; }
+.dash-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 16px; align-items: start; }
+.dash-main, .dash-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.dash-side .daily-updates { grid-template-columns: 1fr; gap: 14px; margin: 0; }
+.dashboard-page .stat-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.dashboard-page .stat-card { padding: 12px 16px; min-width: 0; }
+.dashboard-page .stat-value { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.stat-note { font-size: 12px; color: var(--color-accent-text); margin-top: 2px; }
+.dash-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.dash-card-head { font-size: 12.5px; font-weight: 600; }
+.pipeline-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--color-subtle); gap: 2px; }
+.pipeline-bar span { background: var(--color-accent); min-width: 0; }
+.dashboard-page .pipeline-row { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 0; }
+.dashboard-page .pipeline-card { border: none; border-left: 1px solid var(--color-border-soft); border-radius: 0; padding: 4px 10px; text-align: left; background: none; }
+.dashboard-page .pipeline-card:first-child { border-left: none; padding-left: 0; }
+.dashboard-page .pipeline-card:hover { background: var(--color-inv-sub); }
+.dashboard-page .pipeline-count { font-size: 18px; font-weight: 600; }
+.dashboard-page .pipeline-label { font-size: 11px; text-transform: none; margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pipeline-share { font-size: 11px; color: var(--color-text-muted); }
+.dash-table td, .dash-table th { padding-left: 0; }
+.dash-when { color: var(--color-text-muted); font-size: 12px; }
+.port-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.port-bars li { display: grid; grid-template-columns: minmax(0, 150px) 1fr 28px; gap: 10px; align-items: center; font-size: 13px; }
+.port-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.port-bar { height: 6px; background: var(--color-subtle); border-radius: 3px; overflow: hidden; }
+.port-bar span { display: block; height: 100%; background: var(--color-accent); border-radius: 3px; }
+.port-bars .simple-list-count { text-align: right; }
+@media (max-width: 1200px) {
+  .dash-layout { grid-template-columns: 1fr; }
+  .dashboard-page .pipeline-row { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 8px; }
+  .dashboard-page .stat-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
