@@ -694,3 +694,14 @@ The client will pick features they like from other software and feed them in. Re
 - Invoices page (admin, 2026-09-30): every tax / reimbursement invoice across shipments; filter by FY, month, type,
   status, client, number / job / MBL / BE / IRN; totals; tick invoices → one PDF to print (or all filtered);
   register as Excel. API: GET /final-invoices, /final-invoices/export.pdf?ids=, /final-invoices/register.xlsx.
+
+## 📌 Roadmap — client priorities (2026-09-30)
+- **P0** Settings page — company details, bank details, invoice terms, e-invoicing, numbering, default rates, Drive
+  folders, backup status, user permissions (so the admin changes them, not code).
+- **P1** Payments & outstanding (mark paid / part-paid, what each client owes, ageing, reminders).
+- **P1** Tally export of issued invoices.
+- **P1** Alerts: "d" deadlines, free days (incl. Delhi FPOD fix), missing documents before BE filing.
+- **P1** Phone-friendly proforma.
+- **P3** Reports (monthly billing, per-client volume / billing, containers per port).
+- **P3** Change history viewer (the audit log is recorded, not shown yet).
+- **P6** Credit / debit notes.
