@@ -813,3 +813,6 @@ input {
 .upload-job-status { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--color-text-muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .upload-job-done .upload-job-status { color: #1B6B3A; }
 .upload-job-error .upload-job-status { color: #A12A2A; }
+
+.folder-candidates { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.folder-candidate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }

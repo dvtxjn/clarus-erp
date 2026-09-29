@@ -12,6 +12,7 @@ import { useAuth } from "./AuthContext";
 import { useConfirm } from "./ConfirmDialog";
 import {
   driveConfigured,
+  findFolderFor,
   folderIdFromLink,
   getDriveToken,
   pickDriveFolder,
@@ -19,6 +20,7 @@ import {
   pickPdfsFromFolder,
 } from "./googleDrive";
 import { guessDocType } from "./docTypeGuess";
+import { MATCH_LABELS, type FolderResult } from "./folderMatch";
 import { useUploadQueue } from "./uploadQueue";
 import {
   DOCUMENT_TYPE_LABELS,
@@ -375,6 +377,24 @@ function DriveFolderBar({
   const [link, setLink] = useState("");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
+  const [found, setFound] = useState<FolderResult | null>(null);
+
+  // "JOB <job> - <MBL/HBL>": search Drive, link automatically when exactly one folder matches both
+  async function findInDrive() {
+    setError(null);
+    setFound(null);
+    setFinding(true);
+    try {
+      const result = await findFolderFor(shipment);
+      if (result.auto) await save(result.auto.id, result.auto.url);
+      else setFound(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't search Google Drive.");
+    } finally {
+      setFinding(false);
+    }
+  }
 
   async function save(folderId: string | null, folderLink: string | null) {
     setError(null);
@@ -435,6 +455,14 @@ function DriveFolderBar({
       <span>Link this shipment's Drive folder:</span>
       <button
         type="button"
+        onClick={findInDrive}
+        disabled={!driveConfigured || finding}
+        title={`Looks for a folder named like "JOB ${shipment.job || "<job>"} - ${shipment.mbl}"`}
+      >
+        {finding ? "Searching Drive…" : "Find in Drive"}
+      </button>
+      <button
+        type="button"
         className="btn-secondary"
         onClick={choose}
         disabled={!driveConfigured}
@@ -457,6 +485,32 @@ function DriveFolderBar({
         </button>
       )}
       {error && <span className="auth-error">{error}</span>}
+      {found && (
+        <div className="folder-candidates">
+          {found.candidates.length === 0 ? (
+            <span className="field-note">
+              No folder found with this shipment's MBL/HBL or "JOB {shipment.job || "?"}" in its name — choose it by hand.
+            </span>
+          ) : (
+            <>
+              <span className="field-note">Not sure which one — please choose:</span>
+              {found.candidates.map(({ folder, match }) => (
+                <div key={folder.id} className="folder-candidate">
+                  <a href={folder.url} target="_blank" rel="noreferrer">
+                    {folder.name} ↗
+                  </a>
+                  <span className={match === "verified" || match === "no-job" ? "field-note" : "exception-badge"}>
+                    {MATCH_LABELS[match]}
+                  </span>
+                  <button type="button" className="btn-secondary" onClick={() => save(folder.id, folder.url)}>
+                    Link
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

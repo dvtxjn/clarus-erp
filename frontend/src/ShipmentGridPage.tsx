@@ -34,6 +34,8 @@ import {
 } from "./api";
 import { useAuth } from "./AuthContext";
 import TrackerImportPanel from "./TrackerImportPanel";
+import LinkFoldersPanel from "./LinkFoldersPanel";
+import { driveConfigured } from "./googleDrive";
 import { useSaveShipment } from "./useSaveShipment";
 import { colorIndex, connectLive, PRESENCE_COLORS, sendPresence, TAB_ID } from "./live";
 import ColumnsPanel, { type PanelColumn } from "./ColumnsPanel";
@@ -476,6 +478,7 @@ export default function ShipmentGridPage() {
   const [trackerCols, setTrackerCols] = useState<TrackerColumn[]>([]);
   const [showColumns, setShowColumns] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showFolders, setShowFolders] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const columnStateKey = `${COLUMN_STATE_KEY}.${tab}`;
   // Saved widths/order/pinning go into the definitions, so every grid first renders at its
@@ -1152,10 +1155,26 @@ export default function ShipmentGridPage() {
             Import sheet CSV
           </button>
         )}
+        {driveConfigured && (
+          <button
+            className="btn-secondary"
+            onClick={() => setShowFolders((v) => !v)}
+            title='Find each shipment&apos;s "JOB <job> - <MBL/HBL>" folder in Google Drive'
+          >
+            Link Drive folders
+          </button>
+        )}
         <button onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? "Cancel" : "+ Add Shipment"}</button>
       </div>
 
       {showImport && <TrackerImportPanel onApplied={refresh} onClose={() => setShowImport(false)} />}
+      {showFolders && shipments && (
+        <LinkFoldersPanel
+          shipments={shipments}
+          onLinked={(saved) => setShipments((prev) => prev?.map((s) => (s.id === saved.id ? saved : s)) ?? prev)}
+          onClose={() => setShowFolders(false)}
+        />
+      )}
 
       {showAddForm && (
         <AddShipmentForm

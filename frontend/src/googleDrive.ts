@@ -1,3 +1,6 @@
+import { pickFolder, shipmentRefs, type FolderResult } from "./folderMatch";
+import type { Shipment } from "./types";
+
 /**
  * "Choose from Google Drive": Google Picker + a drive.file OAuth token.
  * drive.file means the app can only open the files the user picks — not
@@ -9,7 +12,9 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
 const APP_ID = import.meta.env.VITE_GOOGLE_APP_ID as string | undefined;
-const SCOPE = "https://www.googleapis.com/auth/drive.file";
+// drive.file: open only the files the user picks. drive.metadata.readonly: see file and
+// folder NAMES (to find "JOB 129 - <MBL>" folders) — read-only, can't open or change anything.
+const SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.metadata.readonly";
 
 export const driveConfigured = Boolean(CLIENT_ID && API_KEY && APP_ID);
 
@@ -77,6 +82,39 @@ function getToken(): Promise<string> {
     });
     client.requestAccessToken({ prompt: cachedToken ? "" : "consent" });
   });
+}
+
+/** Folders anywhere in the user's Drive / Shared Drives whose name contains any of `terms`. */
+export async function searchDriveFolders(terms: string[]): Promise<{ id: string; name: string; url: string }[]> {
+  const wanted = terms.map((t) => t.trim()).filter(Boolean);
+  if (!wanted.length) return [];
+  const token = await getDriveToken();
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const q = `mimeType = 'application/vnd.google-apps.folder' and trashed = false and (${wanted
+    .map((t) => `name contains '${esc(t)}'`)
+    .join(" or ")})`;
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id,name,webViewLink)",
+    pageSize: "50",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+    corpora: "allDrives",
+  });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401 || res.status === 403) {
+    cachedToken = null; // e.g. signed in before folder search was added: ask again
+    throw new Error("Google needs you to allow folder search — click again and accept.");
+  }
+  if (!res.ok) throw new Error(`Google Drive search failed (${res.status})`);
+  const body = (await res.json()) as { files?: { id: string; name: string; webViewLink?: string }[] };
+  return (body.files ?? []).map((f) => ({
+    id: f.id,
+    name: f.name,
+    url: f.webViewLink ?? `https://drive.google.com/drive/folders/${f.id}`,
+  }));
 }
 
 /** Opens the Google Drive picker (PDFs only), starting in `startFolderId` if given. Resolves null if cancelled. */
@@ -194,4 +232,10 @@ export function folderIdFromLink(input: string): string | null {
   const m = v.match(/\/folders\/([A-Za-z0-9_-]{10,})/) || v.match(/[?&]id=([A-Za-z0-9_-]{10,})/);
   if (m) return m[1];
   return /^[A-Za-z0-9_-]{10,200}$/.test(v) ? v : null;
+}
+
+/** Search Drive for a shipment's "JOB <job> - <MBL/HBL>" folder and rank the hits (folderMatch.ts). */
+export async function findFolderFor(s: Pick<Shipment, "mbl" | "hbl" | "job">): Promise<FolderResult> {
+  const terms = [...shipmentRefs(s), ...(s.job?.trim() ? [`JOB ${s.job.trim()}`] : [])];
+  return pickFolder(s, await searchDriveFolders(terms));
 }

@@ -21,6 +21,18 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ✅ Find each shipment's Drive folder automatically (2026-09-29)
+
+Client: staff name folders `JOB <job number> - <MBL/HBL>`; the ERP should find and link them instead of doing it by hand, verified against the job number.
+
+- `src/folderMatch.ts` (pure rules): parse "JOB 129 - CSX26…" (also "JOB-129", "Job No 129", any case/spaces); a folder is **verified** (MBL or HBL in the name AND the same job number — `JOB 1290` ≠ 129), **no-job** (MBL/HBL, no job number), **job-differs** (MBL/HBL, other job number — flagged), **job-only** (job number but not the MBL/HBL — flagged). Linked automatically only when exactly ONE folder is verified; everything else is shown to choose.
+- `googleDrive.ts`: `searchDriveFolders` (Drive API files.list, folders only, My Drive + Shared Drives, `name contains` each MBL / HBL / "JOB <n>") and `findFolderFor(shipment)`. The Google sign-in now also asks for **drive.metadata.readonly** (see names only — cannot open, change or delete anything) on top of drive.file; first use shows Google's consent again.
+- Documents tab (no folder linked): **Find in Drive** → links the verified folder, or lists candidates with the reason and a Link button.
+- Tracker toolbar: **Link Drive folders** → checks every shipment without a folder (3 searches at a time), links the verified ones (PATCH with base = still unlinked, so a folder someone just set is never replaced), and lists "to check" (with candidates), "not found", "failed".
+- BE reader fix the same day: Gate Pass layout printed headings "/MAWBDT", "/HAWBDT" where the values go and they were taken as MBL/HBL — now rejected (must contain a digit, no MAWB/HAWB/DATE). Shipment 58's HBL cleared and nine local file names corrected.
+
+---
+
 ## ✅ Documents: Commercial Invoice, digital vs scanned, background adding, duplicate invoices (2026-09-29)
 
 - **Commercial Invoice** document type (prefix `CI`), required on every HS code's checklist (migration 0030; seed updated). Name guess: COMMERCIAL / CI / INV (after the CFS/line rules).
