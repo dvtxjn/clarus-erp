@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { useParams, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion } from "./api";
@@ -671,6 +671,8 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
   const charges = fields.charges_complete ? fields.charges ?? [] : [];
   const excluded = new Set(doc.cost_excluded ?? []);
   const [typing, setTyping] = useState(false);
+  const [open, setOpen] = useState(false); // charge lines: an overlay, the count varies a lot
+  const popover = useRef<HTMLDivElement>(null);
   const [before, setBefore] = useState("");
   const [gst, setGst] = useState("");
   const [busy, setBusy] = useState(false);
@@ -690,9 +692,24 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
     }
   }
 
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (popover.current && !popover.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
   const partial = doc.cost_before_tax != null;
+  const leftOut = charges.filter((_, i) => excluded.has(i)).length;
   return (
-    <div className="cost-inclusion">
+    <div className="cost-inclusion" ref={popover}>
       <div className="cost-inclusion-head">
         <span>
           {[fields.carrier, fields.invoice_no].filter(Boolean).join(" · ")}
@@ -740,31 +757,42 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
         </div>
       )}
       {charges.length > 0 && !doc.cost_manual && (
-        <ul className="charge-lines">
-          {charges.map((c, i) => (
-            <li key={i} className={excluded.has(i) ? "charge-out" : undefined}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!excluded.has(i)}
-                  disabled={busy}
-                  onChange={() => {
-                    const next = new Set(excluded);
-                    if (next.has(i)) next.delete(i);
-                    else next.add(i);
-                    send({ excluded: [...next] });
-                  }}
-                />
-                <span className="charge-desc">
-                  {c.description}
-                  {c.currency !== "INR" && <span className="charge-tag">{c.currency}</span>}
-                  {c.review && <span className="charge-tag charge-review" title="Billed in INR but named like freight — left out; tick if it's a destination charge">check</span>}
-                </span>
-              </label>
-              <span className="charge-amt">{fmtMoney(String(c.amount ?? ""))}</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <button type="button" className="charge-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+            {charges.length} charge{charges.length === 1 ? "" : "s"}
+            {leftOut > 0 && ` · ${leftOut} left out`} — choose {open ? "▴" : "▾"}
+          </button>
+          {open && (
+            <div className="charge-popover" role="dialog" aria-label="Charges in the cost inclusion">
+              <div className="charge-popover-head">Tick the charges that go in the cost inclusion</div>
+            <ul className="charge-lines">
+              {charges.map((c, i) => (
+                <li key={i} className={excluded.has(i) ? "charge-out" : undefined}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!excluded.has(i)}
+                      disabled={busy}
+                      onChange={() => {
+                        const next = new Set(excluded);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        send({ excluded: [...next] });
+                      }}
+                    />
+                    <span className="charge-desc">
+                      {c.description}
+                      {c.currency !== "INR" && <span className="charge-tag">{c.currency}</span>}
+                      {c.review && <span className="charge-tag charge-review" title="Billed in INR but named like freight — left out; tick if it's a destination charge">check</span>}
+                    </span>
+                  </label>
+                  <span className="charge-amt">{fmtMoney(String(c.amount ?? ""))}</span>
+                </li>
+              ))}
+            </ul>
+            </div>
+          )}
+        </>
       )}
       {charges.length === 0 && !doc.cost_manual && (
         <p className="field-note">Charge lines couldn't be read from this invoice — the whole invoice counts. Use "Type figure" to change it.</p>

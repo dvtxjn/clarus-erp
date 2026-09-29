@@ -33,6 +33,22 @@ import {
   type ShipmentDocument,
 } from "./types";
 
+// shorter names inside the grouped table (the group already says "Shipping line" / "CFS")
+const SHORT_LABELS: Partial<Record<DocumentType, string>> = {
+  shipping_line_proforma: "Destination Proforma",
+  shipping_line_invoice: "Destination Tax Invoice",
+  shipping_line_receipt: "Receipt",
+  do_empty_letter: "DO + Empty Letter",
+  cfs_proforma_invoice: "Proforma Invoice",
+  cfs_tax_invoice: "Tax Invoice",
+  cfs_receipt: "Receipt",
+  assessed_bill_of_entry: "Assessed BE",
+  ooc_bill_of_entry: "OOC BE",
+  gatepass_bill_of_entry: "Gatepass BE",
+  fta_certificate_of_origin: "FTA COO",
+  certificate_of_origin: "Certificate of Origin",
+};
+
 const UPLOAD_TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter(
   (t) => !LEGACY_DOCUMENT_TYPES.includes(t),
 );
@@ -266,45 +282,46 @@ export default function DocumentManagerPanel({
       ) : checklist.length === 0 ? (
         <div className="tracker-empty">No documents yet.</div>
       ) : (
-        <div className="tracker-grid-wrap">
-          <table className="tracker-grid">
-            <thead>
-              <tr>
-                <th>Document Type</th>
-                <th>Required</th>
-                <th>Status</th>
-                <th>File</th>
-                <th>Uploaded</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DOCUMENT_GROUPS.flatMap((g) => {
+        // two columns of group cards (client, 2026-09-29): basic + CFS | customs + shipping line
+        <div className="doc-columns">
+          {[["basic", "cfs"], ["customs", "line", "other"]].map((ids) => (
+            <div className="doc-col" key={ids[0]}>
+              {DOCUMENT_GROUPS.filter((g) => ids.includes(g.id)).map((g) => {
                 const rows = checklist
                   .filter((r) => documentGroup(r.document_type).id === g.id)
                   .sort((a, b) => g.types.indexOf(a.document_type) - g.types.indexOf(b.document_type));
-                if (rows.length === 0) return [];
+                if (rows.length === 0) return null;
                 const done = rows.filter((r) => r.uploaded).length;
-                return [
-                  <tr key={`group-${g.id}`} className="doc-group-row">
-                    <td colSpan={5}>
+                return (
+                  <section className="doc-group tracker-grid-wrap" key={g.id}>
+                    <div className="doc-group-head">
                       <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {g.label}
                       <span className="doc-group-count">
                         {done} of {rows.length}
                       </span>
-                    </td>
-                  </tr>,
-                  ...rows.map((row) => {
+                    </div>
+                    <table className="tracker-grid doc-table">
+                      <thead>
+                        <tr>
+                          <th>Document</th>
+                          <th>Status</th>
+                          <th>File</th>
+                          <th>Uploaded</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => {
                 const missing = !row.uploaded;
                 const coveredByCombined = row.document && row.document.document_type !== row.document_type;
                 return (
                   <tr key={row.document_type} className={row.required && !row.optional && missing ? "row-stuck" : ""}>
                     <td>
-                      <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {DOCUMENT_TYPE_LABELS[row.document_type]}
+                      <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span>{" "}
+                      <span title={DOCUMENT_TYPE_LABELS[row.document_type]}>{SHORT_LABELS[row.document_type] ?? DOCUMENT_TYPE_LABELS[row.document_type]}</span>
                     </td>
-                    <td>{!row.required ? "No" : row.optional ? "Optional" : "Yes"}</td>
                     <td>
                       <span className={`status-pill ${row.uploaded ? "status-cleared" : ""}`}>
-                        {row.uploaded ? "Uploaded" : row.optional ? "Not uploaded" : "Missing"}
+                        {row.uploaded ? "Uploaded" : !row.required ? "Not needed" : row.optional ? "Optional" : "Missing"}
                       </span>
                       {coveredByCombined && (
                         <span className="tracker-subtitle"> in {DOCUMENT_TYPE_LABELS[row.document!.document_type]}</span>
@@ -350,7 +367,7 @@ export default function DocumentManagerPanel({
                         ? "—"
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
-                              {new Date(d.uploaded_at).toLocaleString()}
+                              {new Date(d.uploaded_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                               {READ_ON_UPLOAD.includes(d.document_type) && (
                                 <>
                                   {" "}
@@ -383,11 +400,14 @@ export default function DocumentManagerPanel({
                     </td>
                   </tr>
                 );
-                  }),
-                ];
+                        })}
+                      </tbody>
+                    </table>
+                  </section>
+                );
               })}
-            </tbody>
-          </table>
+            </div>
+          ))}
         </div>
       )}
     </div>
