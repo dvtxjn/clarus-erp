@@ -31,7 +31,7 @@ class RequiredDocument(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     hs_code_id = Column(Integer, ForeignKey("hs_codes.id"), nullable=False)
-    document_type = Column(SAEnum(DocumentType), nullable=False)
+    document_type = Column(SAEnum(DocumentType, native_enum=False, length=40), nullable=False)
     # optional = listed on the checklist but a missing one isn't flagged
     # (e.g. Empty Letter — often comes inside the DO letter)
     optional = Column(Boolean, nullable=False, default=False, server_default="0")
@@ -51,7 +51,7 @@ class ShipmentDocument(Base):
     id = Column(Integer, primary_key=True, index=True)
     shipment_id = Column(Integer, ForeignKey("shipments.id"), nullable=False)
 
-    document_type = Column(SAEnum(DocumentType), nullable=False)
+    document_type = Column(SAEnum(DocumentType, native_enum=False, length=40), nullable=False)
 
     original_filename = Column(String, nullable=False)
     generated_filename = Column(String, nullable=False)  # per naming syntax, spec §3.2

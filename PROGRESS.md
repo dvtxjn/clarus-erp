@@ -21,6 +21,20 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ✅ Launch Phase 0 — Postgres locally + data moved (2026-09-29, branch `infra/postgres`)
+
+- **Local Postgres:** Postgres.app (v18) on this Mac. Role `erp`, databases `erp_db` (the app) and `erp_test` (wiped by every test run). `backend/.env` now points `DATABASE_URL` at `erp_db`; `erp_dev.db` (SQLite) is kept untouched as a fallback. `docker-compose.yml` (Postgres 16) is there for machines with Docker.
+- **Safety copy before the move:** `ERP CLAUDE/safety-copies/2026-09-29-pre-postgres/` (SQLite file + `storage/`), outside the repo.
+- **Migrations fixed for Postgres (old files edited, unavoidable — a fresh Postgres failed before any new migration could run):**
+  - raw SQL wrote booleans as `1`/`0` → `TRUE`/`FALSE` (0005, 0006, 0012, 0013, 0015, 0017, 0020, 0025);
+  - enums are stored as plain text (`native_enum=False, length=40`) in 0001, 0014 and the models, exactly like SQLite already did. Adding a new document type / category never needs a migration. Longest value today is 25 chars.
+- **`backend/scripts/sqlite_to_postgres.py <sqlite file> <postgres url>`:** opens SQLite read-only, refuses a target with any tables, refuses if SQLite isn't at the code's head migration or has unknown columns, builds the schema via the migrations, clears migration-seeded rows, copies every table in FK order, resets sequences, prints per-table counts (exit 1 on any difference). Run result: all 18 tables match (67 shipments, 99 orgs, 395 audit rows, 4 proformas, 21 lines, 2 final invoices, ...).
+- **Tests on Postgres:** `TEST_DATABASE_URL=postgresql://erp:erp-local-only@localhost:5432/erp_test .venv/bin/python -m pytest` (database name must contain "test"; schema is dropped first). 78/78 pass on Postgres and on SQLite.
+- **Checked live:** login, tracker (34 active + 33 billed), proforma PDF + Excel, final invoice PDF.
+- `requirements.txt` gained `pypdfium2` (the Excel logo needed it but it was missing).
+
+---
+
 ## 📝 Client feedback backlog (2026-09-27) — to prioritise, then build ONE BY ONE
 
 Context: live tracker CSV imported locally (`python -m app.import_tracker_csv <csv>`,

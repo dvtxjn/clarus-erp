@@ -13,7 +13,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
-    role = Column(SAEnum(UserRole), nullable=False, default=UserRole.IMPORT_MANAGER)
+    role = Column(SAEnum(UserRole, native_enum=False, length=40), nullable=False, default=UserRole.IMPORT_MANAGER)
 
     # Spec §2.4: "Proforma & Billing module access is permission-gated ...
     # assigned per user" — kept independently toggleable rather than

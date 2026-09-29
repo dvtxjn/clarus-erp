@@ -23,8 +23,8 @@ class ChargeMasterEntry(Base):
     sac_code = Column(String, nullable=False)  # constrained to 996711/712/713/719 per spec §5.4, not hard-locked
     gst_rate = Column(Numeric(5, 2), nullable=False, default=18.00)
 
-    calculation_basis = Column(SAEnum(ChargeCalculationBasis), nullable=False, default=ChargeCalculationBasis.FLAT)
-    category = Column(SAEnum(ChargeCategory), nullable=False, default=ChargeCategory.SERVICE,
+    calculation_basis = Column(SAEnum(ChargeCalculationBasis, native_enum=False, length=40), nullable=False, default=ChargeCalculationBasis.FLAT)
+    category = Column(SAEnum(ChargeCategory, native_enum=False, length=40), nullable=False, default=ChargeCategory.SERVICE,
                       server_default=ChargeCategory.SERVICE.name)
     default_rate = Column(Numeric(12, 2), nullable=True)
 

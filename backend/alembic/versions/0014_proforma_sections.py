@@ -18,7 +18,7 @@ DEFAULT_RATES = {"AC": 7000, "EC": 18000}  # per container, from the client's te
 
 
 def upgrade() -> None:
-    category = sa.Enum('SERVICE', 'REIMBURSEMENT', 'COST_INCLUSION', name='chargecategory')
+    category = sa.Enum('SERVICE', 'REIMBURSEMENT', 'COST_INCLUSION', name='chargecategory', native_enum=False, length=40)
     with op.batch_alter_table('charge_master_entries', schema=None) as batch_op:
         batch_op.add_column(sa.Column('category', category, server_default='SERVICE', nullable=False))
     with op.batch_alter_table('proforma_line_items', schema=None) as batch_op:

@@ -35,7 +35,7 @@ class Proforma(Base):
     # document-derived lines someone removed (e.g. "CFS", "DO:996711") — the automatic
     # refresh doesn't put them back; "Fill / refresh from shipment" clears this
     suppressed = Column(JSON, nullable=True)
-    status = Column(SAEnum(ProformaStatus), default=ProformaStatus.DRAFT, nullable=False)
+    status = Column(SAEnum(ProformaStatus, native_enum=False, length=40), default=ProformaStatus.DRAFT, nullable=False)
 
     # Snapshot of BE/CFS-extracted fields at time of this version (spec §5.1):
     # total duty, container count, HBL, MBL, consignee, BE no/date, etc.
@@ -74,7 +74,7 @@ class ProformaLineItem(Base):
     gst_amount = Column(Numeric(12, 2), nullable=False)
     total = Column(Numeric(12, 2), nullable=False)  # amount + gst_amount
     # invoice section (copied from the charge master; can be changed per line)
-    category = Column(SAEnum(ChargeCategory), nullable=False, default=ChargeCategory.SERVICE,
+    category = Column(SAEnum(ChargeCategory, native_enum=False, length=40), nullable=False, default=ChargeCategory.SERVICE,
                       server_default=ChargeCategory.SERVICE.name)
     # True when GST is an actual figure (e.g. IGST on duty, GST on the CFS invoice)
     # rather than gst_rate x amount

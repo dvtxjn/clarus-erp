@@ -143,7 +143,7 @@ class Shipment(Base):
     is_stuck = Column(Boolean, default=False, nullable=False)
 
     # --- Status pipeline (spec §2.3) ---
-    status = Column(SAEnum(ShipmentStatus), default=ShipmentStatus.TO_BE_FILED, nullable=False, index=True)
+    status = Column(SAEnum(ShipmentStatus, native_enum=False, length=40), default=ShipmentStatus.TO_BE_FILED, nullable=False, index=True)
 
     # --- Port scoping (spec §2.4) ---
     port = Column(String, nullable=True, index=True)
