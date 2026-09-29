@@ -120,7 +120,11 @@ def extract_mawb_hawb(words: list) -> Tuple[Optional[str], Optional[str]]:
     def clean(value):
         if not value:
             return None
-        value = re.sub(r'\d{2}/\d{2}/\d{4}.*$', '', value).strip()
+        value = re.sub(r'\d{2}/\d{2}/\d{4}.*$', '', value).strip().strip('/')
+        # Some layouts (Gate Pass) print the headings where the values go: "/MAWBDT", "/HAWBDT".
+        # A B/L number always has a digit and is never a heading word.
+        if re.search(r'MAWB|HAWB|DATE', value.upper()) or not re.search(r'\d', value):
+            return None
         return value if len(value) >= 4 else None
 
     return clean(smart_concat(mawb_words)), clean(smart_concat(hawb_words))
