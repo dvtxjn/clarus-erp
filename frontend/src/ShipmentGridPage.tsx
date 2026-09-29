@@ -90,11 +90,12 @@ function loadView(): ViewMode {
 }
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2026-08-27" -> "27-Aug-26" (compact form of the sheet's dates). */
+/** "2026-08-27" -> "27 Aug" ("27 Aug 25" when it isn't this year) — compact dates, denser columns. */
 function shortDate(v: string | null | undefined): string {
   if (!v) return "";
   const [y, m, d] = v.split("-");
-  return `${d}-${MONTHS[Number(m) - 1]}-${y.slice(2)}`;
+  const year = String(new Date().getFullYear()) === y ? "" : ` ${y.slice(2)}`;
+  return `${d} ${MONTHS[Number(m) - 1]}${year}`;
 }
 function formatDate(p: ValueFormatterParams): string {
   return shortDate(p.value as string | null);
@@ -113,9 +114,8 @@ const text = (field: keyof Shipment, headerName: string, width = 130): ColDef<Sh
   headerName,
   width,
   cellDataType: "text",
-  autoHeight: true, // text can wrap; see defaultColDef
 });
-const dateCol = (field: keyof Shipment, headerName: string, width = 92): ColDef<Shipment> => ({
+const dateCol = (field: keyof Shipment, headerName: string, width = 76): ColDef<Shipment> => ({
   field,
   headerName,
   width,
@@ -205,7 +205,6 @@ function customColumn(c: TrackerColumn): ColDef<Shipment> {
     headerName: c.label,
     width: c.data_type === "boolean" ? 100 : 140,
     cellDataType: CUSTOM_TYPES[c.data_type],
-    autoHeight: c.data_type === "text",
     valueGetter: (p) => p.data?.custom_fields?.[c.key] ?? null,
     valueSetter: (p) => {
       p.data.custom_fields = { ...(p.data.custom_fields ?? {}), [c.key]: p.newValue };
@@ -270,7 +269,6 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
     {
       ...text("mbl", "MBL", 170),
       pinned: "left",
-      cellClass: "grid-wrap grid-wrap-anywhere",
       cellRenderer: (p: ICellRendererParams<Shipment>) => (
         <span>
           {p.value}
@@ -283,11 +281,11 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       ),
     },
     text("hbl", "HBL", 150),
-    text("be_description", "BE Description", 220),
+    { ...text("be_description", "Desc", 200), headerTooltip: "BE Description" },
     { ...dateCol("eta", "ETA"), sort: "asc" },
     {
       // INW with the sheet's Day count as a badge (Day is calculated from INW)
-      ...text("inw", "INW · Day", 132),
+      ...text("inw", "INW", 118),
       headerTooltip: "Day = today − INW (+1 if INW is today or past)",
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
@@ -299,9 +297,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
           </span>
         ) : null,
     },
-    text("license", "License", 88),
+    { ...text("license", "Lic", 80), headerTooltip: "License" },
     text("client", "Client", 105),
-    { ...text("consignee", "Consignee", 120), cellClass: "grid-wrap" },
+    text("consignee", "Consignee", 130),
     {
       ...flag("is_hss", "HSS", 56),
       headerTooltip: "High sea sale — set automatically when the consignee is 'SELLER - BUYER'; tick/untick to override",
@@ -310,23 +308,22 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
       headerName: "POD",
-      autoHeight: true,
       width: 132,
       cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["", ...ports.map((p) => p.code)] },
       valueFormatter: (p) => formatPort(p.value, ports),
       filterValueGetter: (p) => formatPort(p.data?.port, ports),
     },
-    text("container_status", "Cntr Status", 80),
+    { ...text("container_status", "Cntr St", 72), headerTooltip: "Container Status" },
     text("cfs", "CFS", 90),
     text("be_no", "BE No", 78),
     dateCol("be_dt", "BE Dt"),
     text("container", "Cntr", 52),
-    text("gross_wt", "Gross Wt", 88),
+    { ...text("gross_wt", "Wt", 88), headerTooltip: "Gross Weight" },
     text("remark", "Remark", 72),
     text("poc", "POC", 95),
-    { ...text("remarks", "Remarks", 130), cellClass: "grid-wrap" },
-    dateCol("cleared_date", "Cleared Date"),
+    text("remarks", "Remarks", 150),
+    { ...dateCol("cleared_date", "Cleared"), headerTooltip: "Cleared Date" },
     {
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
       colId: "checklist",
@@ -352,11 +349,10 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       cellRendererParams: { flags: CFS_TDS_FLAGS },
     },
     text("igm", "IGM", 72),
-    text("delivery_status", "Delivery", 82),
+    { ...text("delivery_status", "Deliv", 76), headerTooltip: "Delivery" },
     {
       field: "status",
       headerName: "Status",
-      autoHeight: true,
       width: 108,
       headerTooltip:
         "Updates itself from the evidence: IGM no → IGM Filed, BE no → BE Filed, duty amount → BE Assessed, Duty Paid → Duty Paid, OOC → OOC Done, Cleared Date → Cleared. You can still set it by hand.",
@@ -376,16 +372,16 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
           </span>
         ) : null,
     },
-    dateCol("mbl_date", "MBL Date"),
-    dateCol("hbl_date", "HBL Date"),
+    dateCol("mbl_date", "MBL Dt"),
+    dateCol("hbl_date", "HBL Dt"),
     text("gw", "GW", 80),
-    text("total_pkg", "Total Pkg", 80),
-    text("pkg_code", "Pkg Code", 80),
-    text("line_no", "Line No", 80),
-    dateCol("igm_date", "IGM Date"),
+    { ...text("total_pkg", "Pkgs", 64), headerTooltip: "Total Packages" },
+    { ...text("pkg_code", "Pkg", 64), headerTooltip: "Package Code" },
+    { ...text("line_no", "Line#", 64), headerTooltip: "Line No" },
+    dateCol("igm_date", "IGM Dt"),
     text("voyage", "Voyage", 90),
     text("cont", "Cont", 80),
-    { ...flag("is_billed", "Billed?", 66), headerTooltip: "Tick when billed. Un-ticking (cancelling a bill) is admin-only." },
+    { ...flag("is_billed", "Billed", 62), headerTooltip: "Tick when billed. Un-ticking (cancelling a bill) is admin-only." },
     text("shipping_line", "Line", 78),
     ...trackerCols.filter((c) => c.is_custom).map(customColumn),
   ];
@@ -406,8 +402,8 @@ const gridTheme = themeQuartz.withParams({
   fontFamily: "inherit",
   headerFontSize: 11.5,
   headerFontWeight: 600,
-  rowHeight: 30,
-  headerHeight: 34,
+  rowHeight: 28,
+  headerHeight: 32,
   spacing: 4,
   cellHorizontalPadding: 6,
   fontSize: 12.5,
@@ -440,12 +436,14 @@ const defaultColDef: ColDef<Shipment> = {
   suppressFloatingFilterButton: true, // narrower filter boxes
   wrapHeaderText: true, // two-line headers, like Excel, so columns can be narrow
   autoHeaderHeight: true,
-  // Nothing is ever cut off: long values wrap and the row grows to fit. Only text columns
-  // measure their height (autoHeight) — measuring makes the grid render that column for
-  // every row even off-screen, and doing it for all ~40 columns froze the page ~1s on load.
-  // Dates, flags and chips are fixed-size and never need it.
-  wrapText: true,
+  // One line per row (client, 2026-09-29): long values are cut with "…" and shown in full
+  // on hover — about twice as many shipments fit on a 1080p screen.
+  wrapText: false,
   autoHeight: false,
+  tooltipValueGetter: (p) => {
+    const v = p.valueFormatted ?? p.value;
+    return typeof v === "string" && v.length > 12 ? v : undefined;
+  },
 };
 // Client/month sections have no visible header row
 const sectionColDef: ColDef<Shipment> = { ...defaultColDef, wrapHeaderText: false, autoHeaderHeight: false, floatingFilter: false };
@@ -1199,6 +1197,7 @@ export default function ShipmentGridPage() {
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               domLayout="autoHeight"
+              tooltipShowDelay={350}
               suppressNoRowsOverlay
               alignedGrids={alignedWithSections}
               onGridReady={onHeaderReady}
@@ -1240,6 +1239,7 @@ export default function ShipmentGridPage() {
                 context={gridContext}
                 onCellKeyDown={copyCell}
                 domLayout="autoHeight"
+              tooltipShowDelay={350}
                 headerHeight={0}
                 floatingFiltersHeight={0}
                 alignedGrids={() =>
