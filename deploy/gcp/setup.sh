@@ -15,9 +15,16 @@ gcloud config set project "$PROJECT" >/dev/null
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
 exists() { "$@" >/dev/null 2>&1; }
 
-echo "== 1. services"
-gcloud services enable run.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com \
-  cloudscheduler.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com iam.googleapis.com
+echo "== 1. services (one at a time — Google limits how many can be switched on per minute)"
+ENABLED=$(gcloud services list --enabled --format='value(config.name)')
+for svc in run sqladmin secretmanager cloudscheduler artifactregistry cloudbuild iam; do
+  grep -qx "$svc.googleapis.com" <<<"$ENABLED" && { echo "   $svc: already on"; continue; }
+  for try in 1 2 3 4 5 6; do
+    gcloud services enable "$svc.googleapis.com" && { echo "   $svc: on"; break; }
+    [ "$try" = 6 ] && { echo "Couldn't switch on $svc — wait a few minutes and run setup again."; exit 1; }
+    echo "   Google says wait — retrying in 60 s ($try/5)"; sleep 60
+  done
+done
 
 echo "== 2. image registry + build permissions"
 exists gcloud artifacts repositories describe "$REPO" --location "$REGION" || \
