@@ -1,6 +1,8 @@
 """
 Restore an encrypted backup into an EMPTY database and check the row counts.
 
+    ... restore.py --from-drive latest --into <url>     # newest backup in Drive "Backups"
+
     .venv/bin/python scripts/restore.py backups/auto/2026-09/erp-2026-09-29-2000.dump.enc \\
         --into postgresql://erp:...@localhost:5432/erp_restore_check
 
@@ -24,7 +26,36 @@ import sqlalchemy as sa  # noqa: E402
 from app.backups import fernet, pg_tool, plain_url, row_counts  # noqa: E402
 
 
+def fetch_from_drive(which: str) -> Path:
+    """Download a backup (+ manifest) from Drive "Backups" — "latest" or an exact file name."""
+    import os
+
+    from app import storage
+
+    client = storage.drive()
+    if client is None:
+        raise SystemExit("Drive isn't configured (STORAGE_BACKEND=drive + DRIVE_BACKUPS_FOLDER_ID)")
+    files = []
+    for month in client.list_children(os.environ["DRIVE_BACKUPS_FOLDER_ID"]):
+        if month["mimeType"].endswith("folder"):
+            files += [f for f in client.list_children(month["id"]) if f["name"].startswith("erp-")]
+    dumps = sorted((f for f in files if f["name"].endswith(".dump.enc")), key=lambda f: f["name"])
+    pick = dumps[-1] if which == "latest" else next((f for f in dumps if f["name"] == which), None)
+    if pick is None:
+        raise SystemExit(f"No backup {which!r} in Drive")
+    folder = Path(tempfile.mkdtemp(prefix="erp-restore-"))
+    (folder / pick["name"]).write_bytes(client.download(pick["id"]))
+    man = next((f for f in files if f["name"] == pick["name"] + ".manifest.json"), None)
+    if man:
+        (folder / man["name"]).write_bytes(client.download(man["id"]))
+    print(f"Downloaded {pick['name']} from Drive")
+    return folder / pick["name"]
+
+
 def main(args: list[str]) -> int:
+    if args[:1] == ["--from-drive"] and len(args) >= 4:
+        src = fetch_from_drive(args[1])
+        args = [str(src)] + args[2:]
     if len(args) < 3 or args[1] != "--into":
         print(__doc__)
         return 2

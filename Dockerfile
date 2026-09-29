@@ -18,13 +18,13 @@ RUN npm run build
 
 # --- 2. backend ---
 FROM python:3.11-slim
-# pg_dump / pg_restore for backups (client 17 reads Postgres 16/17 servers), fonts for the PDFs
+# pg_dump / pg_restore 18 (same as the database), fonts for the PDFs
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates gnupg fonts-dejavu-core \
  && install -d /usr/share/postgresql-common/pgdg \
  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
- && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
+ && apt-get update && apt-get install -y --no-install-recommends postgresql-client-18 \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
@@ -35,6 +35,6 @@ ENV APP_ENV=production PYTHONUNBUFFERED=1 FRONTEND_DIST=/app/frontend/dist \
     DOCUMENT_STORAGE_ROOT=/tmp/erp-storage/documents BACKUP_DIR=/tmp/erp-backups
 RUN useradd --create-home erp && chown -R erp /app
 USER erp
-EXPOSE 8000
-HEALTHCHECK CMD curl -fsS "http://localhost:${PORT:-8000}/health" || exit 1
+EXPOSE 8080
+HEALTHCHECK CMD curl -fsS "http://localhost:${PORT:-8080}/health" || exit 1
 CMD ["scripts/start.sh"]

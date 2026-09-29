@@ -50,3 +50,14 @@ def start() -> None:
 
     asyncio.create_task(_every("drive-retry", 300, storage.retry_pending))
     asyncio.create_task(_every("backup", 3600, backups.backup_if_due))  # 12-hourly, checked hourly
+
+
+JOBS = {"backup": "app.backups:backup_if_due", "drive-retry": "app.storage:retry_pending"}
+
+
+def run_named(name: str) -> bool:
+    """Run one job by name now (Cloud Scheduler -> POST /internal/jobs/<name>)."""
+    import importlib
+
+    module, fn = JOBS[name].split(":")
+    return run_locked(name, getattr(importlib.import_module(module), fn))

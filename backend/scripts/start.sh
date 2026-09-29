@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Production start (Render / Docker): back up + migrate, check settings, then serve.
+# Production start. Migrations run separately before each release (scripts/migrate.sh —
+# Cloud Run Job), so starting is fast. MIGRATE_ON_START=1: back up + migrate here instead
+# (single-server hosts).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export AUTO_MIGRATE=0
-# 1. dump the database, verify the dump, then run the migrations (stops on any failure)
-BACKUP_DIR="${BACKUP_DIR:-/tmp/erp-backups}/pre-migration" PYTHON=python scripts/pre_migration_backup.sh
-# 2. refuse unsafe settings (JWT secret, default admin, storage, keys ...)
+if [ "${MIGRATE_ON_START:-0}" = "1" ]; then
+  scripts/migrate.sh
+fi
+# refuse unsafe settings (JWT secret, default admin, storage, keys ...)
 python -c "from app.core.production import check_or_exit; check_or_exit()"
-# 3. serve; live streams stay open, so don't wait forever on shutdown / deploy
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers --forwarded-allow-ips='*' \
+# live streams stay open, so don't wait forever on shutdown / deploy
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8080}" --proxy-headers --forwarded-allow-ips='*' \
      --timeout-graceful-shutdown 3

@@ -47,7 +47,7 @@ Skipped for launch: Phase 5 (hide Ctrl+Z undo instead), weekly/monthly backup ti
 | 7 | Google Drive storage (Shared Drive) + invoice PDF saved on Issue | [x] 2026-09-29 (read + save only, never delete) |
 | 8 | Backups (12-hourly, weekly, monthly) + restore drill | [x] 12-hourly, never pruned; drill passed 2026-09-29 |
 | 9 | Production readiness | [x] 2026-09-29 (Docker image not built locally yet) |
-| 10 | Deploy on Render + domain + go-live | [ ] |
+| 10 | Deploy on Render + domain + go-live | Moved to **Google Cloud** (Cloud Run + Cloud SQL, Indian GST billing) 2026-09-29 — scripts ready in deploy/gcp; waiting on billing |
 | | **Part B: after launch (do not start before the go-live checklist is ticked)** | |
 | 11 | Safety net: end-to-end tests + real-PDF fixtures | [ ] |
 | 12 | Automation foundations (events table, settings, kill switch, worker token) | [ ] |

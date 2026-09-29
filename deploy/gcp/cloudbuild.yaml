@@ -1,0 +1,15 @@
+# Build the image (screens + backend) and push it. Used by setup.sh / deploy.sh.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_IMAGE}
+      - --build-arg=VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}
+      - --build-arg=VITE_GOOGLE_API_KEY=${_VITE_GOOGLE_API_KEY}
+      - --build-arg=VITE_GOOGLE_APP_ID=${_VITE_GOOGLE_APP_ID}
+      - .
+images: ["${_IMAGE}"]
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

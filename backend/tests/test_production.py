@@ -58,3 +58,24 @@ def test_screens_served_but_api_untouched(client, admin_headers, tmp_path, monke
 def test_cors_is_limited_to_the_site(monkeypatch):
     monkeypatch.setenv("PUBLIC_URL", "https://erp.claruslogistics.in/")
     assert web.cors_origins() == ["https://erp.claruslogistics.in"]
+
+
+def test_scheduler_job_endpoint_needs_the_token(client, monkeypatch):
+    from app.core import jobs
+    ran = []
+    monkeypatch.setitem(jobs.JOBS, "drive-retry", "tests.test_production:_fake_job")
+    monkeypatch.setattr("tests.test_production._RAN", ran)
+    monkeypatch.setenv("JOB_TOKEN", "t" * 32)
+    assert client.post("/internal/jobs/drive-retry").status_code == 403
+    assert client.post("/internal/jobs/drive-retry", headers={"X-Job-Token": "wrong"}).status_code == 403
+    assert client.post("/internal/jobs/nope", headers={"X-Job-Token": "t" * 32}).status_code == 404
+    r = client.post("/internal/jobs/drive-retry", headers={"X-Job-Token": "t" * 32})
+    assert r.status_code == 200 and r.json()["ran"] and ran == [1]
+
+
+_RAN: list = []
+
+
+def _fake_job():
+    import tests.test_production as me
+    me._RAN.append(1)

@@ -604,3 +604,15 @@ The client will pick features they like from other software and feed them in. Re
 **Render (Phase 10) status:** client is creating the account (Google sign-up; workspace "Clarus Logistics"; impdoc@ created it — invite divit@ as Admin, ownership can be transferred on the Members page or by Render support). Next: New → Blueprint from `dvtxjn/clarus-erp`, secrets pasted by the client, data moved, DNS `erp.claruslogistics.in`.
 
 **Client wish (2026-09-29): generate proforma invoices on the phone.** Proforma screens are desktop-sized today → mobile layout for the proforma panel (create, fill, check totals, download PDF / share) — add to the design work.
+
+---
+
+## 🟡 Launch Phase 10 — hosting moved from Render to Google Cloud (2026-09-29, branch `deploy/gcp`)
+
+- **Decision (client):** Google Cloud instead of Render — **Indian GST invoices in INR** (Google Cloud India Pvt Ltd; GSTIN on the billing account → input tax credit), trusted, same Google project (`clarus-erp`) and Workspace logins. $300 / 90-day free credit on the new billing account — **click "Activate full account" before it ends** (else resources pause); set a ₹3,000/month budget alert in Billing. Data in India not required.
+- **Region: Singapore (`asia-southeast1`)** — Cloud Run custom domains aren't available in Mumbai; billing is Indian regardless.
+- **Pieces:** Cloud Run service `clarus-erp` (1 vCPU / 1 GiB, 0–3 instances, 60-min request timeout for the live streams — browsers reconnect), Cloud SQL `clarus-erp-db` PostgreSQL 18 `db-f1-micro` (daily backups 02:00 IST, PITR, 14 kept) — estimated ₹1,000–2,000/month + GST; Secret Manager (database-url, jwt-secret, job-token, backup-key, drive-sa-key mounted as a file, vite-google-api-key, first-admin-password → delete after first login); Cloud Scheduler `erp-backup` hourly (makes one every 12 h) and `erp-drive-retry` every 15 min → `POST /internal/jobs/{name}` with `X-Job-Token` (Cloud Run gives CPU only during requests, so `JOBS_ENABLED=0` there; production check requires a JOB_TOKEN then).
+- **Releases:** migrations run as Cloud Run Job `erp-migrate` (`scripts/migrate.sh`: encrypted backup to Drive first — skipped on an empty database — then `alembic upgrade head`); the web service no longer migrates on start (`MIGRATE_ON_START=1` for single-server hosts).
+- **Data move:** Cloud Run Job `erp-import` (`scripts/import_from_drive.sh`) restores the newest Drive backup into the empty Cloud SQL database (`restore.py --from-drive latest`; tested on this Mac — every table matched). Take a fresh backup on the Mac (`scripts/backup.py`) right before running setup. `create_admin.py DISABLE_DEFAULT_USERS=1` switches off admin@example.com / importmanager@example.com (not deleted).
+- Image now has `postgresql-client-18` (same major as Cloud SQL 18 and Postgres.app 18). `render.yaml` removed.
+- **Waiting on the client:** billing account (India, Business, GSTIN) linked to `clarus-erp`; then run setup in Cloud Shell; then the DNS record at the domain provider; then add `https://erp.claruslogistics.in` to the OAuth client's JavaScript origins and the API key's websites.

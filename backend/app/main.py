@@ -1,9 +1,10 @@
 import asyncio
+import hmac
 import logging
 import os
 import sys
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm.exc import StaleDataError
 from fastapi.middleware.cors import CORSMiddleware
@@ -77,6 +78,18 @@ async def start_live_updates():
 def backup_health(_admin: User = Depends(require_admin)):
     """Admin: when the last good backup was made, and anything to worry about."""
     return backups.status()
+
+
+@app.post("/internal/jobs/{name}", include_in_schema=False)
+def run_job(name: str, x_job_token: str = Header(default="")):
+    """Cloud Run only gives the app CPU while it answers a request, so Cloud Scheduler calls
+    this instead of the in-app timers (JOBS_ENABLED=0 there). Needs the JOB_TOKEN secret."""
+    expected = os.getenv("JOB_TOKEN", "")
+    if not expected or not hmac.compare_digest(x_job_token, expected):
+        return JSONResponse(status_code=403, content={"detail": "forbidden"})
+    if name not in jobs.JOBS:
+        return JSONResponse(status_code=404, content={"detail": "no such job"})
+    return {"job": name, "ran": jobs.run_named(name)}
 
 
 @app.get("/health")

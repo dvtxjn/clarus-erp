@@ -38,5 +38,13 @@ with SessionLocal() as db:
     else:
         user.role, user.is_active, user.hashed_password = UserRole.ADMIN, True, hash_password(password)
         record_change(db, "users", user.id, "password/role", None, "reset by create_admin.py", None)
+    if os.getenv("DISABLE_DEFAULT_USERS") == "1":
+        # data copied from the development Mac still has the test logins — switch them off
+        # (never deleted; the production check refuses to start while they're active)
+        for u in db.query(User).filter(User.email.in_(("admin@example.com", "importmanager@example.com")),
+                                       User.is_active.is_(True)):
+            u.is_active = False
+            record_change(db, "users", u.id, "is_active", True, False, None)
+            print(f"Switched off test login {u.email}")
     db.commit()
     print(f"Admin ready: {email}")

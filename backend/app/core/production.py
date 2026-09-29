@@ -35,6 +35,8 @@ def problems() -> list[str]:
               "DRIVE_BACKUPS_FOLDER_ID", "BACKUP_ENCRYPTION_KEY"):
         if not os.getenv(k, "").strip():
             out.append(f"{k} is not set")
+    if os.getenv("JOBS_ENABLED", "1") == "0" and len(os.getenv("JOB_TOKEN", "")) < 24:
+        out.append("JOBS_ENABLED=0 needs a JOB_TOKEN (24+ characters) so Cloud Scheduler can run backups")
     if os.getenv("AUTO_MIGRATE", "1") != "0":
         out.append("AUTO_MIGRATE must be 0 (scripts/start.sh backs up, then migrates)")
     try:

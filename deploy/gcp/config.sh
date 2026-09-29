@@ -1,0 +1,21 @@
+# Settings shared by setup.sh and deploy.sh (nothing secret here).
+PROJECT=clarus-erp
+REGION=asia-southeast1            # Singapore: Cloud Run custom domains work here (billing stays Google Cloud India)
+SERVICE=clarus-erp                # the web app (Cloud Run)
+DB_INSTANCE=clarus-erp-db         # Cloud SQL for PostgreSQL
+DB_VERSION=POSTGRES_18            # same major version as pg_dump in the image
+DB_TIER=db-f1-micro               # smallest; upgrade to db-g1-small if it ever feels slow
+DB_NAME=erp_db
+DB_USER=erp
+REPO=erp                          # Artifact Registry (images)
+RUNTIME_SA=erp-app                # identity the app runs as
+PUBLIC_URL=https://erp.claruslogistics.in
+DOMAIN=erp.claruslogistics.in
+DRIVE_ROOT_FOLDER_ID=1m3FYbMXTRJQ5VgdMy9XUotyVVRNNvZPa
+DRIVE_INVOICES_FOLDER_ID=1SgdtzTMNkMeJwPpVpCBwjm8MnW2nbI_u
+DRIVE_BACKUPS_FOLDER_ID=1tw4FlNYc6lueyFhpPHToiC7a2JG4KLim
+DRIVE_SHIPMENTS_FOLDER_ID=1EwV0EbRmmg7puGahIM7577WkJE2VFNpK
+VITE_GOOGLE_CLIENT_ID=981723405746-1a93g7d0halrqujr1edr1vsb61h151t2.apps.googleusercontent.com
+VITE_GOOGLE_APP_ID=981723405746
+IMAGE="$REGION-docker.pkg.dev/$PROJECT/$REPO/app"
+CONN="$PROJECT:$REGION:$DB_INSTANCE"
