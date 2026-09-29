@@ -152,7 +152,6 @@ const text = (field: keyof Shipment, headerName: string, width = 130): ColDef<Sh
   headerName,
   width,
   cellDataType: "text",
-  autoHeight: true, // no text is ever cut (client, 2026-09-29): long values wrap, the row grows
 });
 const dateCol = (field: keyof Shipment, headerName: string, width = 76): ColDef<Shipment> => ({
   field,
@@ -317,7 +316,6 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     {
       ...text("mbl", "MBL", 170),
       pinned: "left",
-      cellClass: "grid-wrap grid-wrap-anywhere",
       cellRenderer: (p: ICellRendererParams<Shipment>) => (
         <span>
           {p.value}
@@ -349,7 +347,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     { ...text("license", "Lic", 80), headerTooltip: "License" },
     // grouped by client, each section's bar already names it
     ...(byClient ? [] : [text("client", "Client", 105)]),
-    { ...text("consignee", "Consignee", 130), cellClass: "grid-wrap" },
+    text("consignee", "Consignee", 130),
     {
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
@@ -368,7 +366,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     { ...text("gross_wt", "Wt", 88), headerTooltip: "Gross Weight" },
     text("remark", "Remark", 72),
     text("poc", "POC", 95),
-    { ...text("remarks", "Remarks", 150), cellClass: "grid-wrap" },
+    text("remarks", "Remarks", 150),
     { ...dateCol("cleared_date", "Cleared"), headerTooltip: "Cleared Date" },
     {
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
@@ -470,11 +468,14 @@ const defaultColDef: ColDef<Shipment> = {
   suppressFloatingFilterButton: true, // narrower filter boxes
   wrapHeaderText: true, // two-line headers, like Excel, so columns can be narrow
   autoHeaderHeight: true,
-  // Nothing is ever cut off (client, 2026-09-29): long values wrap and the row grows to fit.
-  // Only text columns measure their height (autoHeight) — measuring every column froze the
-  // page ~1s on load. Dates, flags and chips are fixed-size.
-  wrapText: true,
+  // One line per row (client, 2026-09-29): long values are cut with "…" for now — the full
+  // value shows on hover. Column widths get tuned later.
+  wrapText: false,
   autoHeight: false,
+  tooltipValueGetter: (p) => {
+    const v = p.valueFormatted ?? p.value;
+    return typeof v === "string" && v.length > 12 ? v : undefined;
+  },
 };
 // Client/month sections have no visible header row
 const sectionColDef: ColDef<Shipment> = { ...defaultColDef, wrapHeaderText: false, autoHeaderHeight: false, floatingFilter: false };
@@ -817,6 +818,7 @@ export default function ShipmentGridPage() {
 
   const sectionApis = () =>
     [...sectionRefs.current.values()].map((r) => r.current?.api).filter((a): a is GridApi<Shipment> => !!a);
+
 
   // --- header grid drives filters + sort for every client section ---
   function syncSection(api: GridApi<Shipment>) {
