@@ -664,3 +664,16 @@ The client will pick features they like from other software and feed them in. Re
 6. **(P5) Delhi / non-sea-port shipments:** INW = sea-port inward; there's also an arrival date at FPOD, from which
    the free days start. The tracker's Day count is wrong for these (free days haven't started). Needs an FPOD arrival
    date and Day counted from it.
+
+## ✅ Invoicing for October (2026-09-30, branch `design/refresh`)
+- Documents table uniform: file name on hover (File / File 1, 2), short date, ↻ / ✕, short badges; columns end level.
+- Proforma: split view — controls left (uniform cards, one button size), invoice as an A4 page right (Fit page / 100 %);
+  Proforma / Final invoices tabs. Sidebar options removed.
+- Invoice (PDF, Excel, screen): value block under the assessable value; "Value of Goods (w shipping)" / "(w/o shipping)";
+  note "Value calculated in the proforma is tentative, not as per the final bill, and can vary slightly."
+- HSS bill rate follows the rules (0037 `bill_rate_manual`): pre-filled, re-worked up/down when costs change; a rate
+  typed by hand is kept unless the costs pass the rule minimum (then raised); clearing it = back to automatic.
+- CFS taxable → Billed by Clarus → on the tax invoice (already so; confirmed).
+- Final invoices: always both kinds; a kind with no charges is issued as "BILL CANCELLED — NOT APPLICABLE" (bold row +
+  diagonal stamp) so tax + reimbursement always share the number; `POST /proformas/{id}/final-invoices/issue` issues
+  the pair together; `GET /proformas/{id}/final-invoices.pdf` = one PDF with both (each still on its own).
