@@ -1,0 +1,328 @@
+from datetime import date
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.core.deps import get_current_user, require_admin, require_billing_access, get_user_allowed_ports
+from app.core.enums import ShipmentStatus, UserRole
+from app.invoice.autofill import refresh_draft_proformas
+from app.models.audit import AuditLogEntry
+from app.models.shipment import Shipment
+from app.models.tracker_column import TrackerColumn
+from app.models.user import User
+from app.schemas.shipment import ClientRename, ClientRenameOut, ValueRename, ShipmentCreate, ShipmentUpdate, ShipmentOut
+from app.core.audit import record_change
+from app.core.status_rules import EVIDENCE_FIELDS, proven_status, status_after_evidence_change
+
+# shipment fields that draft proformas are built from
+PROFORMA_INPUTS = {"cfs_paid_by_us", "cfs_billed_as", "line_paid_by_us", "duty_amount", "igst_amount",
+                   "assessable_value", "port", "be_no", "cfs_amount_before_tax", "cfs_gst_amount",
+                   "under_examination", "container"}
+
+router = APIRouter(prefix="/shipments", tags=["shipments"])
+
+
+@router.get("", response_model=list[ShipmentOut])
+def list_shipments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    port: Optional[str] = Query(None, description="Filter to a single port"),
+    status_filter: Optional[ShipmentStatus] = Query(None, alias="status"),
+    is_stuck: Optional[bool] = Query(None),
+    include_archived: bool = Query(False, description="Include billed/archived shipments"),
+    search: Optional[str] = Query(None, description="Free-text match on job/mbl/hbl/be_no/client/consignee"),
+):
+    """
+    Core grid-view endpoint (spec §2.5). Port scoping (spec §2.4) is applied
+    automatically based on the requesting user's `port_access` rows — a user
+    with no port restriction sees everything, a scoped user only sees their
+    assigned ports regardless of what `port` filter they pass.
+    """
+    q = db.query(Shipment)
+
+    if not include_archived:
+        q = q.filter(Shipment.is_archived.is_(False))
+
+    allowed_ports = get_user_allowed_ports(current_user)
+    if allowed_ports is not None:
+        q = q.filter(Shipment.port.in_(allowed_ports))
+        if port and port not in allowed_ports:
+            raise HTTPException(status_code=403, detail="Not permitted to view this port")
+
+    if port:
+        q = q.filter(Shipment.port == port)
+    if status_filter:
+        q = q.filter(Shipment.status == status_filter)
+    if is_stuck is not None:
+        q = q.filter(Shipment.is_stuck == is_stuck)
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            (Shipment.job.ilike(like))
+            | (Shipment.mbl.ilike(like))
+            | (Shipment.hbl.ilike(like))
+            | (Shipment.be_no.ilike(like))
+            | (Shipment.client.ilike(like))
+            | (Shipment.consignee.ilike(like))
+        )
+
+    return q.order_by(Shipment.eta.asc().nullslast()).all()
+
+
+@router.get("/summary/dashboard")
+def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Backs the Tracker Dashboard view. "Live" = ongoing: not archived and no
+    Cleared Date yet (a cleared shipment isn't tracked live any more — it
+    moves to the Cleared section). Same port-scoping as the grid endpoint.
+    """
+    q = db.query(Shipment)
+    allowed_ports = get_user_allowed_ports(current_user)
+    if allowed_ports is not None:
+        q = q.filter(Shipment.port.in_(allowed_ports))
+    everything = q.all()
+    live = [s for s in everything if not s.is_fully_cleared]
+    today = date.today()
+    cleared_this_month = [
+        s for s in everything
+        if s.is_fully_cleared and (s.cleared_date.year, s.cleared_date.month) == (today.year, today.month)
+    ]
+
+    by_status: dict[str, int] = {s.value: 0 for s in ShipmentStatus}
+    by_port: dict[str, int] = {}
+    stuck_count = 0
+    for s in live:
+        by_status[s.status.value] = by_status.get(s.status.value, 0) + 1
+        if s.is_stuck:
+            stuck_count += 1
+        port_key = s.port or "Unassigned"
+        by_port[port_key] = by_port.get(port_key, 0) + 1
+
+    upcoming = sorted((s for s in live if s.eta and s.eta >= today), key=lambda s: s.eta)[:5]
+
+    return {
+        "total_live": len(live),
+        "stuck_count": stuck_count,
+        "cleared_this_month": len(cleared_this_month),
+        # Cleared Date entered but a check (Duty / CFS Inv / Line / OOC / DO) still missing
+        "clearance_exceptions": sum(1 for s in live if s.cleared_date is not None),
+        "cleared_this_month_unbilled": sum(1 for s in cleared_this_month if not s.is_billed),
+        "by_status": by_status,
+        "by_port": by_port,
+        "upcoming_etas": [
+            {"id": s.id, "job": s.job, "mbl": s.mbl, "consignee": s.consignee, "eta": s.eta, "port": s.port} for s in upcoming
+        ],
+    }
+
+
+@router.post("/rename-value", response_model=ClientRenameOut)
+def rename_value(payload: ValueRename, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Rename a client or consignee on every shipment that has it (incl.
+    archived), each row audit-logged. Matching ignores surrounding spaces;
+    renaming onto an existing name merges the two. Port-scoped users only
+    rename shipments they can see."""
+    field, old, new = payload.field, payload.old_name.strip(), payload.new_name.strip()
+    if not new:
+        raise HTTPException(status_code=400, detail="New name can't be empty")
+    column = getattr(Shipment, field)
+    q = db.query(Shipment).filter(column.isnot(None))
+    allowed_ports = get_user_allowed_ports(current_user)
+    if allowed_ports is not None:
+        q = q.filter(Shipment.port.in_(allowed_ports))
+    rows = [s for s in q if getattr(s, field).strip() == old]
+    for s in rows:
+        if getattr(s, field) != new:
+            record_change(db, "shipments", s.id, field, getattr(s, field), new, current_user.id)
+            setattr(s, field, new)
+            if field == "consignee":
+                _rederive_hss(db, s, current_user.id)
+    db.commit()
+    return ClientRenameOut(updated=len(rows))
+
+
+@router.post("/rename-client", response_model=ClientRenameOut)
+def rename_client(payload: ClientRename, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return rename_value(ValueRename(field="client", **payload.model_dump()), db, current_user)
+
+
+@router.get("/{shipment_id}", response_model=ShipmentOut)
+def get_shipment(shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    shipment = _get_shipment_or_404(db, shipment_id)
+    _check_port_access(shipment, current_user)
+    return shipment
+
+
+@router.post("", response_model=ShipmentOut, status_code=status.HTTP_201_CREATED)
+def create_shipment(payload: ShipmentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    data = payload.model_dump()
+    explicit_hss = data.pop("is_hss")
+    shipment = Shipment(**data, created_by_id=current_user.id)
+    if explicit_hss is None:
+        if not (shipment.hss_seller or shipment.hss_buyer):
+            shipment.apply_hss_from_consignee()
+    else:
+        shipment.is_hss = explicit_hss
+    shipment.status = shipment.status or ShipmentStatus.TO_BE_FILED
+    shipment.status = proven_status(shipment)
+    db.add(shipment)
+    db.commit()
+    db.refresh(shipment)
+    return shipment
+
+
+@router.patch("/{shipment_id}", response_model=ShipmentOut)
+def update_shipment(
+    shipment_id: int,
+    payload: ShipmentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    shipment = _get_shipment_or_404(db, shipment_id)
+    _check_port_access(shipment, current_user)
+
+    changes = payload.model_dump(exclude_unset=True)
+    custom = changes.pop("custom_fields", None)
+    if changes.get("cfs_paid_by_us") and not shipment.cfs_paid_by_us and "tds_on_cfs" not in changes:
+        changes["tds_on_cfs"] = True  # we normally cut 2% TDS when we pay the CFS
+    if custom:
+        _apply_custom_fields(db, shipment, custom, current_user.id)
+    evidence_changed = False
+    for field, new_value in changes.items():
+        old_value = getattr(shipment, field)
+        if old_value != new_value:
+            record_change(db, "shipments", shipment.id, field, old_value, new_value, current_user.id)
+            setattr(shipment, field, new_value)
+            evidence_changed |= field in EVIDENCE_FIELDS
+
+    # HSS follows the consignee name ("SELLER - BUYER") unless set in this edit
+    if "consignee" in changes and not {"is_hss", "hss_seller", "hss_buyer"} & set(changes):
+        _rederive_hss(db, shipment, current_user.id)
+
+    # Status follows the evidence (IGM no -> IGM Filed, etc.) unless the user
+    # set the status themselves in this same edit.
+    if evidence_changed and "status" not in changes:
+        new_status = status_after_evidence_change(shipment)
+        if new_status is not None:
+            record_change(db, "shipments", shipment.id, "status", shipment.status, new_status, current_user.id)
+            shipment.status = new_status
+
+    if set(changes) & PROFORMA_INPUTS:
+        refresh_draft_proformas(db, shipment)  # e.g. paid-by-us switches, duty figures, port
+    db.commit()
+    db.refresh(shipment)
+    return shipment
+
+
+@router.delete("/{shipment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_shipment(shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """
+    Spec §2.4: non-admins can't delete directly — this endpoint is admin-only.
+    A "request deletion" approval-flow endpoint for non-admins is a TODO,
+    see PROGRESS.md — not yet built.
+    """
+    shipment = _get_shipment_or_404(db, shipment_id)
+    db.delete(shipment)
+    db.commit()
+
+
+@router.post("/{shipment_id}/bill", response_model=ShipmentOut)
+def mark_shipment_billed(shipment_id: int, db: Session = Depends(get_db),
+                         current_user: User = Depends(require_billing_access)):
+    """
+    Spec §5.5: mark a shipment Billed (the "Billed?" tick in the tracker).
+    Final-bill document generation is out of v1 scope (LiveImpex decision
+    pending). Where the shipment shows in the tracker is still decided by its
+    Cleared Date, so billing never makes a shipment disappear. Audit-logged.
+    """
+    from datetime import datetime, timezone
+
+    shipment = _get_shipment_or_404(db, shipment_id)
+    _check_port_access(shipment, current_user)
+    if shipment.is_billed:
+        return shipment
+    changes = {"is_billed": True, "is_archived": True, "billed_at": datetime.now(timezone.utc),
+               "status": ShipmentStatus.BILLED}
+    for field, value in changes.items():
+        record_change(db, "shipments", shipment.id, field, getattr(shipment, field), value, current_user.id)
+        setattr(shipment, field, value)
+    db.commit()
+    db.refresh(shipment)
+    return shipment
+
+
+@router.post("/{shipment_id}/unbill", response_model=ShipmentOut)
+def unbill_shipment(shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    """Spec §5.5: reversible — pull a billed shipment back if the bill is
+    cancelled. Admin-only. The status goes back to what it was just before it
+    was billed (from the change history)."""
+    shipment = _get_shipment_or_404(db, shipment_id)
+    if not shipment.is_billed:
+        return shipment
+    previous = (
+        db.query(AuditLogEntry)
+        .filter(AuditLogEntry.table_name == "shipments", AuditLogEntry.record_id == shipment.id,
+                AuditLogEntry.field_name == "status", AuditLogEntry.new_value == str(ShipmentStatus.BILLED))
+        .order_by(AuditLogEntry.id.desc())
+        .first()
+    )
+    restored = _status_from_audit(previous.old_value if previous else None) or (
+        ShipmentStatus.CLEARED if shipment.cleared_date else ShipmentStatus.OOC_DONE if shipment.ooc
+        else ShipmentStatus.TO_BE_FILED)
+    changes = {"is_billed": False, "is_archived": False, "billed_at": None,
+               "status": restored if shipment.status == ShipmentStatus.BILLED else shipment.status}
+    for field, value in changes.items():
+        if getattr(shipment, field) != value:
+            record_change(db, "shipments", shipment.id, field, getattr(shipment, field), value, current_user.id)
+            setattr(shipment, field, value)
+    db.commit()
+    db.refresh(shipment)
+    return shipment
+
+
+def _status_from_audit(raw: Optional[str]) -> Optional[ShipmentStatus]:
+    for st in ShipmentStatus:
+        if raw in (str(st), st.value, st.name):
+            return st
+    return None
+
+
+def _rederive_hss(db: Session, shipment: Shipment, user_id: int) -> None:
+    before = (shipment.is_hss, shipment.hss_seller, shipment.hss_buyer)
+    shipment.apply_hss_from_consignee()
+    for field, old in zip(("is_hss", "hss_seller", "hss_buyer"), before):
+        if getattr(shipment, field) != old:
+            record_change(db, "shipments", shipment.id, field, old, getattr(shipment, field), user_id)
+
+
+def _apply_custom_fields(db: Session, shipment: Shipment, values: dict, user_id: int) -> None:
+    """Merge values for user-created columns; each changed key is audit-logged."""
+    allowed = {c.key for c in db.query(TrackerColumn).filter(TrackerColumn.is_custom.is_(True))}
+    unknown = set(values) - allowed
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown column(s): {', '.join(sorted(unknown))}")
+    merged = dict(shipment.custom_fields or {})
+    for key, new_value in values.items():
+        if isinstance(new_value, str):
+            new_value = new_value.strip() or None
+        old_value = merged.get(key)
+        if old_value != new_value:
+            record_change(db, "shipments", shipment.id, f"custom:{key}", old_value, new_value, user_id)
+            if new_value is None:
+                merged.pop(key, None)
+            else:
+                merged[key] = new_value
+    shipment.custom_fields = merged  # reassign so SQLAlchemy sees the JSON change
+
+
+def _get_shipment_or_404(db: Session, shipment_id: int) -> Shipment:
+    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+    return shipment
+
+
+def _check_port_access(shipment: Shipment, user: User) -> None:
+    allowed_ports = get_user_allowed_ports(user)
+    if allowed_ports is not None and shipment.port not in allowed_ports:
+        raise HTTPException(status_code=403, detail="Not permitted to access this shipment's port")

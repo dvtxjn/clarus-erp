@@ -1,0 +1,496 @@
+from decimal import Decimal
+from typing import Optional
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.orm import Session
+
+from app.core.audit import record_change
+from app.core.database import get_db
+from app.core.deps import get_current_user, require_admin, require_billing_access
+from app.core.enums import ChargeCalculationBasis, ChargeCategory, ProformaStatus
+from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
+from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, build_invoice, invoice_filename, weight_kgs
+from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
+from app.invoice.pdf import render_pdf
+from app.invoice.xlsx import render_xlsx
+from app.models.charge import ChargeMasterEntry
+from app.models.organization import OrganizationEntry
+from app.models.licence import Licence
+from app.models.pricing_rule import PricingRule
+from app.models.proforma import Proforma, ProformaLineItem
+from app.models.shipment import Shipment
+from app.models.user import User
+from app.schemas.proforma import (
+    ChargeMasterOut,
+    ChargeMasterCreate,
+    ChargeMasterUpdate,
+    PricingRuleIn,
+    LicenceIn,
+    LicenceOut,
+    PricingRuleOut,
+    ProformaOut,
+    ProformaLineItemCreate,
+    ProformaLineItemOut,
+    ProformaStatusUpdate,
+    ProformaCreate,
+    ProformaLineItemUpdate,
+    FillResult,
+    RestoreIn,
+)
+
+router = APIRouter(tags=["proforma"])
+
+
+@router.get("/charge-master", response_model=list[ChargeMasterOut])
+def list_charge_master(include_inactive: bool = False, db: Session = Depends(get_db),
+                       current_user: User = Depends(get_current_user)):
+    """Spec §5.4: the user-manageable library of chargeable line items a
+    proforma's line items are picked from (standard rates prefill new lines)."""
+    q = db.query(ChargeMasterEntry)
+    if not include_inactive:
+        q = q.filter(ChargeMasterEntry.is_active.is_(True))
+    return q.order_by(ChargeMasterEntry.name).all()
+
+
+# worked out by the app, not a rate someone types
+FIXED_CHARGES = {GST_DIFFERENCE_CODE}
+
+
+@router.patch("/charge-master/{charge_id}", response_model=ChargeMasterOut)
+def update_charge(charge_id: int, payload: ChargeMasterUpdate, db: Session = Depends(get_db),
+                  current_user: User = Depends(require_admin)):
+    """Rates screen (admin): standard rate and details. Existing proforma lines keep
+    the rate / SAC / GST they were created with."""
+    charge = db.get(ChargeMasterEntry, charge_id)
+    if not charge:
+        raise HTTPException(status_code=404, detail="Charge not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if charge.code in FIXED_CHARGES and set(changes) - {"name"}:
+        raise HTTPException(status_code=400, detail=f"{charge.name} is worked out automatically")
+    for field, value in changes.items():
+        if field != "default_rate" and value is None:
+            continue
+        if getattr(charge, field) != value:
+            record_change(db, "charge_master_entries", charge.id, field, getattr(charge, field), value, current_user.id)
+            setattr(charge, field, value)
+    db.commit()
+    db.refresh(charge)
+    return charge
+
+
+@router.post("/charge-master", response_model=ChargeMasterOut, status_code=201)
+def create_charge(payload: ChargeMasterCreate, db: Session = Depends(get_db),
+                  current_user: User = Depends(require_admin)):
+    """A new chargeable item — immediately selectable on any proforma."""
+    if db.query(ChargeMasterEntry).filter(ChargeMasterEntry.code == payload.code).first():
+        raise HTTPException(status_code=400, detail="A charge with this code already exists")
+    charge = ChargeMasterEntry(**payload.model_dump(), is_active=True)
+    db.add(charge)
+    db.flush()
+    record_change(db, "charge_master_entries", charge.id, "created", None, f"{charge.code} {charge.name}", current_user.id)
+    db.commit()
+    db.refresh(charge)
+    return charge
+
+
+# --- Licence rates (Rates screen): charges pre-filled on proformas per licence ---
+
+@router.get("/licences", response_model=list[LicenceOut])
+def list_licences(db: Session = Depends(get_db), current_user: User = Depends(require_billing_access)):
+    return db.query(Licence).order_by(Licence.is_active.desc(), Licence.number).all()
+
+
+def _licence_payload(db: Session, payload: LicenceIn) -> dict:
+    codes = {c for (c,) in db.query(ChargeMasterEntry.code)}
+    unknown = [r.code for r in payload.rates if r.code not in codes]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown charge code(s): {', '.join(unknown)}")
+    data = payload.model_dump(mode="json")
+    data["number"] = data["number"].strip()
+    data["rates"] = [{k: v for k, v in r.items() if v not in (None, "", "0", 0)} | {"code": r["code"]}
+                     for r in data["rates"]]
+    return data
+
+
+@router.post("/licences", response_model=LicenceOut, status_code=201)
+def create_licence(payload: LicenceIn, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    data = _licence_payload(db, payload)
+    if db.query(Licence).filter(Licence.number == data["number"]).first():
+        raise HTTPException(status_code=400, detail="This licence already exists")
+    lic = Licence(**data)
+    db.add(lic)
+    db.flush()
+    record_change(db, "licences", lic.id, "created", None, lic.number, current_user.id)
+    db.commit()
+    db.refresh(lic)
+    return lic
+
+
+@router.put("/licences/{licence_id}", response_model=LicenceOut)
+def update_licence(licence_id: int, payload: LicenceIn, db: Session = Depends(get_db),
+                   current_user: User = Depends(require_admin)):
+    lic = db.get(Licence, licence_id)
+    if not lic:
+        raise HTTPException(status_code=404, detail="Licence not found")
+    for field, value in _licence_payload(db, payload).items():
+        if getattr(lic, field) != value:
+            record_change(db, "licences", lic.id, field, getattr(lic, field), value, current_user.id)
+            setattr(lic, field, value)
+    db.commit()
+    db.refresh(lic)
+    return lic
+
+
+# --- HSS pricing rules (Rates screen) ---
+
+@router.get("/pricing-rules", response_model=list[PricingRuleOut])
+def list_pricing_rules(db: Session = Depends(get_db), current_user: User = Depends(require_billing_access)):
+    return db.query(PricingRule).order_by(PricingRule.importer_name, PricingRule.seller_name, PricingRule.bill_to_role).all()
+
+
+def _rule_payload(db: Session, payload: PricingRuleIn) -> dict:
+    codes = {c for (c,) in db.query(ChargeMasterEntry.code)}
+    unknown = [ln.code for ln in payload.lines if ln.code not in codes]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown charge code(s): {', '.join(unknown)}")
+    data = payload.model_dump(mode="json")
+    data["lines"] = [{k: v for k, v in ln.items() if v not in (None, "0", 0)} | {"code": ln["code"]} for ln in data["lines"]]
+    return data
+
+
+@router.post("/pricing-rules", response_model=PricingRuleOut, status_code=201)
+def create_pricing_rule(payload: PricingRuleIn, db: Session = Depends(get_db),
+                        current_user: User = Depends(require_admin)):
+    rule = PricingRule(**_rule_payload(db, payload))
+    db.add(rule)
+    db.flush()
+    record_change(db, "pricing_rules", rule.id, "created", None, rule.name, current_user.id)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@router.put("/pricing-rules/{rule_id}", response_model=PricingRuleOut)
+def update_pricing_rule(rule_id: int, payload: PricingRuleIn, db: Session = Depends(get_db),
+                        current_user: User = Depends(require_admin)):
+    rule = db.get(PricingRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    data = _rule_payload(db, payload)
+    for field, value in data.items():
+        if getattr(rule, field) != value:
+            record_change(db, "pricing_rules", rule.id, field, getattr(rule, field), value, current_user.id)
+            setattr(rule, field, value)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
+@router.delete("/pricing-rules/{rule_id}", status_code=204)
+def delete_pricing_rule(rule_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
+    rule = db.get(PricingRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    record_change(db, "pricing_rules", rule.id, "deleted", rule.name, None, current_user.id)
+    db.delete(rule)
+    db.commit()
+
+
+@router.get("/shipments/{shipment_id}/proformas", response_model=list[ProformaOut])
+def list_proformas(
+    shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_billing_access)
+):
+    """Spec §5.2: full version history, newest first."""
+    proformas = (
+        db.query(Proforma).filter(Proforma.shipment_id == shipment_id).order_by(Proforma.version_number.desc()).all()
+    )
+    return [_to_out(p) for p in proformas]
+
+
+@router.post("/shipments/{shipment_id}/proformas", response_model=ProformaOut, status_code=201)
+def create_proforma(
+    shipment_id: int,
+    payload: Optional[ProformaCreate] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_billing_access),
+):
+    """Spec §5.2: every revision is a NEW record, never an overwrite.
+    HSS shipments: say whose copy it is (seller / buyer) — each gets its own invoice,
+    both billed to the BE importer (the buyer)."""
+    payload = payload or ProformaCreate()
+    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Shipment not found")
+
+    last = (
+        db.query(Proforma).filter(Proforma.shipment_id == shipment_id).order_by(Proforma.version_number.desc()).first()
+    )
+    next_version = (last.version_number + 1) if last else 1
+
+    role = payload.bill_to_role
+    if role and not shipment.is_hss:
+        raise HTTPException(status_code=400, detail="Seller/buyer invoices are only for HSS shipments.")
+    if shipment.is_hss and not role:
+        raise HTTPException(status_code=400, detail="This is an HSS shipment — choose whether the invoice is for the seller or the buyer.")
+    # Client rule: Bill To is always the BE importer (name on the BE; until a BE is
+    # read, the tracker's buyer / consignee). The seller/buyer role only says whose copy it is.
+    bill_to = be_importer_name(shipment) or (shipment.hss_buyer if shipment.is_hss else shipment.consignee)
+
+    proforma = Proforma(
+        shipment_id=shipment_id,
+        version_number=next_version,
+        name=(payload.name or "").strip() or None,
+        bill_to=bill_to,
+        bill_to_role=role,
+        created_by_id=current_user.id,
+        extracted_data={
+            "mbl": shipment.mbl,
+            "hbl": shipment.hbl,
+            "be_no": shipment.be_no,
+            "consignee": shipment.consignee,
+        },
+    )
+    db.add(proforma)
+    db.flush()
+    # charges pre-filled: licence rates, HSS rule, and everything the documents know
+    sync_proforma(db, proforma, full=True)
+    db.commit()
+    db.refresh(proforma)
+    return _to_out(proforma)
+
+
+@router.post("/proformas/{proforma_id}/line-items", response_model=ProformaOut, status_code=201)
+def add_line_item(
+    proforma_id: int,
+    payload: ProformaLineItemCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_billing_access),
+):
+    """Spec §5.3: any combination of charges from the charge master, not a
+    fixed set of columns — GST/SAC are copied from the charge master at
+    time of use so a later edit to the master doesn't rewrite past bills."""
+    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Proforma not found")
+    charge = db.query(ChargeMasterEntry).filter(ChargeMasterEntry.id == payload.charge_master_id).first()
+    if not charge:
+        raise HTTPException(status_code=404, detail="Charge master entry not found")
+
+    _require_draft(proforma)
+    if charge.code == GST_DIFFERENCE_CODE:
+        raise HTTPException(status_code=400, detail="GST Difference is worked out automatically — enter the Bill Rate instead.")
+    if charge.code == "ROY" and not proforma.shipment.is_hss:
+        raise HTTPException(status_code=400, detail="Royalty only applies to HSS shipments.")
+    quantity = payload.quantity
+    if quantity is None:
+        if charge.calculation_basis == ChargeCalculationBasis.PER_KG:
+            quantity = weight_kgs(proforma.shipment)
+            if quantity is None:
+                raise HTTPException(status_code=400, detail=(
+                    f"{charge.name} is charged per kg, but this shipment has no gross weight — "
+                    "upload the BE or enter the quantity."))
+        elif charge.calculation_basis == ChargeCalculationBasis.PER_CONTAINER:
+            quantity = container_count(proforma.shipment)
+            if quantity is None:
+                raise HTTPException(status_code=400, detail=(
+                    f"{charge.name} is charged per container, but this shipment has no container count — "
+                    "fill in Cntr on the shipment or enter the quantity."))
+        else:
+            quantity = Decimal("1")
+    line_item = new_line(proforma, charge, payload.rate, quantity, payload.description,
+                          payload.category, payload.gst_amount)
+    db.add(line_item)
+    proforma.line_items.append(line_item)
+    sync_gst_difference(db, proforma)
+    db.commit()
+    db.refresh(proforma)
+    return _to_out(proforma)
+
+
+def _require_draft(proforma: Proforma) -> None:
+    if proforma.status != ProformaStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="This version has been sent — start a new version to change it.")
+
+
+@router.patch("/proformas/{proforma_id}/line-items/{line_item_id}", response_model=ProformaOut)
+def update_line_item(
+    proforma_id: int,
+    line_item_id: int,
+    payload: ProformaLineItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_billing_access),
+):
+    """Edit any cell of a draft proforma line (description, rate, qty, GST, section)."""
+    li = db.query(ProformaLineItem).filter(ProformaLineItem.id == line_item_id,
+                                          ProformaLineItem.proforma_id == proforma_id).first()
+    if not li:
+        raise HTTPException(status_code=404, detail="Line item not found")
+    _require_draft(li.proforma)
+    changes = payload.model_dump(exclude_unset=True)
+    gst_given = "gst_amount" in changes
+    gst_value = changes.pop("gst_amount", None)
+    for field, value in changes.items():
+        if value is not None and getattr(li, field) != value:
+            record_change(db, "proforma_line_items", li.id, field, getattr(li, field), value, current_user.id)
+            setattr(li, field, value)
+    if gst_given and gst_value is None:
+        li.gst_is_actual = False  # back to rate x amount
+    li.is_manual = True  # the automatic refresh leaves hand-edited lines alone
+    recalc(li, gst_value if gst_given else None)
+    sync_gst_difference(db, li.proforma)
+    db.commit()
+    db.refresh(li.proforma)
+    return _to_out(li.proforma)
+
+
+@router.post("/proformas/{proforma_id}/fill-from-shipment", response_model=FillResult)
+def fill_from_shipment(proforma_id: int, db: Session = Depends(get_db),
+                       current_user: User = Depends(require_billing_access)):
+    """Add every line the shipment knows (Agency, Examination, Customs Duty, Stamp
+    Duty, CFS, Royalty for HSS, shipping line per SAC) and refresh the
+    document-derived ones; lines edited by hand are left alone. See autofill.py."""
+    proforma = _get_proforma(db, proforma_id)
+    _require_draft(proforma)
+    added, updated, skipped = sync_proforma(db, proforma, full=True)
+    db.commit()
+    db.refresh(proforma)
+    return FillResult(proforma=_to_out(proforma), added=added, updated=updated, skipped=skipped)
+
+
+@router.post("/proformas/{proforma_id}/restore", response_model=ProformaOut)
+def restore_derived_line(proforma_id: int, payload: RestoreIn, db: Session = Depends(get_db),
+                         current_user: User = Depends(require_billing_access)):
+    """Bring back a removed document-derived line (Shipping Line, Customs Duty,
+    Stamp Duty, CFS, Examination) with the figure from the documents."""
+    proforma = _get_proforma(db, proforma_id)
+    _require_draft(proforma)
+    if not restore_line(db, proforma, payload.key):
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Nothing to add from the documents for this charge yet "
+                                                    "(no invoice / BE amount, or it doesn't apply — e.g. not under examination).")
+    record_change(db, "proformas", proforma.id, "restored", None, payload.key, current_user.id)
+    db.commit()
+    db.refresh(proforma)
+    return _to_out(proforma)
+
+
+@router.get("/proformas/{proforma_id}/invoice")
+def get_invoice(proforma_id: int, db: Session = Depends(get_db),
+                current_user: User = Depends(require_billing_access)):
+    """The proforma laid out as the client's invoice (drives the on-screen view)."""
+    return build_invoice(_get_proforma(db, proforma_id))
+
+
+@router.get("/proformas/{proforma_id}/invoice.{fmt}")
+def download_invoice(proforma_id: int, fmt: str, db: Session = Depends(get_db),
+                     current_user: User = Depends(require_billing_access)):
+    """Excel (.xlsx) or PDF of the invoice, in the template's layout."""
+    proforma = _get_proforma(db, proforma_id)
+    if fmt == "xlsx":
+        data, media = render_xlsx(build_invoice(proforma)), \
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    elif fmt == "pdf":
+        data, media = render_pdf(build_invoice(proforma)), "application/pdf"
+    else:
+        raise HTTPException(status_code=404, detail="Use .xlsx or .pdf")
+    filename = invoice_filename(proforma, fmt)
+    return Response(content=data, media_type=media, headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename),
+        "Access-Control-Expose-Headers": "X-Filename",
+    })
+
+
+def _get_proforma(db: Session, proforma_id: int) -> Proforma:
+    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Proforma not found")
+    return proforma
+
+
+@router.delete("/proformas/{proforma_id}/line-items/{line_item_id}", response_model=ProformaOut)
+def remove_line_item(
+    proforma_id: int,
+    line_item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_billing_access),
+):
+    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Proforma not found")
+    line_item = db.query(ProformaLineItem).filter(
+        ProformaLineItem.id == line_item_id, ProformaLineItem.proforma_id == proforma_id
+    ).first()
+    if not line_item:
+        raise HTTPException(status_code=404, detail="Line item not found")
+    _require_draft(proforma)
+    if line_item.charge and line_item.charge.code in DERIVED_CODES:
+        proforma.suppressed = sorted(set(proforma.suppressed or []) | {line_key(line_item)})
+    proforma.line_items.remove(line_item)
+    db.delete(line_item)
+    sync_gst_difference(db, proforma)
+    db.commit()
+    db.refresh(proforma)
+    return _to_out(proforma)
+
+
+@router.patch("/proformas/{proforma_id}", response_model=ProformaOut)
+def update_proforma_status(
+    proforma_id: int,
+    payload: ProformaStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_billing_access),
+):
+    """Spec §5.2: DRAFT -> SENT; creating a later version supersedes earlier
+    ones (left as an explicit follow-up call rather than implied here, same
+    pattern as the shipment bill/unbill endpoints)."""
+    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Proforma not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if "bill_rate" in changes:
+        _require_draft(proforma)
+    if changes.get("bill_to_org_id") is not None and not db.get(OrganizationEntry, changes["bill_to_org_id"]):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    for field, value in changes.items():
+        if field in ("name", "bill_to") and isinstance(value, str):
+            value = value.strip() or None
+        if getattr(proforma, field) != value:
+            record_change(db, "proformas", proforma.id, field, getattr(proforma, field), value, current_user.id)
+            setattr(proforma, field, value)
+    if "bill_rate" in changes:
+        sync_gst_difference(db, proforma)
+    db.commit()
+    db.refresh(proforma)
+    return _to_out(proforma)
+
+
+@router.delete("/proformas/{proforma_id}", status_code=204)
+def delete_draft_proforma(
+    proforma_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_billing_access),
+):
+    """Delete a DRAFT proforma version (e.g. one started by mistake). Sent /
+    superseded versions are the record of what went to the client, so they
+    can't be deleted. Recorded in the change history."""
+    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    if not proforma:
+        raise HTTPException(status_code=404, detail="Proforma not found")
+    if proforma.status != ProformaStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Only draft versions can be deleted — sent ones are kept as history.")
+    record_change(db, "proformas", proforma.id, "deleted",
+                  f"v{proforma.version_number} draft, {len(proforma.line_items)} line item(s)", None, current_user.id)
+    db.delete(proforma)
+    db.commit()
+
+
+def _to_out(proforma: Proforma) -> ProformaOut:
+    out = ProformaOut.model_validate(proforma)
+    out.line_items = sorted(out.line_items, key=lambda li: li.id)
+    # payable to Clarus: everything except the shipping line cost inclusion
+    # (rounded to the rupee — see build.round_off)
+    out.grand_total = round_off(sum((li.total for li in proforma.line_items
+                                     if li.category != ChargeCategory.COST_INCLUSION), Decimal("0")))[0]
+    return out

@@ -1,0 +1,390 @@
+# Build Progress Log
+
+> Read this first if you're picking this project up in a new session (Cursor,
+> a fresh Claude conversation, or a human dev). It says exactly what's built,
+> what's tested, and what's next — so you can continue without re-deriving
+> decisions already made. `ERP_Spec.md` is the full requirements doc; this
+> file is the "where are we right now" companion to it.
+
+Last updated: this session (backend: dashboard/document-checklist/proforma
+endpoints added and live-tested; frontend: Dashboard, Shipment Detail,
+Document Manager, and Proforma & Billing views built on top of the existing
+login + tracker grid).
+
+**Full-stack verification (this session):** ran backend (`uvicorn`, :8000)
+and frontend (`vite build` + `vite preview`, :4173) together. Frontend
+builds with zero TypeScript errors. Backend `/health` and frontend root
+both responded correctly. The OOC auto-naming/tracker-sync test below was
+re-run and reconfirmed against a fresh SQLite DB.
+
+---
+
+## 📝 Client feedback backlog (2026-09-27) — to prioritise, then build ONE BY ONE
+
+Context: live tracker CSV imported locally (`python -m app.import_tracker_csv <csv>`,
+re-runnable, upserts by MBL). Feedback after testing with it:
+
+| # | Note (client) | Suggestion |
+|---|---|---|
+| A | **VERY IMPORTANT — tracker must have ALL CSV columns and work like Excel**: every cell editable inline, filters, no formulas except Days. No way to edit a shipment today. | Use **AG Grid Community** (free/MIT): inline editing, per-column filters/sort, column hide/reorder/resize, Excel-like keyboard nav + copy/paste. Each edit → `PATCH /shipments/{id}` (already audit-logged). Add missing columns: remark (separate from remarks), mbl date, hbl date, gw, total pkg, pkg code, line no, igm date, voyage, cont, billed?, shipping line. **Days** = computed, not stored: matches sheet as `today − INW + 1`, "Pending" if INW isn't a date (sheet shows "Pending" for some rows with an INW date, e.g. jobs 166/167/172 — confirm rule). Needs a small DB migration → set up Alembic now. |
+| B | Status updates automatically when evidence is added (e.g. IGM no entered → IGM Filed); conditions will change; Playwright will verify later. | One `derive_status()` rule table (IGM no → IGM Filed, BE no → BE Filed, Duty paid → Duty Paid, OOC → OOC Done, container OUT/gatepass → Cleared), run on every edit/upload, forward-only (never moves status backwards on its own). Keep rules in one file so they're easy to change. Manual override still allowed. |
+| C | Grid views + dashboard creation — tracker fully customisable. | Builds on A: save AG Grid column/filter/sort state as named **per-user views** (spec §2.5), switchable from a dropdown. Dashboards: user-created widget boards (count/breakdown/list widgets over any saved view). Do views first, dashboards after. |
+| D | Ports: show names alongside codes. | `ports` lookup table (code → name, admin-editable), shown as "INMUN1 · Mundra". Seed: INMUN1 Mundra, INNSA1 Nhava Sheva, INDWN6 Panipat, INGHR6 Garhi — confirm names. |
+| E | Rename "Upcoming ETAs" → **"UPCOMING SHIPMENTS"**. | Trivial. (Already fixed: excludes cleared + past ETAs.) |
+| F | Doesn't understand how "Stuck" works. | Today: a manual yes/no flag + remarks text; stuck rows are highlighted and counted on the dashboard. Suggest either (a) drop it, or (b) make it a column toggle in the grid with a required "reason", optionally auto-flag (e.g. no status change in N days after ETA). Client to decide. |
+| G | Uploaded documents must save to **Google Drive** — existing Drive, create a new subfolder for the app and clean it. | Today files save on the server disk: `backend/storage/documents/<shipment id>/<generated name>.pdf`. Approach: one dedicated app subfolder (e.g. `Clarus ERP/`) inside the existing Drive, with `/<Client>/<MBL or Job>/` folders under it; upload via the Google Drive API using a **service account** (or OAuth as a company Google account) that is shared only on that subfolder — so the app can never touch the rest of the Drive. Store Drive file ID + link on the document record; storage behind one interface so local-disk still works for dev. Client needs: which Google account/Workspace, and admin to share the folder. Don't "clean"/delete anything in the existing Drive from the app. |
+| H | **Proforma: a tweakable, Excel-like view** where almost everything can be altered. (Notes only — don't start.) | After A (reuse the same grid tech): live invoice preview matching the .xlsm look, editable line items/rates/qty/descriptions/header fields, then export to .xlsx/PDF. |
+
+**Agreed order:** E+D → A → B (✅ done, see below) → F decision → C (views) → G (Drive) → H (proforma view) → C (dashboards).
+
+**B — status from evidence ✅** (`app/core/status_rules.py`, one RULES table): IGM no → IGM Filed · BE no → BE Filed · duty amount → BE Assessed · Duty Paid → Duty Paid · OOC → OOC Done · Cleared Date → Cleared. Adding evidence moves status forward (can skip steps); removing the evidence behind the current status moves it back to what's still proven; Billed untouched; a status set by hand in the same edit wins; Under OOC is manual-only. Applied on PATCH, on create, and after document uploads (forward only). Tracker toast shows "· Status → X". Existing data: only jobs 173 and 159 differed (had Cleared Date) → set to Cleared (audit-logged). Playwright/ICEGATE verification = later.
+
+**Clearance rule (client, 2026-09-27):** Cleared = Cleared Date AND Duty, CFS Inv, Line, OOC, DO all ticked (`Shipment.is_fully_cleared` / `missing_for_clearance`, `CLEARANCE_FLAGS` in models/shipment.py; status rule + tabs + dashboard all use it). Cleared Date with anything missing = **clearance exception**: stays in Ongoing, amber row + "Missing: …" badge, banner on the detail page, dashboard card. Currently jobs 121 and 159 (both ticked Billed by the client — left as Billed).
+**OOC detection:** BE uploads check for the "OOC COPY" marking. Uploaded as Assessed but is an OOC copy → refiled as OOC BE (type + file renamed) and processed as OOC. Tagged OOC but no marking (and text readable) → OOC not ticked + warning.
+**F — Stuck: dropped** for now (column, filter, dashboard card, banner removed; `is_stuck` DB field kept).
+**Proformas:** `DELETE /proformas/{id}` deletes DRAFT versions only (sent/superseded kept as history), audit-logged; "Delete draft" button. Template (`reference/…flexible.xlsm`) splits charges into "Billed by Clarus" (Agency/Other/Exam/Bond/Documentation + 18% GST) vs "Reimbursement (actuals)" (Custom Duty, Stamp Duty with per-port formula INMUN1 = ROUNDDOWN(0.1% × assessable), INNSA1 = CEILING(0.1% × (assessable + duty)), CFS rounded up, Royalty, Insurance, GST Difference from HSS bill rate), plus Cost Inclusion (shipping line). That's the taxable-vs-pure-agent split to build into H.
+
+**Shipping line destination charges invoice (imports):** new doc type `SHIPPING_LINE_INVOICE` ("SL-DSC"), required on the checklist (migration 0012). Per-invoice amounts like CFS (best-effort read — no sample yet; editable); shipment `line_amount_*` = sum → the proforma's "Cost Inclusion: Shipping Line". Totals logic generalised in `extraction/cfs_totals.py::recompute_invoice_totals`.
+**Confirm dialogs:** `window.confirm` was blocked in the client's browser (Delete draft silently did nothing) → `ConfirmDialog.tsx` (`useConfirm()`), used for delete draft / remove document / delete column / merge clients. Don't use window.confirm/prompt/alert.
+**HSS:** `Shipment.is_hss / hss_seller / hss_buyer` (migration 0013, backfilled: 28 shipments — Earthman/Earthstar/HKR → Mahrishi). Rule: consignee with '-' = HSS, seller = before, buyer = after; re-derived when consignee changes (edit, rename-value, import) unless HSS fields set explicitly; switch + editable parties on Overview; HSS column in tracker. Proformas on HSS shipments must be for "seller" or "buyer" (`bill_to_role`, `bill_to`) — "+ Seller invoice" / "+ Buyer invoice"; normal shipments bill the consignee.
+**H — Proforma invoice ✅ (2026-09-28):** charges carry a section (`ChargeCategory`: service = "Billed by Clarus", reimbursement = "Reimbursement (at actuals)", cost_inclusion = shown, NOT in the grand total) on the charge master and each line (migration 0014; lines also `gst_is_actual`, `sort_order`). `app/invoice/` — `build.py` (invoice JSON in the template layout: bill to, details, reference block, 3 sections + subtotals, grand total, notes, bank), `xlsx.py` (openpyxl), `pdf.py` (reportlab, now a runtime dependency), `company.py` (issuer/bank/notes/colours from the template). Endpoints: `GET /proformas/{id}/invoice` (JSON), `/invoice.xlsx|.pdf` (file named "{bill to} - {MBL} - {BE} - proforma[ (buyer copy)].ext", `X-Filename` header), `PATCH /proformas/{id}/line-items/{li}` (description/rate/qty/GST/section; GST null = back to rate × amount), `POST /proformas/{id}/fill-from-shipment` (Agency + Exam per container at default rates, Customs Duty = duty − IGST with IGST as GST, Stamp Duty by port formula, CFS if paid by us (total rounded up), shipping line as cost inclusion; returns added/skipped). UI (`ProformaPanel.tsx`): invoice sheet in the template look, draft cells click-to-edit (Enter/Esc), move line between sections, remove, Fill from shipment, Download Excel/PDF, Mark as Sent. **Bill To = BE importer** — for HSS always the buyer (after the "-"), both seller and buyer copies. Open: taxable vs pure-agent per charge (client's bills), royalty per kg / GST difference lines, saving the generated file when Sent (and to Drive).
+**Proforma calc rules + daily updates ✅ (2026-09-28, from the client's sample "MAHRISHI RECYCLERS - OOLU2331734970 - 3496326 - expense sheet.xlsm" — `test_sample_hss_invoice_matches_client_sheet` reproduces its grand total ₹6,76,843 exactly):**
+- Customs Duty total = BE total duty + interest; interest = latest duty challan Due Amount − BE duty (never < 0); GST column = IGST; basic = total − IGST; description shows the interest.
+- Stamp Duty: INMUN1 ROUNDDOWN(0.1% × assessable); INNSA1 CEILING(0.1% × (assessable + customs duty total incl. interest)); any other port (ICDs / dry ports) = none (skipped with a note).
+- Royalty (`ROY`, per kg of BE gross weight, default ₹0.75/kg, 18% GST, total rounded up) — HSS shipments only (hidden / refused otherwise). CFS & Royalty totals round up.
+- Value section (template rows 37-38) on screen + Excel + PDF: value of goods = assessable + every line's basic (incl. cost inclusion, excl. GST Difference); GST input = all GST; value/kg; bill rate (per proforma, `Proforma.bill_rate`, typed in); GST output = 18% × bill rate × weight; GST Difference = max(0, output − input) → automatic `GSTD` line in Reimbursement (removed when bill rate is cleared).
+- "Fill / refresh from shipment" also REFRESHES existing Customs Duty / Stamp Duty lines (new challan → new interest) and reports them.
+- **Duty challans** (`duty_challans` table, `routers/challans.py`): dashboard card — upload the daily ICEGATE pending-challan .xlsx (IEC, Location Code, Doc type, Doc no., Doc date, Challan no., Due Amount) or enter one BE by hand; every upload kept, latest row per BE wins, matched to shipments by BE no at read time. Amber reminder when not uploaded today; proforma shows whether its interest is from today's challan. **Need a real challan export from the client to confirm columns.**
+- **Organization repository** extended (short names, GSTIN, PAN, IEC, address, state, email, phone; AD code optional; `updated_at`): dashboard card to add / edit / import; Bill To shows the org's details, matched by name/short name/prefix (e.g. "Mahrishi" → "MAHRISHI RECYCLERS") or picked per proforma (`bill_to_org_id`); "Add details" right from the invoice.
+- Colour scheme: Clarus orange #D26B21 on warm neutrals across the app, AG Grid and the invoice (Excel/PDF: charcoal bars, peach headers, orange grand total).
+- **Bill To (client, corrected 2026-09-28): always the BE importer** (importer name read from the latest Assessed/OOC BE; tracker buyer/consignee only until a BE is read); details from the org repo matched on that name (loose: case, punctuation, PVT/PRIVATE, LTD/LIMITED, M/S) or picked per proforma. **BL consignee = the org holding the BE's AD code** (else the tracker consignee). **Seller copy** (HSS) carries a highlighted line under the title: "<BL consignee> to pay <BE importer>".
+- Open: "Other Fees" = 0.25 × weight + 1,00,000 in the sample (entered by hand for now).
+
+**Shipping line invoices + customs duty source ✅ (2026-09-28, samples: Maersk tax invoices HR27IN3500038423 / …39011 for BL 274014260 — two invoices per BL is normal — and a Cordelia proforma):**
+- `extraction/shipping_line_pdf.py`: carrier, invoice no, proforma?, BL, totals (Maersk "Total Base Amount / Total taxes / Total Payable Amount", Cordelia "Taxable Amount / SGST+CGST lines / Total Amount", generic fallbacks) and charge lines (Maersk row layout, Cordelia amount-first layout) with currency, INR amount, GST. Add patterns per new line as samples come ("training" = adding layouts; learning-from-corrections still an option).
+- **Cost inclusion rule (client):** a charge counts only if BOTH: billed in INR AND charge head isn't freight (FREIGHT/BAS/BAF/bunker/PSS/GRI/LSS/origin…). Inland haulage counts. INR-but-freight-named lines are left out and flagged "check". Per invoice `ShipmentDocument.cost_before_tax/cost_gst/cost_excluded/cost_manual` (migration 0016); shipment `line_amount_*` = sum of each invoice's cost inclusion. Overview: tick charge lines in/out, "Type figure" (manual override), "Reset". `PATCH /shipments/{id}/documents/{doc}/cost-inclusion`.
+- Upload notes: BL mismatch vs tracker; lines left out; lines to check; charge lines not adding up.
+- **Customs duty source:** 1) duty challan (BE duty + interest), 2) no challan → OOC copy's total (final paid; interest = OOC − assessed), 3) BE duty. Shown on the proforma notice.
+- **No challan and no OOC = the user must be told** (client): red "Upload the duty challan" alert on the proforma, "ACTION NEEDED" in Fill/refresh results, a confirm before Mark as Sent, and the Dashboard challan card lists every ongoing BE without a challan or OOC copy (`/daily-updates` → `awaiting_challan`). Automatic challan fetching = Playwright job, later.
+
+**Receipts, shipping line proformas, paid-by-us rules ✅ (2026-09-28):** new document types Shipping Line Proforma (SL-PI), Shipping Line Receipt (SL-RCPT), CFS Receipt (CFS-RCPT) — optional on the checklist (migration 0017); "Shipping Line Destination Charges Invoice" is now labelled Tax Invoice. Shipping line totals follow the CFS rule (tax invoices, else proformas). Receipts = amount actually paid (`extraction/receipt_pdf.py`, best effort — no sample yet; editable), listed under each Overview group; a shipping line receipt ticks Line Paid. **Shipping line always Cost Inclusion unless `line_paid_by_us`** (then Reimbursement). **CFS paid by us** → `cfs_billed_as`: "reimbursement" (at actuals, CFS invoice GST) or "taxable" (Billed by Clarus, our 18% GST on the basic). Toggles on the Overview.
+
+**Draft proformas update themselves ✅ (2026-09-28, `app/invoice/autofill.py`, migration 0018):** after any document upload / re-read / removal / amount or cost-inclusion edit, duty challan upload, or shipment edit of a proforma input (paid-by-us switches, CFS billed as, duty figures, port, BE no, containers, under examination), every DRAFT proforma of the shipment refreshes its derived lines: Customs Duty, Stamp Duty, CFS, Shipping Line, and Examination (added to Billed by Clarus while under examination, removed when not). Lines edited by hand (`is_manual`, ✎ on screen) are never touched; removed derived lines are remembered (`Proforma.suppressed`) until "Fill / refresh" is pressed. Agency / Royalty only via the button. **Shipping line = ONE line: total of the selected charges of all counted liner invoices, SAC column "Liner Inv"** (client, 2026-09-28). Grand total label (every HSS shipment): seller invoice "<seller> pays <buyer>", buyer invoice "<buyer> pays CLARUS LOGISTICS LLP" (seller = AD-code org, else HSS seller); non-HSS "<importer> pays CLARUS LOGISTICS LLP". Line helpers moved to `app/invoice/lines.py`.
+
+**Proforma usability ✅ (2026-09-28):** removed document-derived lines are listed on the draft with **Restore** (`POST /proformas/{id}/restore {key}`); the add-line form offers **Add from documents** for Shipping Line / Customs Duty / Stamp Duty / CFS / Examination; charge list shows standard rates ("std ₹7,000 / container") and picking a charge fills its standard rate (editable). Stored `Proforma.bill_to` kept = BE importer on every refresh. **Tracker undo:** own undo/redo stack (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y; last 50 saved cell edits + checklist chips; re-saves the old value, audit-logged) — AG Grid's built-in undo was lost on every row refresh. Not click-tested (grid doesn't paint in a background tab).
+
+**Standard rates screen ✅ (2026-09-28):** top-nav **Rates** (`RatesPage.tsx`, billing users see it, admin edits): every charge's section, basis, SAC, GST %, standard rate, active/retired, edited in place (saves on Enter / leaving the box, audit-logged); "+ Add charge". Document-derived charges (CD/SD/CFS/DO/GSTD) show where their figure comes from instead of a rate. API: `GET /charge-master?include_inactive=true`, `PATCH /charge-master/{id}`, `POST /charge-master` (admin). Standard rates now: Agency 7,000/container, Examination 18,000/container, Bond (SBOND) 1,500, Documentation (DC) 1,500 (migration 0019), Royalty 0.75/kg. Existing proforma lines keep the rate they were made with.
+
+**HSS rules + Royalty section ✅ (2026-09-28, migrations 0020–0021):** new invoice section **Royalty** (between Reimbursement and Cost Inclusion; counts in the grand total; hidden when empty) — the royalty is paid by the seller to the buyer. `PricingRule` (`pricing_rules`): per seller → buyer pair (buyer = BE importer; seller blank = any seller, a seller-specific rule wins) and per copy (seller / buyer), lines of ₹/container × containers + ₹/kg × weight + flat (+ optional section). "Fill / refresh" uses the matching rule instead of the standard Royalty rate. Rates page → **HSS rules**: both copies side by side, editable, with a same-total check for a sample containers/weight. Seeded Mahrishi rule (client): seller copy Royalty 1/kg + Other Charges 20,000/container; buyer copy Royalty 0.75/kg + Other Charges 20,000/container + 0.25/kg (same total; reproduces the client's sample sheet). API `GET/POST/PUT/DELETE /pricing-rules`.
+
+**Licence rates + pre-filled proformas + suggested bill rate ✅ (2026-09-28, migration 0022):** `Licence` (`licences`, belongs to the BE importer): rate rows {code, seller?, port?, per_container, per_kg, flat, category?}; per charge the most specific row wins (seller+port > seller > port > any); seller = HSS seller (rates follow the seller on HSS). Closed licence → standard rates. **New proformas are created already filled** (licence rates, HSS rule, documents) with a "review" note; Examination at the licence rate while under examination; an HSS rule's lines win over the licence's for the same charge. Rates page → **Licences** editor; API `GET/POST/PUT /licences`. Client rates: 111022154 MAHRISHI (Agency 7,000/cntr; Exam per container INNSA1 2,000 / INMUN1 3,000 / INDWN6 3,000; Bond + Doc 2,000 each for HKR, 1,000 each for Earthman / Earthstar; Other per HSS rule) · 111035337 Devine (Agency 7,000/cntr; Exam 3,000 flat) · 111035316 Earthman (Agency 7,000/cntr; Exam by port as above) · 111021955 Home Zone (Agency 7,000/cntr; Other 20,000/cntr; Exam 3,000 flat) · 111021207 Devine — closed. Client confirmed: Agency 7,000 per container; port exam rates per container ("flat 3,000" licences left flat). **Suggested bill rate** (`suggest_bill_rate`): ≥ value/kg + ₹0.10 and GST difference > 0, rounded up to the next ₹0.25 (11.80→12.00, 12.15→12.25); pre-filled on HSS proformas once the BE figures are in, "Use" link otherwise.
+
+**Invoice output ✅ (2026-09-28):** PDF always ONE A4 page (whole invoice in a KeepInFrame that scales down if needed), no word ever split (long values shrink their font instead; `splitLongWords=0`), compact layout (one charges table with section bars, notes beside bank details), Clarus logo (vector wordmark + arrow) in the header of the PDF and the Excel (rasterised via pypdfium2); Excel prints fit-to-one A4 page with wider amount columns. HSS copies are labelled by the party's first name — "PROFORMA INVOICE — FOR HAREKRISHNA" / "FOR MAHRISHI", file "… proforma (for Harekrishna).pdf" (`build.copy_for`) — not seller/buyer copy. **Grand total rounded to the rupee** with a "Round off" line (`build.round_off`); lines keep exact paise; Royalty no longer rounded up per line (only CFS is), so both HSS copies end on the same amount (job 129: ₹7,20,403 on both).
+
+**Final invoices ✅ (2026-09-28, migration 0023; samples CL/200/26-27 + RI/CL/200/26-27 in the client's Downloads):** from any proforma, "Create final invoices" makes DRAFT **Tax Invoice** (only Billed by Clarus lines, T, our GST — IGST inter-state / CGST+SGST when customer state = 27) and **Reimbursement Invoice** (only Reimbursement lines = paid by us, P pure agent, no GST, full amount incl. GST paid; GST Difference excluded). Royalty + Cost Inclusion not invoiced by Clarus. Content as the client's invoices: customer (name, address, PAN, GSTIN, state), place of supply, invoice/due date, job no (IMP/0165/26-27 from tracker job + FY), job type, shipment block (BE no/date/type, MBL/HBL + dates, consignment, packages, weights, custom house, vessel/voyage, origin, customer ref, supplier invoice no/date/value/terms, CIF / assess value, total duty, shipper, BE heading, containers), lines with SAC + tax type + non-GST / taxable / GST, SAC summary, totals (before tax, GST, invoice value, less advance, round-off UP, net payable, reverse charge), amount in words (Lakh/Crore), bank, terms (4), company CIN, IRN/ACK. Draft = every field editable (audit-logged); **Issue** = number from the FY series (pair shares n; `invoice_counters`, next = 201 for 26-27, editable on Rates page) + lock (IRN/ACK still editable); **Cancel** (admin) keeps the record, number never reused. PDF one A4 page (`app/invoice/final_pdf.py`). Files: `models/final_invoice.py`, `invoice/final.py`, `routers/final_invoices.py`, `FinalInvoicesPanel.tsx`. Shipment block trimmed (client): BE No, BE Date, MBL, HBL, No. of Containers, Port of Origin (typed in; not on the BE read yet). Proforma print: no Rate × Qty column; grand total always rounded UP to the next rupee.
+
+**Client decisions — pending, don't build yet (2026-09-28):** client will send an updated organisation list with full details (addresses etc.) to import; invoice numbering to be designed with a dedicated Invoices section where all final invoices live, in order.
+
+**Google Sheets tracker CSV re-import ✅ (2026-09-28, migration 0025; `app/tracker_import.py`, `routers/tracker_import.py`, `TrackerImportPanel.tsx`):** Shipments page → "Import sheet CSV" (admin) → preview (new / updated field old→new / kept / missing / unknown columns; nothing saved) → Apply (same file). Sheet wins over app edits; **BE data wins** (with an uploaded Assessed/OOC BE: BE No, BE Dt, port, MBL, HBL, containers, gross wt kept; OOC copy keeps OOC / Duty Paid ticked); app-only data untouched; shipments not in the CSV get `missing_from_sheet_at` ("not in sheet" badge in the MBL cell) — never deleted, cleared when they reappear. Matching MBL → HBL → BE No → Job (last two marked "check"). "MBL/HBL" cells split at "/"; an HBL column in the sheet is used if present; existing 13 combined cells split by the migration and the HBL tracker column restored. "billed?": Yes bills, explicit No un-bills, **blank = leave billing alone** (the sheet's billed? is mostly blank). Status via the evidence rules; every change audit-logged. Old 27-Sep CSV previewed against the app: 63 unchanged, 4 would revert app edits (not applied).
+
+**Organisation list import fixed (2026-09-28, migration 0024):** reads the filing software's real export (OrganizationRepository_*.xlsx: header on row 3; Branch AD1-3 + City + State + Postal Code + Country → address; ALIAS → short names; IE CODE NO, PAN NO, GSTIN, Email, Telephone/Contact Mobile, Is Active); all rows imported (not only those with AD codes), matched by name; AD code no longer unique (Earthman + Earthstar share 0511029 — BL consignee picks the one matching the HSS seller). Imported: 99 orgs, all with addresses, 36 with GSTIN.
+
+**Proforma names:** `Proforma.name`, "Rename" button; `PATCH /proformas/{id}` now takes any of status / name / bill_to (audit-logged).
+
+**Done (2026-09-27):**
+- **E+D** — dashboard says "Upcoming Shipments" (excludes cleared/past, shows MBL when no job no). New `ports` table + `GET/POST/PUT /ports`, seeded INMUN1 Mundra / INNSA1 Nhava Sheva / INDWN6 Panipat / INGHR6 Garhi (confirm names); shown as "INMUN1 · Mundra" on dashboard, grid, detail.
+- **A** — `ShipmentGridPage.tsx` rebuilt on AG Grid Community: all sheet columns in sheet order (+ HBL, Port, Stuck), double-click to edit any cell, saves per cell via PATCH (audit-logged), reverts on error, Ctrl/⌘+Z undo, per-column filters + sort, search-all box, column width/order/sort remembered per browser (localStorage — becomes saved views in C). Day is computed (`Shipment.days`), read-only. New columns: remark, mbl_date, hbl_date, gw, total_pkg, pkg_code, line_no, igm_date, voyage, cont, shipping_line. Job may be blank.
+  - Not in AG Grid Community (Enterprise-only): multi-cell paste, fill handle, column chooser sidebar, set (checkbox-list) filters. Revisit if needed.
+  - **Views:** "By client" (default — one table per client, A–Z, heading bar per client, earliest ETA first, blank ETAs last) and "All shipments" (one table). Built from free AG Grid parts: a sticky header-only grid holds the column titles/filters/sort and copies them to every client table; all tables are `alignedGrids` so widths/order/horizontal scroll stay in sync. Choice remembered per browser. Named custom views = item C.
+  - **Ongoing / Cleared tabs:** Ongoing = no Cleared Date (and not archived) — client/all views as above. Cleared = has a Cleared Date (incl. billed/archived), one table per clearance month (oldest first), sorted by Cleared Date, NOT by client; Cleared Date + Billed? moved next to MBL; each month bar shows "N billed". Removing a Cleared Date moves the row back to Ongoing. Dashboard "Ongoing shipments" + "Cleared this month · N not billed" card (links to Cleared tab). Layout saved per tab.
+  - **Columns panel** (`ColumnsPanel.tsx`): hide/show per user (saved in layout); admin can add custom columns (text/date/number/yes-no → `Shipment.custom_fields` JSON, `tracker_columns` table, migration 0003), delete custom columns (deletes their values), remove built-in columns for everyone (data kept, restorable). API: `/tracker-columns` (GET/POST), `PATCH|DELETE /tracker-columns/{key}`, `POST /tracker-columns/remove-builtin`, `POST /tracker-columns/restore-builtin/{key}`. Custom values edited via `PATCH /shipments/{id}` `{"custom_fields": {key: value}}` (merged, audit-logged as `custom:<key>`). Removed per client request: **BE Description, HBL** (HBL goes in the MBL cell after a slash; MBL cell now wraps so nothing is cut).
+  - **Compact layout** (~3,850px → ~2,470px wide, no columns removed): tighter widths + 12px font, two-line wrapped headers, short dates (27-Aug-26), Day shown as a badge inside the INW cell, POD+Port merged into one "POD" column (port select with names; raw `pod` text kept in DB, not shown), the 5 Yes/No flags shown as one "Checklist" column of click-to-toggle chips (filter e.g. `OOC:N`). Copyable identifiers (MBL, BE No, IGM, Cntr…) stay single-value cells. **Ctrl/⌘+C copies the focused cell** (clipboard API with execCommand fallback).
+  - **Add Shipment form:** Client and Consignee are dropdowns of existing names (case-insensitive de-dupe) with "+ Add new…" → text box.
+  - Also removed (client request, restorable): MBL Date, HBL Date, GW, Total Pkg, Pkg Code, Line No, IGM Date, Voyage, Cont.
+  - **Document reading on upload** (`extraction/document_extract.py` + rewritten `tracker_sync.py`): Assessed/OOC/Gatepass BE → BE no/date, port, MBL, (HBL), containers, gross wt fill BLANKS only (mismatches reported, never overwritten; MBL-contained-in-'MBL/HBL' counts as match; gross wt/containers never flagged — tracker uses MTS, BE uses kg), assessable value/IGST/duty always updated. OOC BE → OOC ✓, Duty Paid ✓, OOC date, examination from the **'H. PROCESSING DETAILS' table read by word position** (Examination row has a date = examined; plain text is scrambled by the watermark) — verified on a real OOC copy (job 121). CFS proforma/tax → CFS amounts (+ sanity check); tax invoice → CFS Inv ✓. DO / DO+Empty → DO ✓. Gatepass → Cleared + Cleared Date. Status only moves forward. Upload response + UI banner show what changed and any warnings; stored on `ShipmentDocument.extraction`. Migration 0004.
+  - **Document checklist changes:** new types Form 6 & 9 (merged), HSS Agreement, Stamp Duty (separate), DO + Empty Letter (one file, satisfies both rows); old HSS&Stamp / Form 6 / Form 9 kept as legacy (hidden from upload). `RequiredDocument.optional`: Empty Letter, Insurance, HBL Copy, HSS Agreement, Stamp Duty, FTA COO, CFS Proforma, CFS Tax Invoice are optional (listed, not flagged missing). Migrations 0005/0006 update existing HS codes.
+  - **Shipment detail page:** BL No and BE No · BE Date shown as the two big key cards; flags show red ✗ "Pending"; new Duty & CFS amounts card; OOC date + Examination; page reloads after an upload.
+  - **Grid:** every column wraps (row grows) so nothing is cut; INW·Day and Checklist widgets wrap inside their cell.
+  - **Data fix:** consignees merged to "Earthman - Mahrishi" (14) / "Earthstar - Mahrishi" (3); `POST /shipments/rename-value` (client|consignee); CSV importer normalises hyphen spacing in names.
+  - **CFS / TDS flags:** `cfs_paid_by_us`, `tds_deducted` (TDS cut on the shipment), `tds_on_cfs` (we cut TDS on the CFS payment) — migration 0007. Tracker "CFS / TDS" chip column (filter e.g. `TDS:Y`), switches on the detail page. CFS paid by us ⇒ CFS Tax Invoice becomes required on that shipment's checklist.
+  - **Logo:** `ClarusLogo.tsx` (vector recreation of the client's wordmark, brand orange #D26B21, Inter 800) in the top bar + login; orange ↗ favicon; page title "Clarus ERP". Swap in the original SVG/PNG when the client sends the file.
+  - **Choose from Google Drive** (Documents tab): Google Picker in the browser with a `drive.file` token (app can only open the files the user picks) → `POST /shipments/{id}/documents/from-drive {document_type, file_id, access_token}` → backend (`integrations/google_drive.py`) fetches the PDF once (token not stored), then same naming/reading/tracker-update as an upload; `ShipmentDocument.drive_file_id/drive_link` kept (migration 0008), "open in Drive ↗" link in the checklist. Button is disabled until configured. **Setup needed (client's Google account):** Google Cloud project → enable Drive API + Google Picker API → OAuth consent screen (Internal if Workspace) → OAuth client ID (Web, authorised JS origin http://localhost:5173 + prod URL) → API key (restrict to Picker API + those origins) → put `VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_API_KEY`, `VITE_GOOGLE_APP_ID` (project NUMBER) in `frontend/.env`, restart `npm run dev`. Auto-saving uploads into Drive = backlog item G.
+  - **Gross weight:** the BE's GW is always taken as correct and overwrites the tracker, converted to the sheet's format (kg → "84.885 MTS", half-up to 3 dp).
+  - **CFS payment after TDS** (`Shipment.cfs_tds_amount` / `cfs_payment_after_tds`, computed): only when CFS is paid by us — TDS = 2% of basic (when "TDS on CFS" is on; switching "CFS paid by us" on turns it on by default), payment = basic + GST − TDS. Not paid by us → detail page says "invoice only". Rate constant `CFS_TDS_RATE` in `models/shipment.py`.
+  - **Shipment Drive folder** (`drive_folder_id/link`, migration 0009): Documents tab bar — "Choose folder" (Drive picker; this grants the app write access under drive.file) or paste a folder link (stored + shown, but saving into it needs the folder chosen via the picker). Uploads are then also saved into that folder with the generated name (`google_drive.upload_pdf`, token sent per upload, never stored); a Drive failure never loses the upload — it's noted in the result banner. "Choose from Google Drive" opens in the shipment's folder.
+  - **Proforma examination reminder:** banner on the Proforma & Billing tab — under examination (from the OOC copy's exam date, or switched on by hand there) → "add the Examination charge" + button that pre-selects charge code EC with its default rate; turns green once an EC line is on the proforma. `under_examination` is PATCH-able.
+  - **Symbol-font PDFs fixed:** "Microsoft Print to PDF" invoices (e.g. Navkar CFS tax invoice) store every character shifted into U+F020–U+F0FF, so pdfplumber saw no readable text. `be_pdf.clean_pdf_text` / `read_pdf` shift them back; used by every PDF reader (BE, CFS, batch scan, upload). A CFS invoice with no readable amounts now shows a warning instead of silently doing nothing. New `POST /shipments/{id}/documents/{doc_id}/reread` + "Re-read" link in the checklist to re-process an existing upload.
+  - **Remove document** (admin only): `DELETE /shipments/{id}/documents/{doc_id}` — file moved to `<storage>/_removed/<shipment id>/`, not destroyed; removal audit-logged; shipment fields it filled are left as-is; Drive copy untouched. "Remove" link in the checklist. Used once: removed job 129's duplicate CFS proforma (same file as its tax invoice).
+  - **Under examination switch** also on the Overview tab (Status card); shows "Yes (marked by hand)" when set without an OOC exam date.
+  - **Correcting misread figures:** BE amounts (assessable value, IGST, duty) editable on the Overview (PATCH shipment). CFS amounts live **per invoice** (`ShipmentDocument.amount_before_tax/gst_amount/amount_total`, migration 0010 with backfill); `PATCH /shipments/{id}/documents/{doc_id}/amounts` — total always = basic + GST, marks `amounts_edited` (a later re-read never overwrites a hand correction), audit-logged.
+  - **Multiple CFS invoices:** any number of CFS proformas/tax invoices per shipment. Shipment CFS totals = sum of tax invoices, or of proformas until a tax invoice exists (`extraction/cfs_totals.py`, recomputed on upload/re-read/edit/remove). Overview lists each invoice (not-counted proformas greyed); checklist rows list every file (`DocumentChecklistItem.documents`).
+  - **Billed? checkbox works:** tick → `POST /bill` (billing access), untick → `POST /unbill` (admin only; restores the status from before billing via the audit log). Both audit-logged. Ongoing/Cleared is now decided ONLY by Cleared Date (billing no longer hides a shipment; dashboard "ongoing" likewise). `billed_at` returned by the API.
+  - **Per-container charges:** Agency (AC) and Examination (EC) are `PER_CONTAINER` (migration 0011 + seed). Adding one to a proforma without a quantity uses the shipment's container count (Cntr); UI pre-fills it and shows "× N containers = ₹… + GST". Error if the shipment has no container count. **Open (client will share bills):** which charges are taxable vs pure-agent reimbursements (CFS, bond, documentation etc. vary) — affects GST on proforma lines.
+  - **Rename client:** "Rename" on each client bar → `POST /shipments/rename-client` renames every shipment with that client (audit-logged per row, port-scoped; renaming onto an existing name merges after a confirm).
+  - **Auto-refresh:** tracker refetches every 5 min and whenever the tab becomes visible again (skipped while a cell is being edited); edits re-sort rows immediately.
+  - **Day** now follows the client's sheet formula exactly: blank/not a date → Pending; diff = today − INW; +1 if diff ≥ 0 (future INW stays negative); "1 day"/"N days".
+  - **Alembic set up** (`backend/alembic/`, 0001 baseline + 0002). Migrations run automatically on startup/seed/import; pre-Alembic DBs are auto-stamped at 0001. New schema change = `.venv/bin/alembic revision --autogenerate -m "..."`.
+
+
+---
+
+## ✅ Session update — local setup fixes + extraction port (backend)
+
+**Setup fixes:** `.env` was never loaded (no dotenv) — added `python-dotenv`,
+loaded in `core/database.py` + `core/security.py`. `.env.example`'s Postgres
+`DATABASE_URL` would break a local run, so local `.env` leaves it unset
+(SQLite). Python 3.9 compat (`from __future__ import annotations` in
+`extraction/naming.py`, `tracker_sync.py`). Added `POST /auth/change-password`
+(min 12 chars). Seeded admin password has been rotated locally — stored in
+`backend/.local-credentials` (git-ignored). `backend/.gitignore` added.
+
+**Extraction port (spec §5.1/§5.1a) — `backend/app/extraction/`:**
+- `be_pdf.py` — BE fields (port, BE no/date, importer 3-tier, AD code,
+  MAWB/HAWB + PKG/GW by word position, container count, assessable value /
+  IGST / total duty). Regexes/offsets verbatim from the reference; PDF now
+  opened once instead of 3×.
+- `cfs_pdf.py` — CFS invoice fields + before-tax+GST=after-tax sanity check,
+  CFS→BE row matching (BE no, then BL=MAWB), BE/CFS scored classification.
+- `excel_imports.py` — challan list → `{BE no: Due Amount}`, Organization
+  List import, name-mismatch rule (YES/NO/N/A), interest split.
+- `batch.py` — mixed-batch pipeline: classify → scan → match CFS → name
+  check → duplicate flags (within batch; and BE already on a shipment =
+  "previously processed", replacing the reference's CSV log).
+- New `OrganizationEntry` model (AD code registry, spec §5.1).
+- Endpoints (`routers/extraction.py`): `POST /extraction/scan` (multi-file),
+  `POST /extraction/challan`, `GET/POST/PUT/DELETE /organizations`,
+  `POST /organizations/import` (xlsx). Scan/challan = billing access;
+  org edits = admin. Endpoints are stateless — nothing saved to shipments yet.
+
+**Tests (new — first automated tests in the repo):** `backend/tests/`,
+19 passing (`.venv/bin/python -m pytest`). Uses reportlab-generated
+synthetic BE/CFS PDFs. ⚠️ These prove the ported logic runs as written, NOT
+that it matches real ICEGATE/CFS layouts — **get 3-5 real (redacted) BE +
+CFS PDFs from the client and add them as fixtures.**
+
+**Still to do for Module 3 extraction:** batch fee-entry UI on top of
+`/extraction/scan` (create/update shipments + proformas from rows), per-
+importer fee memory + fee presets, admin UI for the org registry, OOC-date
+extraction on document upload (spec §3.3).
+
+---
+
+## ✅ Session update — Dashboard, Shipment Detail, Document Manager, Proforma views
+
+**Why:** the frontend previously had only Login + the shipment grid — no UI
+for the backend logic that already existed (documents, HS-code checklist,
+proforma/billing data model). This was flagged directly by the client
+looking at the preview ("this is basically just an excel").
+
+**Backend additions (new, tested live against a seeded SQLite DB, not just
+written):**
+- `GET /shipments/summary/dashboard` (`app/routers/shipments.py`) — live
+  shipment count, stuck count, counts by status, counts by port, next 5
+  upcoming ETAs. Reuses the same port-scoping as the grid endpoint.
+- `app/routers/hs_codes.py` (new) — `GET /hs-codes`, `GET /hs-codes/{id}`,
+  returning each HS code's required-document list.
+- `GET /shipments/{id}/documents/checklist` (`app/routers/documents.py`) —
+  cross-references a shipment's HS code required-docs against what's
+  actually been uploaded; drives the Document Manager checklist UI.
+- `app/routers/proforma.py` (new) — `GET /charge-master`,
+  `GET`/`POST /shipments/{id}/proformas`, `POST`/`DELETE
+  /proformas/{id}/line-items/...`, `PATCH /proformas/{id}` (status).
+  GST/SAC are copied onto the line item at creation time from the charge
+  master, per spec §5.3, so a later master edit can't rewrite a past bill.
+  Gated by the existing `require_billing_access` dependency.
+- New schemas: `HSCodeOut`, `DocumentChecklistItem` (in `schemas/document.py`);
+  `ChargeMasterOut`, `ProformaOut`, `ProformaLineItemOut`,
+  `ProformaLineItemCreate`, `ProformaStatusUpdate` (new `schemas/proforma.py`).
+- All four new routers registered in `main.py`.
+
+**Tested live this session:** started the server against a fresh seeded DB,
+logged in, created a shipment against the tyre HS code, then hit every new
+endpoint end-to-end: dashboard summary returned correct counts; checklist
+returned all 16 required doc types as "missing"; created a proforma, added
+a line item (₹1000 rate × qty 2 → ₹2000, +18% GST = ₹360, total ₹2360 —
+verified correct), then marked it Sent.
+
+**Frontend additions (new files, `npm run build` verified clean):**
+- `AppLayout.tsx` — shared top nav (Dashboard | Shipments) + logout, now
+  wraps all authenticated routes instead of each page having its own header.
+- `DashboardPage.tsx` (route `/dashboard`, now the post-login landing page)
+  — stat cards (live count, stuck count, ports active), a clickable status
+  pipeline row (links into the grid pre-filtered by that status via
+  `?status=`), by-port breakdown, upcoming ETAs.
+- `ShipmentDetailPage.tsx` (route `/shipments/:id`) — full shipment detail
+  with Overview / Documents / Proforma & Billing tabs. Job row in the grid
+  now links here.
+- `DocumentManagerPanel.tsx` — required-doc checklist table (missing rows
+  highlighted like stuck shipments) + an upload form; shows an explicit
+  warning if the shipment has no HS code assigned yet.
+- `ProformaPanel.tsx` — version tabs (draft/sent/superseded), add/remove
+  line items from the charge master with live GST calc, running grand
+  total, "Mark as Sent" action.
+- `ShipmentGridPage.tsx` — updated to read `?status=` from the URL (for the
+  dashboard's pipeline links), dropped its own header/logout (now in
+  `AppLayout`), Job cell links to the detail page.
+- `types.ts` / `api.ts` — extended with `DocumentType`, `HSCode`,
+  `ChargeMasterEntry`, `Proforma`/`ProformaLineItem`, `DashboardSummary`
+  types and the matching API calls, kept in sync with the new endpoints.
+- `index.css` — new styles for the top nav, dashboard cards/pipeline,
+  detail-page sections/tabs, document checklist, and proforma table —
+  same design tokens as the existing grid/login styling, nothing new
+  introduced.
+
+**Not done yet (see updated Next Steps below):** no HS-code *picker* on the
+shipment detail page yet (hs_code_id can only be set via the create-shipment
+API/form right now, not edited afterward from the UI) — flagged as a
+follow-up. Proforma PDF generation (spec §5.5's "generated_filename"/
+"file_path" columns) is still unset — the model supports it, nothing writes
+to it yet.
+
+---
+
+## ✅ What's built and verified working
+
+### Backend (`backend/`) — FastAPI + SQLAlchemy, Python
+Runs against SQLite by default (zero setup) or Postgres via `DATABASE_URL`.
+
+- **Auth**: JWT login (`POST /auth/login`), current-user endpoint, admin-only
+  user creation. Role model (Admin/Import Manager/Export Manager/Accountant)
+  and port-scoping are implemented in `app/core/deps.py`.
+- **Shipments** (`app/routers/shipments.py`): full CRUD, port-scoped listing,
+  search, status/stuck filters, bill/unbill endpoints. All field updates go
+  through an audit-log hook (`app/core/audit.py`) per the 7-day version
+  history requirement (purge job NOT yet built — see Next Steps).
+- **Documents** (`app/routers/documents.py`): upload + tag in one call.
+  Auto-generates the filename per the confirmed two-state naming rule
+  (`app/extraction/naming.py`) and runs the doc-type → tracker-field
+  auto-sync (`app/extraction/tracker_sync.py`).
+- **Data model**: `app/models/` — Shipment (full 26-field set), User,
+  HSCode/RequiredDocument, ShipmentDocument, ChargeMasterEntry, Proforma/
+  ProformaLineItem (versioned, dynamic line items), AuditLogEntry.
+- **Seed data** (`app/seed.py`): tyre HS code + its required-doc checklist,
+  the full 17-entry charge master with SAC codes as resolved in our
+  conversation, one admin user.
+
+**Actually tested this session, not just written** — ran the server,
+logged in, created a shipment, uploaded a PDF tagged as OOC Bill of Entry,
+and confirmed both:
+1. The generated filename was exactly right: `OOC - MBL12345 - BE7788.pdf`
+2. The tracker auto-update fired: `ooc: false→true`,
+   `status: to_be_filed→ooc_done` — automatically, from the upload alone.
+
+This is the one mechanic the client described most precisely in the original
+conversation, so proving it works end-to-end (not just "looks right in the
+code") was the priority for this session.
+
+Also fixed along the way: a real `passlib`/`bcrypt` version incompatibility
+(newer bcrypt removed an attribute passlib 1.7.4 expects) — pinned
+`bcrypt==4.0.1` in `requirements.txt` so this doesn't break for whoever runs
+this next.
+
+### Frontend (`frontend/`) — Vite + React + TypeScript
+- Scaffolded, dependencies installed, **production build verified clean**
+  (`npm run build` — zero TypeScript errors).
+- `src/types.ts` / `src/api.ts` — typed API client matching the backend
+  schemas exactly (kept in sync manually; consider generating from the
+  OpenAPI schema once the API stabilizes).
+- `src/AuthContext.tsx` — auth state, token persistence in localStorage.
+- `src/LoginPage.tsx` — working login screen.
+- `src/AppLayout.tsx` — shared top nav (Dashboard | Shipments) + logout,
+  wraps all authenticated routes.
+- `src/DashboardPage.tsx` — Tracker Dashboard: stat cards, clickable status
+  pipeline, by-port breakdown, upcoming ETAs. Post-login landing page.
+- `src/ShipmentGridPage.tsx` — the core tracker grid: search, stuck-only
+  filter, status pills, quick-add form, `?status=` filter from the
+  dashboard. Wired to the real API, not mocked. Job cell links to detail.
+- `src/ShipmentDetailPage.tsx` — full shipment detail, Overview / Documents
+  / Proforma & Billing tabs.
+- `src/DocumentManagerPanel.tsx` — HS-code required-doc checklist + upload.
+- `src/ProformaPanel.tsx` — versioned proforma line items, GST calc, totals.
+- `src/App.tsx` — routing with a protected-route wrapper.
+
+**⚠️ This is a functional scaffold, not the aesthetic pass.** The client's
+brief explicitly requires the app to be aesthetic (spec §1) — current styling
+(`src/index.css`) is a clean, readable baseline (decent spacing, restrained
+palette, no glaring "AI slop" defaults) but has NOT been through a proper
+design pass. Before this ships, run it through the `frontend-design` skill's
+plan → review → build → critique process properly: pick a real palette/type
+system grounded in the subject matter (a logistics/customs ops tool, not a
+generic SaaS dashboard), and apply it consistently across every screen —
+not just the grid.
+
+---
+
+## 🚧 Not started yet (in priority order)
+
+1. ~~**PDF/Excel extraction port**~~ — backend DONE (see top); UI/fee-memory/real-PDF fixtures remain. Original note: `reference/be_expense_sheet.py` has the
+   working extraction logic (BE/CFS classification, AD-code lookup,
+   duplicate detection, etc. — see `ERP_Spec.md` §5.1/§5.6) but NONE of it
+   has been ported into `backend/app/extraction/` yet. This is the biggest
+   remaining chunk of work — budget real time for it, and read the
+   reference script directly rather than working from the spec summary
+   alone (per the spec's own §0 instruction).
+2. **HS-code picker on the shipment detail page** — the Overview tab
+   displays fields but there's no way to set/change `hs_code_id` from the
+   UI yet; it can currently only be set via the create-shipment API/form.
+   Needed before the Document Manager checklist is usable for a shipment
+   created without one.
+3. **Proforma PDF generation** — `Proforma.generated_filename`/`file_path`
+   columns exist (spec §5.5 naming syntax) but nothing writes to them; the
+   Proforma & Billing UI only manages line items and status in-app so far.
+4. **Charge master management UI** — seed data exists in the DB, no admin
+   screen to create/edit charges yet (the Proforma panel only *reads* it).
+5. **HS-code management UI** — same story: seeded + readable via API, no
+   admin screen to add new HS codes or edit their required-doc lists.
+6. **Audit-log 7-day purge job** — entries are being written correctly;
+   nothing deletes them after 7 days yet. A simple scheduled task (cron,
+   APScheduler, or a Celery beat job) is enough.
+7. **Delete-approval flow** — spec says non-admins can't delete without
+   admin approval. Current API just blocks non-admins outright (403) with
+   no request/approval mechanism. Needs its own small model + endpoints.
+8. **Daily duty challan Playwright job** (spec §5.1a/§4) — explicitly the
+   one automation kept in v1 scope. Not started.
+9. **Everything marked Phase 2 in the spec** (ICEGATE/CFS scraping,
+   LiveImpex integration decision) — correctly out of scope, don't start
+   these without checking with the client first.
+
+---
+
+## Known rough edges / things to double check
+
+- `TYRE_HS_CODE = "40040000"` in `app/seed.py` — confirmed with client.
+- `DOC_TYPE_ABBREVIATIONS` in `app/extraction/naming.py` are reasonable
+  guesses (PL, OOC, BL, etc.) — spec §6 flags that the client has 2 existing
+  Python scripts with the canonical abbreviations, not yet shared. Swap
+  these in once available.
+- `ChargeMasterEntry.calculation_basis` is seeded as `FLAT` for everything —
+  spec §5.6 notes the reference tool uses per-container and per-kg bases for
+  some charges (Agency, Royalty). Confirm which of the 17 charges need a
+  non-flat basis.
+- CORS is wide open (`allow_origins=["*"]`) in `app/main.py` — fine for dev,
+  tighten before any real deployment.
+- No Alembic migrations generated yet — `Base.metadata.create_all()` on
+  startup is a dev convenience only, not a migration strategy. Run
+  `alembic revision --autogenerate` once the schema is stable enough to
+  stop churning.
+
+---
+
+## How to run this locally
+
+**Backend:**
+```bash
+cd backend
+cp .env.example .env      # then comment out DATABASE_URL for SQLite, set a real JWT_SECRET_KEY
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m app.seed        # creates tables + seed data
+.venv/bin/python -m uvicorn app.main:app --reload
+.venv/bin/python -m pytest          # tests
+```
+Default admin login: `admin@example.com` / `changeme` — **change this
+immediately**, it's a seeded placeholder.
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Visit the printed localhost URL, log in with the admin credentials above.

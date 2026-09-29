@@ -1,0 +1,23 @@
+# --- never in git: secrets, data, client files ---
+.env
+.env.*
+!.env.example
+.local-credentials
+*.db
+*.sqlite
+*.sqlite3
+backend/storage/
+# the client's own files (templates, charge lists) — kept locally only
+reference/
+*.dump
+*.dump.enc
+
+# --- build / tooling ---
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.claude/
