@@ -654,9 +654,13 @@ The client will pick features they like from other software and feed them in. Re
    - Always pre-apply the suggested bill rate, AND adjust it by our rules when costs change (add / subtract) so the
      value follows — the rules should be smart.
    - If CFS is switched to taxable, it shows in the tax invoice as the final invoice.
-3. **Invoice numbering (Phase 3 revisited):** tax and reimbursement invoices always share the same number. Open
-   question: a shipment with no reimbursement breaks the RI chain — options given in chat (log a "not issued" entry
-   in the RI register vs separate series with cross-reference); confirm with the CA.
-4. **(P5) Delhi / non-sea-port shipments:** INW = sea-port inward; there's also an arrival date at FPOD, from which
+3. **Invoice numbering (Phase 3 revisited) — decided:** tax and reimbursement invoices always share the same number.
+   When a shipment has no reimbursement, a reimbursement invoice is **still issued** with that number: all the usual
+   details (party, shipment, references) but **no charge heads**, and **"BILL CANCELLED — NOT APPLICABLE"** in bold
+   across the bill so it's obvious. The chain never breaks.
+4. **One final-invoice interface:** tax + reimbursement are two invoices, but finalised together in **one** screen,
+   one action (not twice the manual work). Export on demand: one PDF with both sheets, or two separate PDFs.
+5. **Invoicing starts in October 2026** — the above must be ready by then.
+6. **(P5) Delhi / non-sea-port shipments:** INW = sea-port inward; there's also an arrival date at FPOD, from which
    the free days start. The tracker's Day count is wrong for these (free days haven't started). Needs an FPOD arrival
    date and Day counted from it.
