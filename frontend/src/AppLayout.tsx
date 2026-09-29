@@ -22,9 +22,9 @@ const ICONS = {
 
 function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICONS }) {
   return (
-    <NavLink to={to} className={({ isActive }) => (isActive ? "active" : "")}>
+    <NavLink to={to} className={({ isActive }) => (isActive ? "active" : "")} title={label}>
       {ICONS[i]}
-      {label}
+      <span className="nav-label">{label}</span>
     </NavLink>
   );
 }
@@ -33,6 +33,23 @@ export default function AppLayout() {
   const { user, logout } = useAuth();
   const [accent, pickAccent] = useState<AccentId>(savedAccent);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  // sidebar can shrink to icons (more room for the tracker); remembered per browser
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("clarus.sidebar") === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () =>
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem("clarus.sidebar", c ? "open" : "collapsed");
+      } catch {
+        /* private window */
+      }
+      return !c;
+    });
   // admin: red banner when backups are late, shrank or failed (checked every 10 minutes)
   const [backupWarnings, setBackupWarnings] = useState<string[]>([]);
   useEffect(() => {
@@ -46,11 +63,22 @@ export default function AppLayout() {
   const initials = (user?.full_name || user?.email || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}`}>
       <aside className="app-sidebar">
-        <span className="app-brand">
-          <ClarusLogo height={20} title="Clarus Logistics" />
-        </span>
+        <div className="app-brand">
+          <span className="app-brand-logo">
+            <ClarusLogo height={20} title="Clarus Logistics" />
+          </span>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            onClick={toggleSidebar}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {icon(<><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6 2.5v11" /></>)}
+          </button>
+        </div>
         <nav className="app-nav">
           <Item to="/dashboard" label="Dashboard" i="dashboard" />
           <Item to="/shipments" label="Shipments" i="shipments" />
@@ -102,7 +130,8 @@ export default function AppLayout() {
             <strong>Backups:</strong> {backupWarnings.join(" ")}
           </div>
         )}
-        <SidebarSlotContext.Provider value={slot}>
+        {/* collapsed: page tools stay in the page itself */}
+        <SidebarSlotContext.Provider value={collapsed ? null : slot}>
           <Outlet />
         </SidebarSlotContext.Provider>
       </main>
