@@ -5,6 +5,7 @@ import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
 import { ACCENTS, THEMES, savedAccent, savedTheme, setAccent, setTheme, type AccentId, type ThemeId } from "./accent";
 import { SidebarSlotContext } from "./sidebarSlot";
+import { useSandbox } from "./sandboxInfo";
 
 // 16px line icons (stroke follows the text colour)
 const icon = (d: ReactNode) => (
@@ -36,6 +37,7 @@ export default function AppLayout() {
   const [accent, pickAccent] = useState<AccentId>(savedAccent);
   const [theme, pickTheme] = useState<ThemeId>(savedTheme);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const sandbox = useSandbox();
   // sidebar can shrink to icons (more room for the tracker); remembered per browser
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -147,6 +149,11 @@ export default function AppLayout() {
         </div>
       </aside>
       <main className="app-main">
+        {sandbox.sandbox && (
+          <div className="sandbox-banner" role="note">
+            <strong>Sandbox</strong> — sample data to try the ERP. Nothing here is real; changes stay in the sandbox.
+          </div>
+        )}
         {backupWarnings.length > 0 && (
           <div className="backup-banner" role="alert">
             <strong>Backups:</strong> {backupWarnings.join(" ")}

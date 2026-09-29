@@ -39,7 +39,7 @@ def test_login_throttle_and_lockout(client):
 
 def test_health_checks_the_database_and_headers(client):
     r = client.get("/health")
-    assert r.status_code == 200 and r.json() == {"status": "ok"}
+    assert r.status_code == 200 and r.json() == {"status": "ok", "sandbox": False}
     assert r.headers["x-content-type-options"] == "nosniff" and r.headers["x-frame-options"] == "DENY"
 
 
@@ -79,3 +79,23 @@ _RAN: list = []
 def _fake_job():
     import tests.test_production as me
     me._RAN.append(1)
+
+
+def test_sandbox_never_wipes_a_real_database(monkeypatch):
+    """P4: the sandbox reset refuses unless SANDBOX=1 AND the database is named *sandbox*."""
+    import pytest
+
+    from app import sandbox
+
+    monkeypatch.setenv("SANDBOX", "0")
+    with pytest.raises(RuntimeError):
+        sandbox.reset()
+    monkeypatch.setenv("SANDBOX", "1")  # the test database isn't named *sandbox*
+    with pytest.raises(RuntimeError):
+        sandbox.reset()
+
+
+def test_health_says_sandbox_with_the_demo_login(client, monkeypatch):
+    monkeypatch.setenv("SANDBOX", "1")
+    body = client.get("/health").json()
+    assert body["sandbox"] is True and body["demo_email"] and body["demo_password"]

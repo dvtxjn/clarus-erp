@@ -27,12 +27,13 @@ def problems() -> list[str]:
         out.append("JWT_SECRET_KEY is missing, a default, or shorter than 32 characters")
     if not DATABASE_URL.startswith("postgresql"):
         out.append("DATABASE_URL must be a postgresql:// URL (not SQLite)")
-    if not os.getenv("PUBLIC_URL", "").startswith("https://"):
+    if not os.getenv("SANDBOX", "0") == "1" and not os.getenv("PUBLIC_URL", "").startswith("https://"):
         out.append("PUBLIC_URL must be the site's https:// address (CORS and links use it)")
-    if os.getenv("STORAGE_BACKEND", "local") != "drive":
+    sandbox = os.getenv("SANDBOX", "0") == "1"  # the demo copy: local files, a public demo login
+    if not sandbox and os.getenv("STORAGE_BACKEND", "local") != "drive":
         out.append("STORAGE_BACKEND must be 'drive' (a server's own disk is wiped on every deploy)")
-    for k in ("GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID", "DRIVE_INVOICES_FOLDER_ID",
-              "DRIVE_BACKUPS_FOLDER_ID", "BACKUP_ENCRYPTION_KEY"):
+    for k in () if sandbox else ("GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID", "DRIVE_INVOICES_FOLDER_ID",
+                                 "DRIVE_BACKUPS_FOLDER_ID", "BACKUP_ENCRYPTION_KEY"):
         if not os.getenv(k, "").strip():
             out.append(f"{k} is not set")
     if os.getenv("JOBS_ENABLED", "1") == "0" and len(os.getenv("JOB_TOKEN", "")) < 24:
@@ -46,7 +47,7 @@ def problems() -> list[str]:
         with engine.connect() as c:
             c.execute(text("SELECT 1"))
         with SessionLocal() as db:
-            for u in db.query(User).filter(User.is_active.is_(True)).all():
+            for u in db.query(User).filter(User.is_active.is_(True)).all() if not sandbox else []:
                 if u.email == "admin@example.com" or verify_password("changeme", u.hashed_password):
                     out.append(f"User {u.email} has the default login — change the password / remove it "
                                "(scripts/create_admin.py makes a real admin)")

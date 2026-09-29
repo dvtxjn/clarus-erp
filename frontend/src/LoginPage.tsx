@@ -4,8 +4,10 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { forgotPassword } from "./api";
+import { useSandbox } from "./sandboxInfo";
 
 export default function LoginPage() {
+  const sandbox = useSandbox();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,22 @@ export default function LoginPage() {
           <ClarusLogo height={40} title="Clarus Logistics" />
         </h1>
         <p className="auth-subtitle">Sign in to your ERP</p>
+        {sandbox.sandbox && (
+          <div className="sandbox-login">
+            <strong>Sandbox — try it with sample data</strong>
+            <span>Nothing here is real, and nothing you do here reaches the real system.</span>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setEmail(sandbox.demo_email ?? "");
+                setPassword(sandbox.demo_password ?? "");
+              }}
+            >
+              Use the demo login
+            </button>
+          </div>
+        )}
 
         <label htmlFor="email">Email</label>
         <input
