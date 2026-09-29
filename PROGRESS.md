@@ -722,3 +722,9 @@ The client will pick features they like from other software and feed them in. Re
   goes to the client (contacts to be fed); the client replies with a payment screenshot and maybe the UTR; the bank's
   credit e-mail (on one of the client's mailboxes) is read and matched by UTR + amount; if received → mark paid in the
   ERP and issue a receipt automatically. Builds on the payments above.
+- ✅ P4 Sandbox (2026-09-30): a separate copy for staff to try — own Cloud Run service (clarus-erp-sandbox), own
+  database (erp_sandbox), own login secret; SANDBOX=1: banner, demo login on the login page, no admin, no rates /
+  licences / pricing rules, local files, no Drive / backups. One showcase data set (4 made-up clients, 12 shipments at
+  different stages, HSS, deadlines, Delhi ICD) — scripts/seed_sandbox.py; refuses unless SANDBOX=1 AND the database
+  is named *sandbox*. Set up / update: `bash deploy/gcp/sandbox.sh` (`--reset` puts the sample data back).
+- Fix: client sections with few shipments no longer leave an empty block (AG Grid's 150 px minimum).

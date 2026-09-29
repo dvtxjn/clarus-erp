@@ -1349,3 +1349,14 @@ input { padding: 6px 9px; }
 .modal h3 { margin: 0; font-size: 15px; }
 .pay-split-head { display: flex; justify-content: space-between; align-items: center; }
 .pay-dialog .rate-input { width: 120px; }
+
+/* sandbox copy (P4) */
+.sandbox-banner { background: var(--info-bg); color: var(--info-fg); border-bottom: 1px solid var(--color-border); padding: 7px 24px; font-size: 13px; }
+.sandbox-login { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; margin: 4px 0 8px; border-radius: 8px;
+  background: var(--info-bg); color: var(--info-fg); font-size: 12.5px; }
+.sandbox-login button { align-self: flex-start; }
+/* a client with only a few shipments: no empty block under them (AG Grid keeps 150 px for its "no rows" note) */
+.client-grid-stack .ag-layout-auto-height .ag-center-cols-viewport,
+.client-grid-stack .ag-layout-auto-height .ag-center-cols-container,
+.client-grid-stack .ag-layout-auto-height .ag-body-viewport,
+.client-grid-stack .ag-grid-scrolling-rows.ag-layout-auto-height { min-height: 0 !important; }
