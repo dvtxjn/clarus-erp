@@ -175,29 +175,25 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       <section className="detail-section detail-wide">
         <h3>Shipment &amp; movement</h3>
         <div className="field-grid">
-            <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
-            <Field label="ETA" value={fmtDate(s.eta)} />
-            <Field label="INW" value={s.inw} />
+            <EditField label="Port (POD)" field="port" kind="port" s={s} onChange={onChange} display={formatPort(s.port, ports) || null} />
+            <EditField label="ETA" field="eta" kind="date" s={s} onChange={onChange} display={fmtDate(s.eta)} />
+            <EditField label="INW" field="inw" s={s} onChange={onChange} hint="Typed like the sheet, e.g. 19-Sep-2026" />
             <Field label="Day" value={s.days} />
-            <Field label="IGM" value={s.igm} />
-            <Field label="License" value={s.license} />
-            <Field label="Containers" value={s.container} />
-            <Field label="Gross Wt" value={s.gross_wt} />
-            <Field label="Container Status" value={s.container_status} />
-            <Field label="CFS" value={s.cfs} />
-            <Field label="POC" value={s.poc} />
-            <Field label="Delivery" value={s.delivery_status} />
-            <Field label="Shipping Line" value={s.shipping_line} />
+            <EditField label="IGM" field="igm" s={s} onChange={onChange} />
+            <EditField label="License" field="license" s={s} onChange={onChange} />
+            <EditField label="Containers" field="container" s={s} onChange={onChange} />
+            <EditField label="Gross Wt" field="gross_wt" s={s} onChange={onChange} />
+            <EditField label="Container Status" field="container_status" s={s} onChange={onChange} />
+            <EditField label="CFS" field="cfs" s={s} onChange={onChange} />
+            <EditField label="POC" field="poc" s={s} onChange={onChange} />
+            <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
+            <EditField label="Shipping Line" field="shipping_line" s={s} onChange={onChange} />
         </div>
         <div className="detail-wide-foot">
           <HssEditor shipment={s} onChange={onChange} />
           <div className="detail-remarks">
-            <span className="field-label">Remarks</span>
-            {s.remark || s.remarks ? (
-              <span>{[s.remark, s.remarks].filter(Boolean).join(" · ")}</span>
-            ) : (
-              <span className="field-empty">—</span>
-            )}
+            <EditField label="Remark" field="remark" s={s} onChange={onChange} />
+            <EditField label="Remarks" field="remarks" s={s} onChange={onChange} multiline />
           </div>
         </div>
       </section>
@@ -220,7 +216,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         </section>
         <section className="detail-section">
           <h3>Status</h3>
-          <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
+          <EditField label="OOC Date" field="ooc_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.ooc_date)} />
           <Field label="Examination" value={examination} hint="Read from the OOC copy" />
           <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
             <span>Under examination</span>
@@ -232,7 +228,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               onChange={() => toggle("under_examination")}
             />
           </label>
-          <Field label="Cleared Date" value={fmtDate(s.cleared_date)} />
+          <EditField label="Cleared Date" field="cleared_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.cleared_date)} />
         </section>
       </div>
       <div className="detail-col">
@@ -846,6 +842,104 @@ function statusFlags(s: Shipment): [string, boolean][] {
     ["Line Paid", s.line_paid],
     ["DO", s.do],
   ];
+}
+
+type EditKind = "text" | "date" | "port";
+
+/**
+ * A field on the Overview you can edit in place, like Notion (client, 2026-09-30): click it,
+ * type, Enter (or click away) saves — Esc cancels. Saved like a tracker cell (someone else's
+ * newer change is never overwritten silently).
+ */
+function EditField({
+  label,
+  field,
+  s,
+  onChange,
+  kind = "text",
+  display,
+  hint,
+  multiline,
+}: {
+  label: string;
+  field: keyof Shipment;
+  s: Shipment;
+  onChange: (s: Shipment) => void;
+  kind?: EditKind;
+  display?: string | null;
+  hint?: string;
+  multiline?: boolean;
+}) {
+  const ports = usePorts();
+  const saveShipment = useSaveShipment();
+  const raw = (s[field] as string | null | undefined) ?? "";
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState(raw);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = () => {
+    setV(raw);
+    setErr(null);
+    setEditing(true);
+  };
+  const save = async (value = v) => {
+    const next = value.trim() === "" ? null : value.trim();
+    if ((next ?? "") === (raw ?? "")) return setEditing(false);
+    setBusy(true);
+    try {
+      onChange((await saveShipment(s, { [field]: next } as Partial<Shipment>, label)).shipment);
+      setEditing(false);
+    } catch {
+      setErr("Couldn't save");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      save();
+    }
+  };
+
+  const shown = display !== undefined ? display : raw || null;
+  return (
+    <div className={`field-row edit-field${editing ? " is-editing" : ""}`} title={hint}>
+      <span className="field-label">{label}</span>
+      {editing ? (
+        kind === "port" ? (
+          <select autoFocus value={v} disabled={busy} onChange={(e) => save(e.target.value)} onBlur={() => setEditing(false)} onKeyDown={keys}>
+            <option value="">—</option>
+            {ports.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.code} · {p.name}
+              </option>
+            ))}
+          </select>
+        ) : multiline ? (
+          <textarea autoFocus rows={2} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={() => save()} onKeyDown={keys} />
+        ) : (
+          <input
+            autoFocus
+            type={kind === "date" ? "date" : "text"}
+            onFocus={(e) => e.currentTarget.select()}
+            value={v}
+            disabled={busy}
+            onChange={(e) => setV(e.target.value)}
+            onBlur={() => save()}
+            onKeyDown={keys}
+          />
+        )
+      ) : (
+        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}`} onClick={start} title="Click to edit">
+          {shown ?? "—"}
+        </button>
+      )}
+      {err && <span className="auth-error">{err}</span>}
+    </div>
+  );
 }
 
 function Field({ label, value, hint, strong }: { label: string; value: string | null; hint?: string; strong?: boolean }) {

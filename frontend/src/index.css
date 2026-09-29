@@ -1210,3 +1210,17 @@ input { padding: 6px 9px; }
 .final-pair-actions button { font-size: 12.5px; padding: 0 12px; height: 30px; }
 .final-na { color: var(--color-danger); }
 .final-others-head { font-size: 11px; font-weight: 600; color: var(--color-text-muted); margin-top: 10px; }
+
+/* Overview: click a value to edit it in place */
+.edit-field { align-items: center; gap: 10px; }
+.edit-value {
+  background: none; border: 1px solid transparent; box-shadow: none; color: var(--color-text); font: inherit; font-weight: 400;
+  padding: 1px 6px; margin-right: -6px; border-radius: 4px; text-align: right; cursor: text; max-width: 65%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.edit-value:hover { background: var(--color-inv-sub); border-color: var(--color-border); }
+.edit-field input, .edit-field select, .edit-field textarea { max-width: 62%; font-size: 13px; padding: 2px 6px; text-align: right; }
+.edit-field textarea { text-align: left; width: 100%; max-width: none; }
+.detail-remarks { flex-direction: column; gap: 0; }
+.detail-remarks .edit-field { border-bottom: 1px solid var(--color-border); }
+.detail-remarks .edit-value { max-width: 80%; white-space: normal; text-align: left; }
