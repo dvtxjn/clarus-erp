@@ -31,6 +31,7 @@ from app.extraction.cfs_totals import (
 )
 from app.extraction.naming import generate_document_filename
 from app.extraction.document_extract import extract_document_fields
+from app.extraction.pdf_kind import pdf_kind
 from app.extraction.tracker_sync import apply_tracker_sync
 
 router = APIRouter(prefix="/shipments/{shipment_id}/documents", tags=["documents"])
@@ -131,11 +132,15 @@ def reread_document(shipment_id: int, document_id: int, db: Session = Depends(ge
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    fields = extract_document_fields(doc.document_type, storage.local_path(doc))  # slow part, before the lock
+    path = storage.local_path(doc)
+    fields = extract_document_fields(doc.document_type, path)  # slow part, before the lock
+    kind = pdf_kind(path)
     shipment = locked_shipment_or_404(db, shipment_id)
+    doc.pdf_kind = kind
     doc.tracker_sync_applied = False
+    doc.extraction = {"fields": fields}  # totals need its invoice number (duplicates count once)
     result = apply_tracker_sync(db, shipment, doc, current_user.id, fields)
-    doc.extraction = {"fields": fields, **result}
+    doc.extraction = {"fields": fields, **result, "duplicate_of": (doc.extraction or {}).get("duplicate_of")}
     refresh_draft_proformas(db, shipment)  # draft proformas pick up the new figures
     db.commit()
     db.refresh(doc)
@@ -290,6 +295,7 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
         write(out_file)
     # Read the PDF (BE / OOC / CFS invoice fields) before locking — it's the slow part
     fields = extract_document_fields(document_type, str(dest_path))
+    kind = pdf_kind(str(dest_path))  # digital or scanned
 
     # One short locked transaction: fresh shipment row, "fill blanks only" is judged on it
     shipment = locked_shipment_or_404(db, shipment.id)
@@ -303,6 +309,7 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
         drive_file_id=drive_file_id,
         drive_link=drive_link,
         drive_picked=drive_file_id is not None,
+        pdf_kind=kind,
     )
     db.add(doc)
     db.flush()  # get doc.id without committing yet
@@ -311,10 +318,15 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
     if document_type == DocumentType.ASSESSED_BILL_OF_ENTRY and fields.get("is_ooc_copy"):
         # It's actually the OOC copy: file it as one (type + file name)
         refiled = _refile(doc, shipment, DocumentType.OOC_BILL_OF_ENTRY)
+    doc.extraction = {"fields": fields}  # totals need its invoice number (duplicates count once)
     result = apply_tracker_sync(db, shipment, doc, user.id, fields)
     if refiled:
         result["notes"].insert(0, "This is an OOC copy — filed as OOC Bill of Entry.")
-    doc.extraction = {"fields": fields, **result}
+    duplicate_of = (doc.extraction or {}).get("duplicate_of")
+    if duplicate_of:
+        result["notes"].insert(0, f"Same invoice ({fields.get('invoice_no') or 'same IRN'}) was already added — "
+                                  "its amounts are counted once.")
+    doc.extraction = {"fields": fields, **result, "duplicate_of": duplicate_of}
     refresh_draft_proformas(db, shipment)  # draft proformas pick up the new figures
 
     db.commit()  # ends the locked part

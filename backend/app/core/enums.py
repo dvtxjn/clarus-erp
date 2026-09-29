@@ -56,6 +56,7 @@ class DocumentType(str, enum.Enum):
     GATEPASS_BILL_OF_ENTRY = "gatepass_bill_of_entry"
     BL_COPY = "bl_copy"
     HBL_COPY = "hbl_copy"
+    COMMERCIAL_INVOICE = "commercial_invoice"  # the supplier's invoice — one of the key import documents
     PACKING_LIST = "packing_list"
     INSURANCE = "insurance"
     # Shipping line destination charges (imports) — the proforma's "cost inclusion"

@@ -9,6 +9,7 @@ import ShipmentGridPage from "./ShipmentGridPage";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import RatesPage from "./RatesPage";
 import DeletedPage from "./DeletedPage";
+import { UploadQueueProvider } from "./uploadQueue";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,6 +30,7 @@ export default function App() {
     <AuthProvider>
       <ConfirmProvider>
       <BrowserRouter>
+        <UploadQueueProvider>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -46,6 +48,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        </UploadQueueProvider>
       </BrowserRouter>
       </ConfirmProvider>
     </AuthProvider>

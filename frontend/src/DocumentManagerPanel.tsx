@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import axios from "axios";
 import {
   addDocumentFromDrive,
   getDocumentChecklist,
@@ -20,6 +19,7 @@ import {
   pickPdfsFromFolder,
 } from "./googleDrive";
 import { guessDocType } from "./docTypeGuess";
+import { useUploadQueue } from "./uploadQueue";
 import {
   DOCUMENT_TYPE_LABELS,
   LEGACY_DOCUMENT_TYPES,
@@ -71,6 +71,25 @@ export default function DocumentManagerPanel({
 
   useEffect(refresh, [shipment.id]);
 
+  // documents are added in the background (tray in the corner); refresh when ours finish
+  const queue = useUploadQueue();
+  const shipmentLabel = shipment.job ? `Job ${shipment.job}` : shipment.mbl;
+  useEffect(
+    () =>
+      queue.onFinished((job) => {
+        if (job.shipmentId !== shipment.id) return;
+        if (job.status === "done") {
+          if (job.showResult && job.doc) setLastUpload(job.doc);
+          refresh();
+          onShipmentChanged(); // fields read from the PDF may have changed the shipment
+        } else if (job.showResult) {
+          setError(`Couldn't add ${job.fileName}: ${job.error}`);
+        }
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shipment.id, queue.onFinished],
+  );
+
   async function handlePickFromDrive() {
     setError(null);
     let picked;
@@ -81,18 +100,12 @@ export default function DocumentManagerPanel({
       return;
     }
     if (!picked) return; // cancelled
-    setUploading(true);
-    try {
-      const doc: ShipmentDocument = await addDocumentFromDrive(shipment.id, docType, picked.id, picked.accessToken);
-      setLastUpload(doc);
-      refresh();
-      onShipmentChanged();
-    } catch (err) {
-      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
-      setError(typeof detail === "string" ? detail : `Couldn't add "${picked.name}" from Google Drive.`);
-    } finally {
-      setUploading(false);
-    }
+    const { id, accessToken, name } = picked;
+    const type = docType;
+    queue.enqueue([{
+      shipmentId: shipment.id, shipmentLabel, fileName: name, typeLabel: DOCUMENT_TYPE_LABELS[type], showResult: true,
+      run: () => addDocumentFromDrive(shipment.id, type, id, accessToken),
+    }]);
   }
 
   const { user } = useAuth();
@@ -135,28 +148,22 @@ export default function DocumentManagerPanel({
     e.preventDefault();
     if (!file) return;
     setError(null);
-    setUploading(true);
-    try {
-      // Linked Drive folder: also save the renamed file there (needs Google sign-in)
-      let driveToken: string | undefined;
-      if (shipment.drive_folder_id && driveConfigured) {
-        try {
-          driveToken = await getDriveToken();
-        } catch {
-          driveToken = undefined; // saved here only; the result banner says so
-        }
+    // Linked Drive folder: also save the renamed file there (needs Google sign-in)
+    let driveToken: string | undefined;
+    if (shipment.drive_folder_id && driveConfigured) {
+      try {
+        driveToken = await getDriveToken();
+      } catch {
+        driveToken = undefined; // saved here only; the result banner says so
       }
-      const doc: ShipmentDocument = await uploadDocument(shipment.id, docType, file, driveToken);
-      setLastUpload(doc);
-      setFile(null);
-      setFileInputKey((k) => k + 1);
-      refresh();
-      onShipmentChanged(); // fields read from the PDF may have changed the shipment
-    } catch {
-      setError("Upload failed — check the file and try again.");
-    } finally {
-      setUploading(false);
     }
+    const [f, type] = [file, docType];
+    queue.enqueue([{
+      shipmentId: shipment.id, shipmentLabel, fileName: f.name, typeLabel: DOCUMENT_TYPE_LABELS[type], showResult: true,
+      run: () => uploadDocument(shipment.id, type, f, driveToken),
+    }]);
+    setFile(null);
+    setFileInputKey((k) => k + 1); // ready for the next file straight away
   }
 
   const mandatory = checklist.filter((c) => c.required && !c.optional);
@@ -283,7 +290,12 @@ export default function DocumentManagerPanel({
                         ? "—"
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
-                              {d.generated_filename}{" "}
+                              {d.generated_filename} <PdfKindBadge kind={d.pdf_kind} />
+                              {d.extraction?.duplicate_of && (
+                                <span className="pdf-kind pdf-kind-partly" title="Same invoice number as another file here — its amounts are counted once">
+                                  Duplicate — counted once
+                                </span>
+                              )}{" "}
                               <button type="button" className="link-btn" onClick={() => openDocumentFile(shipment.id, d.id)}>
                                 View
                               </button>
@@ -510,26 +522,25 @@ function AssignDriveFiles({
   const [types, setTypes] = useState<Record<string, DocumentType | "">>(() =>
     Object.fromEntries(files.map((f) => [f.id, guessDocType(f.name) ?? ""])),
   );
-  const [status, setStatus] = useState<Record<string, "adding" | "ok" | string>>({});
-  const [busy, setBusy] = useState(false);
   const chosen = files.filter((f) => types[f.id]);
   const stillMissing = missing.filter((t) => !Object.values(types).includes(t));
-  const finished = files.length > 0 && files.every((f) => status[f.id] === "ok" || !types[f.id]) && !busy;
 
-  async function addAll() {
-    setBusy(true);
-    for (const f of chosen) {
-      if (status[f.id] === "ok") continue;
-      setStatus((s) => ({ ...s, [f.id]: "adding" }));
-      try {
-        await addDocumentFromDrive(shipment.id, types[f.id] as DocumentType, f.id, accessToken);
-        setStatus((s) => ({ ...s, [f.id]: "ok" }));
-      } catch (err) {
-        const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
-        setStatus((s) => ({ ...s, [f.id]: typeof detail === "string" ? detail : "Couldn't add this file" }));
-      }
-    }
-    setBusy(false);
+  const queue = useUploadQueue();
+  function addAll() {
+    // handed to the background queue: carry on working, the tray shows progress
+    queue.enqueue(
+      chosen.map((f) => {
+        const type = types[f.id] as DocumentType;
+        return {
+          shipmentId: shipment.id,
+          shipmentLabel: shipment.job ? `Job ${shipment.job}` : shipment.mbl,
+          fileName: f.name,
+          typeLabel: DOCUMENT_TYPE_LABELS[type],
+          run: () => addDocumentFromDrive(shipment.id, type, f.id, accessToken),
+        };
+      }),
+    );
+    onDone();
   }
 
   return (
@@ -537,8 +548,9 @@ function AssignDriveFiles({
       <div className="confirm-dialog assign-dialog" role="dialog" aria-modal="true" aria-labelledby="assign-title">
         <h2 id="assign-title">Mark the files from Drive</h2>
         <p>
-          Choose what each file is. They're read like an upload and linked to the original in your Drive folder —
-          nothing is copied, moved or renamed there. Leave a file on "Skip" to ignore it.
+          Choose what each file is. They're added in the background (you can keep working — the tray in the corner
+          shows progress), read like an upload, and linked to the original in your Drive folder — nothing is
+          copied, moved or renamed there. Leave a file on "Skip" to ignore it.
         </p>
         <table className="rates-table">
           <tbody>
@@ -548,7 +560,6 @@ function AssignDriveFiles({
                 <td>
                   <select
                     value={types[f.id]}
-                    disabled={busy || status[f.id] === "ok"}
                     onChange={(e) => setTypes((t) => ({ ...t, [f.id]: e.target.value as DocumentType | "" }))}
                   >
                     <option value="">Skip</option>
@@ -560,9 +571,6 @@ function AssignDriveFiles({
                     ))}
                   </select>
                 </td>
-                <td className="assign-status">
-                  {status[f.id] === "adding" ? "Adding…" : status[f.id] === "ok" ? "✓ Added" : status[f.id] ?? ""}
-                </td>
               </tr>
             ))}
           </tbody>
@@ -573,16 +581,32 @@ function AssignDriveFiles({
           </p>
         )}
         <div className="confirm-actions">
-          <button type="button" className="btn-secondary" onClick={onDone} disabled={busy}>
-            {finished ? "Close" : "Cancel"}
+          <button type="button" className="btn-secondary" onClick={onDone}>
+            Cancel
           </button>
-          {!finished && (
-            <button type="button" onClick={addAll} disabled={busy || chosen.length === 0}>
-              {busy ? "Adding…" : `Add ${chosen.length} document${chosen.length === 1 ? "" : "s"}`}
-            </button>
-          )}
+          <button type="button" onClick={addAll} disabled={chosen.length === 0}>
+            Add {chosen.length} document{chosen.length === 1 ? "" : "s"}
+          </button>
         </div>
       </div>
     </div>
+  );
+}
+
+const PDF_KINDS = {
+  digital: ["Digital", "Text can be read — details fill in automatically"],
+  partly: ["Partly scanned", "Some pages are scans — only the text pages were read"],
+  scanned: ["Scanned", "Pictures of pages — nothing could be read; check the details by hand"],
+  unreadable: ["Unreadable", "Not a valid PDF, or password-protected"],
+} as const;
+
+/** Digital or scanned: whether the ERP could read the document's text. */
+function PdfKindBadge({ kind }: { kind: ShipmentDocument["pdf_kind"] }) {
+  if (!kind) return null;
+  const [label, tip] = PDF_KINDS[kind];
+  return (
+    <span className={`pdf-kind pdf-kind-${kind}`} title={tip}>
+      {label}
+    </span>
   );
 }

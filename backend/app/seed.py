@@ -32,6 +32,7 @@ BASE_DOCUMENT_TYPES = [
     DocumentType.GATEPASS_BILL_OF_ENTRY,
     DocumentType.BL_COPY,
     DocumentType.HBL_COPY,
+    DocumentType.COMMERCIAL_INVOICE,
     DocumentType.PACKING_LIST,
     DocumentType.INSURANCE,
     DocumentType.SHIPPING_LINE_PROFORMA,  # optional

@@ -30,18 +30,48 @@ RECEIPT_DOC_TYPES = (DocumentType.CFS_RECEIPT, DocumentType.SHIPPING_LINE_RECEIP
 INVOICE_DOC_TYPES = CFS_DOC_TYPES + LINE_DOC_TYPES
 
 
+def invoice_key(doc: ShipmentDocument) -> Optional[str]:
+    """The invoice's identity: its e-invoice IRN, else its printed number (None = unknown)."""
+    fields = (doc.extraction or {}).get("fields") or {}
+    if fields.get("irn"):
+        return f"irn:{fields['irn']}"
+    number = fields.get("invoice_no")
+    return f"no:{doc.document_type.value}:{str(number).replace(' ', '').upper()}" if number else None
+
+
+def duplicates(docs: Iterable[ShipmentDocument]) -> dict[int, int]:
+    """{id of a repeated invoice: id of the first copy} — same IRN or same invoice number
+    (client, 2026-09-29: the same tax invoice added twice counts once)."""
+    first: dict[str, int] = {}
+    out: dict[int, int] = {}
+    for d in sorted(docs, key=lambda d: d.id):
+        k = invoice_key(d)
+        if k is None:
+            continue
+        if k in first:
+            out[d.id] = first[k]
+        else:
+            first[k] = d.id
+    return out
+
+
+def _unique(docs: list[ShipmentDocument]) -> list[ShipmentDocument]:
+    dup = duplicates(docs)
+    return [d for d in docs if d.id not in dup]
+
+
 def invoices_counted(docs: Iterable[ShipmentDocument]) -> list[ShipmentDocument]:
-    """The CFS invoices that count towards the shipment's CFS totals."""
+    """The CFS invoices that count towards the shipment's CFS totals (each invoice once)."""
     docs = [d for d in docs if d.document_type in CFS_DOC_TYPES]
     tax = [d for d in docs if d.document_type == DocumentType.CFS_TAX_INVOICE]
-    return tax or docs
+    return _unique(tax or docs)
 
 
 def line_invoices_counted(docs: Iterable[ShipmentDocument]) -> list[ShipmentDocument]:
-    """Shipping line invoices that count: tax invoices, or proformas until one arrives."""
+    """Shipping line invoices that count: tax invoices, or proformas until one arrives (each once)."""
     docs = [d for d in docs if d.document_type in LINE_DOC_TYPES]
     tax = [d for d in docs if d.document_type == DocumentType.SHIPPING_LINE_INVOICE]
-    return tax or docs
+    return _unique(tax or docs)
 
 
 def _sum(values: list) -> Optional[Decimal]:
@@ -104,6 +134,13 @@ def recompute_invoice_totals(db: Session, shipment: Shipment, user_id: Optional[
     """Set the shipment's CFS and shipping-line totals from its invoices (audit-logged)."""
     db.flush()
     docs = db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == shipment.id).all()
+    # mark repeated invoices so the documents list can say "Duplicate — counted once"
+    dup = duplicates([d for d in docs if d.document_type in INVOICE_DOC_TYPES])
+    for d in docs:
+        ext = dict(d.extraction or {})
+        if ext.get("duplicate_of") != dup.get(d.id):
+            ext["duplicate_of"] = dup.get(d.id)
+            d.extraction = ext
     cfs = invoices_counted(docs)
     line = line_invoices_counted(docs)
     _apply(db, shipment, {

@@ -20,6 +20,7 @@ const RULES: [RegExp, DocumentType][] = [
   [/EMPTY/, "empty_letter"],
   [/\bHBL\b/, "hbl_copy"],
   [/\bMBL\b|\bBL\b|\bB\/L\b|BILL OF LADING/, "bl_copy"],
+  [/COMMERCIAL|\bC\.?I\.?\b|\bINV(OICE)?\b/, "commercial_invoice"], // CFS / line invoices matched above
   [/PACKING|\bPL\b/, "packing_list"],
   [/INSUR|\bINS\b/, "insurance"],
   [/STAMP/, "stamp_duty"],

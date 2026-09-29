@@ -18,6 +18,7 @@ import pdfplumber
 from app.core.enums import DocumentType
 from app.extraction.be_pdf import normalize_date, read_pdf, scan_be_text
 from app.extraction.cfs_pdf import scan_cfs_text
+from app.extraction.invoice_number import invoice_identity
 from app.extraction.receipt_pdf import scan_receipt_text
 from app.extraction.shipping_line_pdf import scan_shipping_line_text
 
@@ -104,12 +105,14 @@ def extract_document_fields(document_type: DocumentType, path: str) -> dict[str,
         return {"error": f"Couldn't read PDF: {e}"}
 
     text = "\n".join(pages)
-    if document_type in LINE_TYPES:
-        return scan_shipping_line_text(text)
     if document_type in RECEIPT_TYPES:
         return scan_receipt_text(text)
     if document_type in INVOICE_TYPES:
-        return scan_cfs_text(text)
+        fields = scan_shipping_line_text(text) if document_type in LINE_TYPES else scan_cfs_text(text)
+        ident = invoice_identity(text)  # to count an invoice added twice only once
+        fields["invoice_no"] = fields.get("invoice_no") or ident["invoice_no"]
+        fields["irn"] = ident["irn"]
+        return fields
 
     fields = scan_be_text(text, words)
     # ICEGATE prints "OOC COPY" on the out-of-charge copy (page header + watermark).

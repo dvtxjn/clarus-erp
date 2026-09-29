@@ -127,6 +127,7 @@ export type DocumentType =
   | "gatepass_bill_of_entry"
   | "bl_copy"
   | "hbl_copy"
+  | "commercial_invoice"
   | "packing_list"
   | "insurance"
   | "shipping_line_invoice"
@@ -155,6 +156,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   gatepass_bill_of_entry: "Gatepass Bill of Entry",
   bl_copy: "BL Copy",
   hbl_copy: "HBL Copy",
+  commercial_invoice: "Commercial Invoice",
   packing_list: "Packing List",
   insurance: "Insurance",
   shipping_line_proforma: "Shipping Line Proforma (destination charges)",
@@ -181,6 +183,7 @@ export interface DocumentExtraction {
   fields: Record<string, unknown>;
   updated: string[];
   notes: string[];
+  duplicate_of?: number | null; // same invoice (IRN / number) as that document: counted once
 }
 
 export interface ShipmentDocument {
@@ -195,6 +198,8 @@ export interface ShipmentDocument {
   extraction: DocumentExtraction | null;
   drive_file_id: string | null;
   drive_link: string | null;
+  pdf_kind: "digital" | "partly" | "scanned" | "unreadable" | null; // can the ERP read text from it
+  drive_picked: boolean;
   drive_sync_pending: boolean; // not in the Shared Drive yet (the server retries every 5 min)
   drive_error: string | null;
   // CFS invoices only (decimals as strings)

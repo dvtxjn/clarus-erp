@@ -23,6 +23,7 @@ DOC_TYPE_ABBREVIATIONS = {
     DocumentType.GATEPASS_BILL_OF_ENTRY: "GATEPASS",
     DocumentType.BL_COPY: "BL",
     DocumentType.HBL_COPY: "HBL",
+    DocumentType.COMMERCIAL_INVOICE: "CI",
     DocumentType.PACKING_LIST: "PL",
     DocumentType.INSURANCE: "INS",
     DocumentType.SHIPPING_LINE_INVOICE: "SL-DSC",

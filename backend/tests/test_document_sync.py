@@ -290,3 +290,27 @@ def test_shipping_line_invoices_summed_and_editable(client, admin_headers):
     assert (float(s["line_amount_before_tax"]), float(s["line_gst_amount"]), float(s["line_amount_total"])) == (
         13000.0, 2340.0, 15340.0)
     assert s["cfs_amount_total"] is None  # separate from CFS
+
+
+def test_same_invoice_added_twice_counts_once(client, admin_headers):
+    """Client, 2026-09-29: a tax invoice uploaded twice (e.g. upload + pick from Drive) was
+    summed twice. The invoice number (or IRN) identifies it: counted once, marked duplicate."""
+    from tests.conftest import make_pdf
+    h = admin_headers
+    sid = _new_shipment(client, h)
+
+    def inv(number, total):
+        return make_pdf([(40, 40, "NAVKAR CFS - IMPORT TAX INVOICE"), (40, 52, f"Invoice No  : {number} Invoice Date : 10/Sep/2026"),
+                         (40, 60, "BOE No: 2345678"), (40, 72, "BL No: MEDU1234567890"),
+                         (40, 120, "Total Amount Before Tax: 40,000.00"), (40, 132, "Tax Amount: GST: 7,200.00"),
+                         (40, 144, f"Total Amount After Tax: {total}")])
+    a = _upload(client, h, sid, "cfs_tax_invoice", inv("PI/DPDI/07609/27", "47,200.00"))
+    b = _upload(client, h, sid, "cfs_tax_invoice", inv("PI/DPDI/07609/27", "47,200.00"))
+    assert a["extraction"]["fields"]["invoice_no"] == "PI/DPDI/07609/27"
+    assert _cfs_totals(client, h, sid) == (40000.0, 7200.0, 47200.0)  # not 94,400
+    docs = {d["id"]: d for d in client.get(f"/shipments/{sid}/documents", headers=h).json()}
+    assert docs[b["id"]]["extraction"]["duplicate_of"] == a["id"] and not docs[a["id"]]["extraction"]["duplicate_of"]
+    _upload(client, h, sid, "cfs_tax_invoice", inv("PI/DPDI/07610/27", "47,200.00"))  # a different invoice adds up
+    assert _cfs_totals(client, h, sid) == (80000.0, 14400.0, 94400.0)
+    client.delete(f"/shipments/{sid}/documents/{a['id']}", headers=h)  # first copy removed: the other one counts
+    assert _cfs_totals(client, h, sid) == (80000.0, 14400.0, 94400.0)

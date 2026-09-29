@@ -73,6 +73,8 @@ class ShipmentDocument(SoftDeleteMixin, Base):
     # Picked from the shipment's own Drive folder (made by staff): the ERP links to that
     # original — it never uploads a second copy or renames it.
     drive_picked = Column(Boolean, nullable=False, default=False, server_default="0")
+    # digital | partly | scanned | unreadable — can the ERP read text from it (extraction/pdf_kind.py)
+    pdf_kind = Column(String, nullable=True)
     drive_error = Column(String, nullable=True)
 
     # CFS proforma / tax invoice amounts — read from the PDF, correctable by hand.

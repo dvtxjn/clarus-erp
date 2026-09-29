@@ -21,6 +21,15 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ✅ Documents: Commercial Invoice, digital vs scanned, background adding, duplicate invoices (2026-09-29)
+
+- **Commercial Invoice** document type (prefix `CI`), required on every HS code's checklist (migration 0030; seed updated). Name guess: COMMERCIAL / CI / INV (after the CFS/line rules).
+- **Digital or scanned** (`extraction/pdf_kind.py`, migration 0031 `shipment_documents.pdf_kind`): per page, ≥25 readable characters = text page → `digital` (all pages), `partly`, `scanned` (none), `unreadable`. Shown as a badge on every document and in the progress tray. Symbol-font PDFs (Navkar, U+F0xx glyphs) count as digital — `clean_pdf_text` decodes them. Backfill: `scripts/backfill_pdf_kind.py` (run: 10 digital, 5 scanned). **Scanned documents can't be read yet — the client is working on a fix (OCR later).**
+- **Background adding** (`src/uploadQueue.tsx`, provider in App): uploads, single Drive picks and "pick from folder" all go into one queue (3 at a time), the dialog closes at once, a tray bottom-right shows progress / Digital-Scanned / errors with links to the shipment; the Documents tab refreshes when its files finish; closing the tab mid-way asks first. (Queue lives in the tab — a server-side queue would survive closing the tab; later if needed.)
+- **Same invoice added twice counts once** (client: a CFS tax invoice was counted twice): `extraction/invoice_number.py` reads the invoice number (`Invoice No :`, `Proforma :`, `Bill No`) and the e-invoice IRN from CFS and shipping line invoices; `cfs_totals.duplicates()` keys on IRN, else type + number; repeats are left out of the CFS / line totals and marked `extraction.duplicate_of` → "Duplicate — counted once" badge + a note in the upload result. `scripts/backfill_invoice_numbers.py` ran: shipment 58 CFS total 94,400 → 47,200. Test in test_document_sync.
+
+---
+
 ## 🟡 Launch Phase 7 — Google Drive storage (2026-09-29, branch `storage/phase-7`) — built, waiting for the real Shared Drive
 
 **Client rule (2026-09-29): the ERP may only READ and SAVE in Google Drive — NEVER delete.** Enforced twice: the service account is a **Contributor** on the Shared Drive (Google refuses deletes/trash/moves), and `app/storage/drive_client.py` has no delete/trash/move method and refuses DELETE requests or any body setting `trashed`. Remove document = Drive file renamed `[removed] …` (restore renames back). Backups (Phase 8) are never pruned by the app. DEPLOYMENT_PLAN updated (Golden Rule 0, H4, Phase 7 item 4, Phase 8 item 3).
