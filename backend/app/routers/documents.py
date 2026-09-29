@@ -302,6 +302,7 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
         uploaded_by_id=user.id,
         drive_file_id=drive_file_id,
         drive_link=drive_link,
+        drive_picked=drive_file_id is not None,
     )
     db.add(doc)
     db.flush()  # get doc.id without committing yet

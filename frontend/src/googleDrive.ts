@@ -112,6 +112,39 @@ export async function pickPdfFromDrive(startFolderId?: string | null): Promise<P
   });
 }
 
+/** Several PDFs at once from the shipment's folder (staff-made). Resolves null if cancelled. */
+export async function pickPdfsFromFolder(
+  folderId: string,
+): Promise<{ files: { id: string; name: string }[]; accessToken: string } | null> {
+  if (!driveConfigured) throw new Error("Google Drive isn't set up yet.");
+  await loadPicker();
+  const accessToken = await getToken();
+  const g = window.google.picker;
+  return new Promise((resolve) => {
+    const inFolder = new g.DocsView(g.ViewId.DOCS)
+      .setMimeTypes("application/pdf")
+      .setIncludeFolders(true) // staff sometimes keep sub-folders
+      .setParent(folderId);
+    new g.PickerBuilder()
+      .enableFeature(g.Feature.SUPPORT_DRIVES)
+      .enableFeature(g.Feature.MULTISELECT_ENABLED)
+      .addView(inFolder)
+      .setOAuthToken(accessToken)
+      .setDeveloperKey(API_KEY)
+      .setAppId(APP_ID)
+      .setTitle("Select the shipment's files (you can pick several)")
+      .setCallback((data: { action: string; docs?: { id: string; name: string }[] }) => {
+        if (data.action === g.Action.PICKED && data.docs?.length) {
+          resolve({ files: data.docs.map((d) => ({ id: d.id, name: d.name })), accessToken });
+        } else if (data.action === g.Action.CANCEL) {
+          resolve(null);
+        }
+      })
+      .build()
+      .setVisible(true);
+  });
+}
+
 export interface PickedDriveFolder {
   id: string;
   name: string;

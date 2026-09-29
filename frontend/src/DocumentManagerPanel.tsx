@@ -11,7 +11,15 @@ import {
 import { useSaveShipment } from "./useSaveShipment";
 import { useAuth } from "./AuthContext";
 import { useConfirm } from "./ConfirmDialog";
-import { driveConfigured, folderIdFromLink, getDriveToken, pickDriveFolder, pickPdfFromDrive } from "./googleDrive";
+import {
+  driveConfigured,
+  folderIdFromLink,
+  getDriveToken,
+  pickDriveFolder,
+  pickPdfFromDrive,
+  pickPdfsFromFolder,
+} from "./googleDrive";
+import { guessDocType } from "./docTypeGuess";
 import {
   DOCUMENT_TYPE_LABELS,
   LEGACY_DOCUMENT_TYPES,
@@ -154,6 +162,19 @@ export default function DocumentManagerPanel({
   const mandatory = checklist.filter((c) => c.required && !c.optional);
   const uploadedCount = mandatory.filter((c) => c.uploaded).length;
 
+  // --- several files from the shipment's own Drive folder, each marked as one of our documents ---
+  const [picked, setPicked] = useState<{ files: { id: string; name: string }[]; accessToken: string } | null>(null);
+  async function handlePickFromFolder() {
+    if (!shipment.drive_folder_id) return;
+    setError(null);
+    try {
+      const got = await pickPdfsFromFolder(shipment.drive_folder_id);
+      if (got) setPicked(got);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't open Google Drive.");
+    }
+  }
+
   return (
     <div className="doc-manager">
       {!shipment.hs_code_id && (
@@ -163,7 +184,20 @@ export default function DocumentManagerPanel({
         </div>
       )}
 
-      <DriveFolderBar shipment={shipment} onChanged={onShipmentChanged} />
+      <DriveFolderBar shipment={shipment} onChanged={onShipmentChanged} onPickFiles={handlePickFromFolder} />
+      {picked && (
+        <AssignDriveFiles
+          shipment={shipment}
+          files={picked.files}
+          accessToken={picked.accessToken}
+          missing={mandatory.filter((c) => !c.uploaded).map((c) => c.document_type)}
+          onDone={() => {
+            setPicked(null);
+            refresh();
+            onShipmentChanged();
+          }}
+        />
+      )}
 
       {shipment.hs_code_id != null && (
         <p className="tracker-subtitle">
@@ -316,7 +350,15 @@ export default function DocumentManagerPanel({
   );
 }
 
-function DriveFolderBar({ shipment, onChanged }: { shipment: Shipment; onChanged: () => void }) {
+function DriveFolderBar({
+  shipment,
+  onChanged,
+  onPickFiles,
+}: {
+  shipment: Shipment;
+  onChanged: () => void;
+  onPickFiles: () => void;
+}) {
   const saveShipment = useSaveShipment();
   const [link, setLink] = useState("");
   const [editing, setEditing] = useState(false);
@@ -353,11 +395,19 @@ function DriveFolderBar({ shipment, onChanged }: { shipment: Shipment; onChanged
       <div className="drive-folder-bar">
         <DriveIcon />
         <span>
-          Documents are saved into this shipment's{" "}
+          This shipment's{" "}
           <a href={shipment.drive_folder_link ?? "#"} target="_blank" rel="noreferrer">
             Drive folder ↗
           </a>
         </span>
+        <button
+          type="button"
+          onClick={onPickFiles}
+          disabled={!driveConfigured}
+          title={driveConfigured ? "Select files already in this folder and mark which document each one is" : "Google Drive isn't set up yet — see PROGRESS.md"}
+        >
+          Pick files from this folder
+        </button>
         <button type="button" className="link-btn" onClick={() => setEditing(true)}>
           Change
         </button>
@@ -435,6 +485,104 @@ function UploadResult({ doc, onClose }: { doc: ShipmentDocument; onClose: () => 
       ) : (
         <p className="tracker-subtitle">Nothing on the shipment changed from this document.</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Files picked from the shipment's Drive folder: say which document each one is (guessed
+ * from its name), then they're added — read like an upload, linked to the original in
+ * Drive (never copied or renamed there).
+ */
+function AssignDriveFiles({
+  shipment,
+  files,
+  accessToken,
+  missing,
+  onDone,
+}: {
+  shipment: Shipment;
+  files: { id: string; name: string }[];
+  accessToken: string;
+  missing: DocumentType[];
+  onDone: () => void;
+}) {
+  const [types, setTypes] = useState<Record<string, DocumentType | "">>(() =>
+    Object.fromEntries(files.map((f) => [f.id, guessDocType(f.name) ?? ""])),
+  );
+  const [status, setStatus] = useState<Record<string, "adding" | "ok" | string>>({});
+  const [busy, setBusy] = useState(false);
+  const chosen = files.filter((f) => types[f.id]);
+  const stillMissing = missing.filter((t) => !Object.values(types).includes(t));
+  const finished = files.length > 0 && files.every((f) => status[f.id] === "ok" || !types[f.id]) && !busy;
+
+  async function addAll() {
+    setBusy(true);
+    for (const f of chosen) {
+      if (status[f.id] === "ok") continue;
+      setStatus((s) => ({ ...s, [f.id]: "adding" }));
+      try {
+        await addDocumentFromDrive(shipment.id, types[f.id] as DocumentType, f.id, accessToken);
+        setStatus((s) => ({ ...s, [f.id]: "ok" }));
+      } catch (err) {
+        const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
+        setStatus((s) => ({ ...s, [f.id]: typeof detail === "string" ? detail : "Couldn't add this file" }));
+      }
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="confirm-backdrop">
+      <div className="confirm-dialog assign-dialog" role="dialog" aria-modal="true" aria-labelledby="assign-title">
+        <h2 id="assign-title">Mark the files from Drive</h2>
+        <p>
+          Choose what each file is. They're read like an upload and linked to the original in your Drive folder —
+          nothing is copied, moved or renamed there. Leave a file on "Skip" to ignore it.
+        </p>
+        <table className="rates-table">
+          <tbody>
+            {files.map((f) => (
+              <tr key={f.id}>
+                <td className="assign-name">{f.name}</td>
+                <td>
+                  <select
+                    value={types[f.id]}
+                    disabled={busy || status[f.id] === "ok"}
+                    onChange={(e) => setTypes((t) => ({ ...t, [f.id]: e.target.value as DocumentType | "" }))}
+                  >
+                    <option value="">Skip</option>
+                    {UPLOAD_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {DOCUMENT_TYPE_LABELS[t]}
+                        {missing.includes(t) ? " (needed)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="assign-status">
+                  {status[f.id] === "adding" ? "Adding…" : status[f.id] === "ok" ? "✓ Added" : status[f.id] ?? ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {stillMissing.length > 0 && (
+          <p className="field-note">
+            Still needed after these: {stillMissing.map((t) => DOCUMENT_TYPE_LABELS[t]).join(", ")}
+          </p>
+        )}
+        <div className="confirm-actions">
+          <button type="button" className="btn-secondary" onClick={onDone} disabled={busy}>
+            {finished ? "Close" : "Cancel"}
+          </button>
+          {!finished && (
+            <button type="button" onClick={addAll} disabled={busy || chosen.length === 0}>
+              {busy ? "Adding…" : `Add ${chosen.length} document${chosen.length === 1 ? "" : "s"}`}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

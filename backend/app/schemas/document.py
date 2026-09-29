@@ -20,6 +20,7 @@ class ShipmentDocumentOut(BaseModel):
     extraction: Optional[dict] = None
     drive_file_id: Optional[str] = None
     drive_link: Optional[str] = None
+    drive_picked: bool = False  # linked to a file already in the shipment's Drive folder
     drive_sync_pending: bool = False  # not saved in the Shared Drive yet (retried every 5 min)
     drive_error: Optional[str] = None
     # CFS invoices only

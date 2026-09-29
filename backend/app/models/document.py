@@ -70,6 +70,9 @@ class ShipmentDocument(SoftDeleteMixin, Base):
     # STORAGE_BACKEND=drive: the server's copy in the Shared Drive failed to save yet
     # (the local file is kept; a background job retries). drive_error says why.
     drive_sync_pending = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Picked from the shipment's own Drive folder (made by staff): the ERP links to that
+    # original — it never uploads a second copy or renames it.
+    drive_picked = Column(Boolean, nullable=False, default=False, server_default="0")
     drive_error = Column(String, nullable=True)
 
     # CFS proforma / tax invoice amounts — read from the PDF, correctable by hand.

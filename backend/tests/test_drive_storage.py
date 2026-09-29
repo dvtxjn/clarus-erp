@@ -219,3 +219,23 @@ def test_local_backend_still_keeps_generated_pdfs(client, admin_headers):
     with SessionLocal() as db:
         sf = db.query(StoredFile).filter_by(kind="proforma_pdf", ref_id=pid).one()
     assert Path(sf.local_path).exists() and sf.drive_file_id is None and not sf.drive_sync_pending
+
+
+def test_file_picked_from_the_shipment_folder_is_linked_not_copied(client, admin_headers, fake_drive, monkeypatch):
+    from app.integrations import google_drive
+
+    async def fake_fetch(file_id, token):
+        return google_drive.DriveFile(file_id=file_id, name="OOC copy.pdf", content=be_pdf(mawb="DRV0000008").read(),
+                                      web_link=f"https://drive.google.com/file/d/{file_id}/view")
+    monkeypatch.setattr(google_drive, "fetch_drive_pdf", fake_fetch)
+    sid = _ship(client, admin_headers, "DRV0000008", client="Staff Folder Co")
+    before = len(fake_drive.files)
+    r = client.post(f"/shipments/{sid}/documents/from-drive", headers=admin_headers,
+                    json={"document_type": "assessed_bill_of_entry", "file_id": "staff-file-1", "access_token": "t"})
+    assert r.status_code == 201, r.text
+    doc = r.json()
+    assert doc["drive_picked"] and doc["drive_file_id"] == "staff-file-1" and not doc["drive_sync_pending"]
+    assert len(fake_drive.files) == before  # no second copy, no ERP folders made
+    assert doc["extraction"]["fields"]  # still read like an upload
+    client.delete(f"/shipments/{sid}/documents/{doc['id']}", headers=admin_headers)  # removing never renames theirs
+    assert len(fake_drive.files) == before
