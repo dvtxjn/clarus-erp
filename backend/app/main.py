@@ -1,12 +1,15 @@
 import asyncio
 import os
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm.exc import StaleDataError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app import backups
 from app.core import jobs, realtime
+from app.core.deps import require_admin
+from app.models.user import User
 from app.core.migrate import run_migrations
 from app import models  # noqa: F401 — populates Base.metadata
 from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router
@@ -55,6 +58,12 @@ def on_startup():
 async def start_live_updates():
     realtime.start(asyncio.get_running_loop())
     jobs.start()
+
+
+@app.get("/health/backups")
+def backup_health(_admin: User = Depends(require_admin)):
+    """Admin: when the last good backup was made, and anything to worry about."""
+    return backups.status()
 
 
 @app.get("/health")

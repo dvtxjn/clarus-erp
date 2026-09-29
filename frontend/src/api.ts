@@ -537,3 +537,16 @@ export async function openDocumentFile(shipmentId: number, documentId: number): 
   else window.location.href = url;
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+export interface BackupHealth {
+  enabled: boolean;
+  last_ok_at: string | null;
+  last_ok_age_hours: number | null;
+  last_ok_name: string | null;
+  in_drive: boolean;
+  warnings: string[];
+}
+export async function getBackupHealth(): Promise<BackupHealth> {
+  const { data } = await client.get("/health/backups");
+  return data;
+}

@@ -16,3 +16,4 @@ from app.models.final_invoice import FinalInvoice, InvoiceCounter  # noqa: F401
 from app.models.port import Port  # noqa: F401
 from app.models.tracker_column import TrackerColumn  # noqa: F401
 from app.models.storage import DriveFolder, StoredFile  # noqa: F401
+from app.models.backup import BackupRun  # noqa: F401

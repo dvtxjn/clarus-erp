@@ -1,9 +1,20 @@
 import ClarusLogo from "./ClarusLogo";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  // admin: red banner when backups are late, shrank or failed (checked every 10 minutes)
+  const [backupWarnings, setBackupWarnings] = useState<string[]>([]);
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    const check = () => getBackupHealth().then((h) => setBackupWarnings(h.warnings)).catch(() => undefined);
+    check();
+    const id = window.setInterval(check, 600_000);
+    return () => window.clearInterval(id);
+  }, [user?.role]);
 
   return (
     <div className="app-shell">
@@ -41,6 +52,11 @@ export default function AppLayout() {
           </button>
         </div>
       </header>
+      {backupWarnings.length > 0 && (
+        <div className="backup-banner" role="alert">
+          <strong>Backups:</strong> {backupWarnings.join(" ")}
+        </div>
+      )}
       <main>
         <Outlet />
       </main>

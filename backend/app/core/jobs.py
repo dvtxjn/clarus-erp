@@ -46,4 +46,7 @@ def start() -> None:
         return
     from app import storage
 
+    from app import backups
+
     asyncio.create_task(_every("drive-retry", 300, storage.retry_pending))
+    asyncio.create_task(_every("backup", 3600, backups.backup_if_due))  # 12-hourly, checked hourly
