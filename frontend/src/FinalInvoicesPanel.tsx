@@ -4,7 +4,9 @@ import {
   createFinalInvoices,
   deleteFinalInvoice,
   downloadFinalInvoice,
+  downloadFinalPair,
   issueFinalInvoice,
+  issueFinalPair,
   listFinalInvoices,
   updateFinalInvoice,
 } from "./api";
@@ -37,6 +39,36 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
   useEffect(() => {
     load();
   }, [shipmentId]);
+
+  // this proforma's pair (newest of each kind, not cancelled): tax first
+  const pair = (["tax", "reimbursement"] as const)
+    .map((k) => items.find((i) => i.proforma_id === proforma?.id && i.kind === k && i.status !== "cancelled"))
+    .filter((i): i is FinalInvoice => !!i);
+  const others = items.filter((i) => !pair.includes(i));
+  const pairDraft = pair.some((i) => i.status === "draft");
+
+  async function issuePair() {
+    if (!proforma) return;
+    const na = pair.find((i) => i.not_applicable);
+    const ok = await confirm({
+      title: "Issue both invoices?",
+      message:
+        "The tax and reimbursement invoices get the next number together and are locked — only IRN / ACK can be added after this." +
+        (na ? ` The ${na.kind} invoice has no charges: it's issued as BILL CANCELLED — NOT APPLICABLE so the numbers stay paired.` : ""),
+      confirmLabel: "Issue both",
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await issueFinalPair(proforma.id);
+      await load();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function create() {
     if (!proforma) return;
@@ -81,14 +113,52 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
       </div>
       {error && <div className="invoice-error">{error}</div>}
       {items.length === 0 && <p className="tracker-subtitle">No final invoices yet.</p>}
-      {items.map((inv) => (
+
+      {/* the pair from this proforma: one number, issued together, one PDF or two (client, 2026-09-30) */}
+      {pair.length > 0 && (
+        <div className="final-pair">
+          <div className="final-pair-head">
+            <strong>{pair[0].number ? pair.map((i) => i.number).join("  +  ") : "Draft pair — tax + reimbursement"}</strong>
+            <span className="final-pair-actions">
+              {pairDraft && (
+                <button onClick={issuePair} disabled={busy}>
+                  Issue both
+                </button>
+              )}
+              <button className="btn-secondary" onClick={() => proforma && downloadFinalPair(proforma.id).catch((e) => setError(errorText(e)))}>
+                One PDF (both)
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={async () => {
+                  for (const inv of pair) await downloadFinalInvoice(inv.id).catch((e) => setError(errorText(e)));
+                }}
+              >
+                Two PDFs
+              </button>
+            </span>
+          </div>
+          {pair.map(card)}
+        </div>
+      )}
+      {others.length > 0 && <div className="final-others-head">Earlier / cancelled</div>}
+      {others.map(card)}
+    </section>
+  );
+
+  function card(inv: FinalInvoice) {
+    return (
         <div key={inv.id} className={`final-card final-${inv.status}`}>
           <div className="final-card-head" onClick={() => setOpenId(openId === inv.id ? null : inv.id)}>
             <span className="final-kind">{inv.kind === "tax" ? "Tax Invoice" : "Reimbursement Invoice"}</span>
             <span className="final-number">{inv.number ?? "Draft"}</span>
             <span className={`final-status s-${inv.status}`}>{inv.status}</span>
             <span className="final-cust">{inv.customer.name}</span>
-            <strong className="final-amount">₹{inr(inv.totals.net_payable)}</strong>
+            {inv.not_applicable ? (
+              <strong className="final-amount final-na">Not applicable</strong>
+            ) : (
+              <strong className="final-amount">₹{inr(inv.totals.net_payable)}</strong>
+            )}
             <span className="final-toggle">{openId === inv.id ? "▾" : "▸"}</span>
           </div>
           {openId === inv.id && (
@@ -103,9 +173,8 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
             />
           )}
         </div>
-      ))}
-    </section>
-  );
+    );
+  }
 }
 
 function FinalInvoiceEditor({
@@ -122,6 +191,11 @@ function FinalInvoiceEditor({
   const { user } = useAuth();
   const confirm = useConfirm();
   const draft = inv.status === "draft";
+  // an issued bill can be altered until the 10th of next month (client, 2026-09-30)
+  const today = new Date().toISOString().slice(0, 10);
+  const canAlter = inv.status === "issued" && !!inv.alter_until && today <= inv.alter_until;
+  const [altering, setAltering] = useState(false);
+  const editable = draft || altering;
   const [f, setF] = useState(() => toForm(inv));
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -129,11 +203,11 @@ function FinalInvoiceEditor({
 
   const dirty = JSON.stringify(f) !== JSON.stringify(toForm(inv));
 
-  async function save() {
+  async function save(eInvoiceFiled?: boolean) {
     setSaving(true);
     setMsg(null);
     try {
-      const body = draft
+      const body = editable
         ? {
             invoice_date: f.invoice_date || null,
             due_date: f.due_date || null,
@@ -150,11 +224,27 @@ function FinalInvoiceEditor({
             })),
             advance_received: f.advance_received || "0",
             remarks: f.remarks || null,
+            ...(altering ? { e_invoice_filed: eInvoiceFiled } : {}),
           }
         : { irn: f.irn || null, ack_no: f.ack_no || null, ack_date: f.ack_date || null };
       onChange(await updateFinalInvoice(inv.id, body));
-      setMsg({ kind: "ok", text: "Saved — changes are logged." });
+      setAltering(false);
+      setMsg({ kind: "ok", text: altering ? "Invoice altered — same number; the change is logged and the new PDF kept." : "Saved — changes are logged." });
     } catch (e) {
+      const detail = (e as { response?: { status?: number; data?: { detail?: { ask?: string } } } })?.response;
+      if (detail?.status === 409 && detail.data?.detail?.ask === "e_invoice_filed") {
+        // e-invoicing applies (admin setting): ask before altering
+        setSaving(false);
+        const notFiled = await confirm({
+          title: "Has the e-invoice been filed?",
+          message: "E-invoicing applies to Clarus. A bill whose e-invoice (IRN) is filed can't be altered.",
+          confirmLabel: "Not filed — alter it",
+          cancelLabel: "Yes, it's filed",
+        });
+        if (notFiled) return save(false);
+        setMsg({ kind: "error", text: "Filed e-invoices can't be altered — cancel the e-invoice on the IRP (within 24 hours) or issue a credit note." });
+        return;
+      }
       setMsg({ kind: "error", text: errorText(e) });
     } finally {
       setSaving(false);
@@ -199,10 +289,10 @@ function FinalInvoiceEditor({
       <div className="final-grid">
         <fieldset>
           <legend>Invoice</legend>
-          <Field label="Invoice date" type="date" value={f.invoice_date} disabled={!draft} onChange={(v) => setF({ ...f, invoice_date: v })} />
-          <Field label="Due date" type="date" value={f.due_date} disabled={!draft} onChange={(v) => setF({ ...f, due_date: v })} />
-          <Field label="Job number" value={f.header.job_number ?? ""} disabled={!draft} onChange={(v) => setF({ ...f, header: { ...f.header, job_number: v } })} />
-          <Field label="Job type" value={f.header.job_type ?? ""} disabled={!draft} onChange={(v) => setF({ ...f, header: { ...f.header, job_type: v } })} />
+          <Field label="Invoice date" type="date" value={f.invoice_date} disabled={!editable} onChange={(v) => setF({ ...f, invoice_date: v })} />
+          <Field label="Due date" type="date" value={f.due_date} disabled={!editable} onChange={(v) => setF({ ...f, due_date: v })} />
+          <Field label="Job number" value={f.header.job_number ?? ""} disabled={!editable} onChange={(v) => setF({ ...f, header: { ...f.header, job_number: v } })} />
+          <Field label="Job type" value={f.header.job_type ?? ""} disabled={!editable} onChange={(v) => setF({ ...f, header: { ...f.header, job_type: v } })} />
           <div className="final-pos">Place of supply: {inv.place_of_supply || "—"} ({inv.intra_state ? "CGST + SGST" : "IGST"})</div>
         </fieldset>
         <fieldset>
@@ -212,7 +302,7 @@ function FinalInvoiceEditor({
               key={k}
               label={{ name: "Name", address: "Address", pan: "PAN", gstin: "GSTIN", state_code: "State code", state_name: "State" }[k]}
               value={f.customer[k] ?? ""}
-              disabled={!draft}
+              disabled={!editable}
               onChange={(v) => setF({ ...f, customer: { ...f.customer, [k]: k === "gstin" || k === "pan" ? v.toUpperCase() : v } })}
             />
           ))}
@@ -223,7 +313,7 @@ function FinalInvoiceEditor({
         <legend>Shipment details (as printed)</legend>
         <div className="final-header-grid">
           {inv.header_fields.map(([k, label]) => (
-            <Field key={k} label={label} value={f.header[k] ?? ""} disabled={!draft} onChange={(v) => setF({ ...f, header: { ...f.header, [k]: v } })} />
+            <Field key={k} label={label} value={f.header[k] ?? ""} disabled={!editable} onChange={(v) => setF({ ...f, header: { ...f.header, [k]: v } })} />
           ))}
         </div>
       </fieldset>
@@ -240,27 +330,27 @@ function FinalInvoiceEditor({
               <th className="num">Taxable ₹</th>
               <th className="num">GST %</th>
               <th className="num">Total ₹</th>
-              {draft && <th />}
+              {editable && <th />}
             </tr>
           </thead>
           <tbody>
             {f.lines.map((l, i) => (
               <tr key={i}>
-                <td><input value={l.description} disabled={!draft} onChange={(e) => setLine(i, { description: e.target.value })} /></td>
-                <td><input value={l.sub_description ?? ""} placeholder="—" disabled={!draft} onChange={(e) => setLine(i, { sub_description: e.target.value })} /></td>
-                <td><input className="w-sac" value={l.sac ?? ""} disabled={!draft} onChange={(e) => setLine(i, { sac: e.target.value })} /></td>
+                <td><input value={l.description} disabled={!editable} onChange={(e) => setLine(i, { description: e.target.value })} /></td>
+                <td><input value={l.sub_description ?? ""} placeholder="—" disabled={!editable} onChange={(e) => setLine(i, { sub_description: e.target.value })} /></td>
+                <td><input className="w-sac" value={l.sac ?? ""} disabled={!editable} onChange={(e) => setLine(i, { sac: e.target.value })} /></td>
                 <td>
-                  <select value={l.tax_type} disabled={!draft} onChange={(e) => setLine(i, { tax_type: e.target.value as FinalInvoiceLine["tax_type"] })}>
+                  <select value={l.tax_type} disabled={!editable} onChange={(e) => setLine(i, { tax_type: e.target.value as FinalInvoiceLine["tax_type"] })}>
                     {TAX_TYPES.map((x) => <option key={x}>{x}</option>)}
                   </select>
                 </td>
                 {(["non_gst_value", "taxable_value", "gst_rate"] as const).map((k) => (
                   <td key={k} className="num">
-                    <input className="num" inputMode="decimal" value={l[k]} disabled={!draft} onChange={(e) => setLine(i, { [k]: e.target.value })} />
+                    <input className="num" inputMode="decimal" value={l[k]} disabled={!editable} onChange={(e) => setLine(i, { [k]: e.target.value })} />
                   </td>
                 ))}
                 <td className="num">{inr(inv.lines[i]?.total)}</td>
-                {draft && (
+                {editable && (
                   <td>
                     <button type="button" className="link-button link-danger" onClick={() => setF({ ...f, lines: f.lines.filter((_, j) => j !== i) })}>✕</button>
                   </td>
@@ -269,7 +359,7 @@ function FinalInvoiceEditor({
             ))}
           </tbody>
         </table>
-        {draft && (
+        {editable && (
           <button
             type="button"
             className="link-button"
@@ -313,12 +403,30 @@ function FinalInvoiceEditor({
       {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
       <div className="final-actions">
         {(draft || inv.status === "issued") && (
-          <button disabled={!dirty || saving} onClick={save}>{saving ? "Saving…" : "Save changes"}</button>
+          <button disabled={!dirty || saving} onClick={() => save()}>
+            {saving ? "Saving…" : altering ? "Save the altered invoice" : "Save changes"}
+          </button>
+        )}
+        {canAlter && !altering && (
+          <button className="btn-secondary" onClick={() => setAltering(true)} title="Correct a mistake — the number stays the same">
+            Alter invoice
+          </button>
+        )}
+        {altering && (
+          <button className="btn-secondary" onClick={() => { setAltering(false); setF(toForm(inv)); }}>
+            Stop altering
+          </button>
+        )}
+        {canAlter && (
+          <span className="field-note">
+            Can be altered until{" "}
+            {new Date(`${inv.alter_until}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+          </span>
         )}
         <button className="btn-secondary" onClick={() => downloadFinalInvoice(inv.id).catch((e) => setMsg({ kind: "error", text: errorText(e) }))}>
           Download PDF{draft ? " (draft)" : ""}
         </button>
-        {draft && <button onClick={() => act("issue")}>Issue invoice</button>}
+        {draft && <span className="field-note">Issue both invoices together from the top.</span>}
         {draft && <button className="btn-secondary link-danger" onClick={() => act("delete")}>Delete draft</button>}
         {inv.status === "issued" && user?.role === "admin" && (
           <button className="btn-secondary link-danger" onClick={() => act("cancel")}>Cancel invoice</button>

@@ -19,7 +19,7 @@ from app.core.deps import require_admin
 from app.models.user import User
 from app.core.migrate import run_migrations
 from app import models  # noqa: F401 — populates Base.metadata
-from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router
+from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router, settings as settings_router
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), stream=sys.stdout,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -47,6 +47,7 @@ app.include_router(ports.router)
 app.include_router(tracker_columns.router)
 app.include_router(challans.router)
 app.include_router(final_invoices.router)
+app.include_router(settings_router.router)
 app.include_router(tracker_import.router)
 app.include_router(deleted.router)
 app.include_router(realtime_router.router)

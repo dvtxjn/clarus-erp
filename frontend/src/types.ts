@@ -89,6 +89,8 @@ export interface Shipment {
   cfs_tds_amount: string | null; // 2% of CFS basic, when we pay the CFS and cut TDS
   cfs_payment_after_tds: string | null; // basic + GST - TDS
   remarks: string | null;
+  fta_info: string | null; // FTA certificate no / notes (the small FTA button on the MBL)
+  eta_is_deadline: boolean; // "d" on the ETA: deadline = ETA − 4 days to move the shipment to the CFS
   is_stuck: boolean;
   status: ShipmentStatus;
   port: string | null;
@@ -179,6 +181,39 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   form_9: "Form 9 (old)",
   other: "Other",
 };
+
+/**
+ * Documents grouped the way the team thinks of them (client, 2026-09-29), each with a small
+ * marker: basic shipping docs, customs, shipping line, CFS.
+ */
+export const DOCUMENT_GROUPS: { id: string; label: string; marker: string; types: DocumentType[] }[] = [
+  {
+    id: "basic",
+    label: "Basic documents",
+    marker: "BASIC",
+    types: ["bl_copy", "hbl_copy", "commercial_invoice", "packing_list", "certificate_of_origin",
+      "fta_certificate_of_origin", "form_6_9", "form_6", "form_9", "insurance", "hss_agreement"],
+  },
+  {
+    id: "customs",
+    label: "Customs",
+    marker: "CUSTOMS",
+    types: ["assessed_bill_of_entry", "ooc_bill_of_entry", "gatepass_bill_of_entry", "stamp_duty", "hss_stamp_duty"],
+  },
+  {
+    id: "line",
+    label: "Shipping line",
+    marker: "LINE",
+    types: ["shipping_line_proforma", "shipping_line_invoice", "shipping_line_receipt", "do_letter", "empty_letter",
+      "do_empty_letter"],
+  },
+  { id: "cfs", label: "CFS / yard", marker: "CFS", types: ["cfs_proforma_invoice", "cfs_tax_invoice", "cfs_receipt"] },
+  { id: "other", label: "Other", marker: "OTHER", types: ["other"] },
+];
+
+export function documentGroup(t: DocumentType) {
+  return DOCUMENT_GROUPS.find((g) => g.types.includes(t)) ?? DOCUMENT_GROUPS[DOCUMENT_GROUPS.length - 1];
+}
 
 /** Old types kept only so earlier uploads still display — not offered for new uploads. */
 export const LEGACY_DOCUMENT_TYPES: DocumentType[] = ["hss_stamp_duty", "form_6", "form_9"];
@@ -361,6 +396,10 @@ export interface InvoiceView {
     bill_rate: string | null;
     gst_output: string | null;
     gst_difference: string | null;
+    with_shipping: boolean; // shipping line charges are in the value of goods
+    label: string; // "Value of Goods (w shipping)" / "(w/o shipping)"
+    note: string; // "Value calculated in the proforma is tentative …"
+    bill_rate_manual: boolean; // typed by hand (else it follows the rules)
   };
   notes: string[];
   bank: [string, string][];
@@ -393,6 +432,20 @@ export interface DashboardSummary {
   by_status: Record<ShipmentStatus, number>;
   by_port: Record<string, number>;
   upcoming_etas: { id: number; job: string; mbl: string; consignee: string | null; eta: string | null; port: string | null }[];
+  live_containers: number;
+  live_tonnes: number;
+  containers_by_eta_month: MonthFigures[];
+  containers_cleared_by_month: MonthFigures[];
+  this_month: string; // "2026-09"
+  last_month: string;
+}
+
+/** Containers and gross weight (tonnes) in one month, split by port. */
+export interface MonthFigures {
+  month: string;
+  containers: number;
+  tonnes: number;
+  by_port: Record<string, { containers: number; tonnes: number }>;
 }
 
 export interface ShipmentCreateInput {
@@ -474,6 +527,8 @@ export interface FinalInvoiceLine {
   total?: string;
 }
 export interface FinalInvoice {
+  not_applicable: boolean; // no charges of this kind: issued anyway as BILL CANCELLED — NOT APPLICABLE
+  alter_until: string | null; // issued: can be altered until this day (10th of next month)
   id: number;
   kind: "tax" | "reimbursement";
   title: string;

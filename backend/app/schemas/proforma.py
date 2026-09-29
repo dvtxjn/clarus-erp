@@ -137,6 +137,7 @@ class ProformaOut(BaseModel):
     bill_to_role: Optional[str] = None
     bill_to_org_id: Optional[int] = None
     bill_rate: Optional[Decimal] = None
+    bill_rate_manual: bool = False
     suppressed: Optional[list[str]] = None  # document-derived lines removed by hand (keys like "CFS", "DO:Liner Inv")
     status: ProformaStatus
     extracted_data: Optional[dict] = None

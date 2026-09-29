@@ -189,10 +189,25 @@ export async function deleteFinalInvoice(id: number): Promise<void> {
   await client.delete(`/final-invoices/${id}`);
 }
 
+/** Tax + reimbursement of one proforma: numbered and locked together (they share the number). */
+export async function issueFinalPair(proformaId: number): Promise<FinalInvoice[]> {
+  const { data } = await client.post(`/proformas/${proformaId}/final-invoices/issue`);
+  return data;
+}
+
+/** Both invoices of the pair in one PDF (tax, then reimbursement). */
+export async function downloadFinalPair(proformaId: number): Promise<void> {
+  await downloadBlob(`/proformas/${proformaId}/final-invoices.pdf`, `invoices-${proformaId}.pdf`);
+}
+
 export async function downloadFinalInvoice(id: number): Promise<void> {
-  const res = await client.get(`/final-invoices/${id}.pdf`, { responseType: "blob" });
+  await downloadBlob(`/final-invoices/${id}.pdf`, `invoice-${id}.pdf`);
+}
+
+async function downloadBlob(path: string, fallback: string): Promise<void> {
+  const res = await client.get(path, { responseType: "blob" });
   const header = res.headers["x-filename"];
-  const name = header ? decodeURIComponent(header) : `invoice-${id}.pdf`;
+  const name = header ? decodeURIComponent(header) : fallback;
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;
@@ -572,4 +587,83 @@ export async function setUserPassword(id: number, newPassword: string): Promise<
 }
 export async function forgotPassword(email: string): Promise<void> {
   await client.post("/auth/forgot-password", { email });
+}
+
+/** Admin switches (e.g. e-invoicing applies to the company). Admin changes them. */
+export interface AppSettings {
+  e_invoicing: boolean;
+}
+export async function getSettings(): Promise<AppSettings> {
+  const { data } = await client.get("/settings");
+  return data;
+}
+export async function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<AppSettings> {
+  const { data } = await client.put(`/settings/${key}`, { value });
+  return data;
+}
+
+/** Invoice register: every final invoice across shipments (the Invoices page). */
+export interface RegisterRow {
+  id: number;
+  kind: "tax" | "reimbursement";
+  status: "draft" | "issued" | "cancelled";
+  number: string | null;
+  seq: number | null;
+  fy: string | null;
+  invoice_date: string | null;
+  customer: string;
+  gstin: string;
+  shipment_id: number;
+  job: string | null;
+  mbl: string | null;
+  be_no: string | null;
+  not_applicable: boolean;
+  taxable: string;
+  non_gst: string;
+  gst: string;
+  net_payable: string;
+  irn: string | null;
+}
+export interface RegisterFilters {
+  fy?: string;
+  month?: string;
+  kind?: string;
+  status?: string;
+  client?: string;
+  q?: string;
+}
+const clean = (f: RegisterFilters) => Object.fromEntries(Object.entries(f).filter(([, v]) => v));
+export async function getInvoiceRegister(f: RegisterFilters): Promise<{ invoices: RegisterRow[]; financial_years: string[] }> {
+  const { data } = await client.get("/final-invoices", { params: clean(f) });
+  return data;
+}
+export async function downloadInvoicesPdf(ids: number[]): Promise<void> {
+  await downloadBlob(`/final-invoices/export.pdf?ids=${ids.join(",")}`, "invoices.pdf");
+}
+export async function downloadInvoiceRegister(f: RegisterFilters): Promise<void> {
+  const qs = new URLSearchParams(clean(f) as Record<string, string>).toString();
+  await downloadBlob(`/final-invoices/register.xlsx${qs ? `?${qs}` : ""}`, "invoice-register.xlsx");
+}
+
+/** Proforma register: every proforma across shipments (Invoices page → Proformas). */
+export interface ProformaRegisterRow {
+  id: number;
+  shipment_id: number;
+  job: string | null;
+  mbl: string | null;
+  be_no: string | null;
+  version: number;
+  name: string | null;
+  status: "draft" | "sent" | "superseded";
+  role: string | null;
+  bill_to: string | null;
+  date: string | null;
+  grand_total: string;
+}
+export async function getProformaRegister(f: RegisterFilters): Promise<{ proformas: ProformaRegisterRow[]; financial_years: string[] }> {
+  const { data } = await client.get("/proformas", { params: clean(f) });
+  return data;
+}
+export async function downloadProformasPdf(ids: number[]): Promise<void> {
+  await downloadBlob(`/proformas/export.pdf?ids=${ids.join(",")}`, "proformas.pdf");
 }

@@ -22,11 +22,12 @@ Samples it's built from (reference: client uploads, 2026-09-28):
 Returns the same amount keys as the CFS reader (cfs_before_tax / cfs_gst /
 cfs_after_tax / cfs_sanity_ok) so tracker sync treats all invoices alike, plus
 carrier, invoice_no, is_proforma and `charges` (one dict per charge line).
-Client rule (2026-09-28): a charge is a destination charge (-> cost inclusion)
-only if BOTH checks agree — it's billed in INR, and its charge head isn't
-freight. A foreign-currency charge is never a destination charge (e.g. USD
-freight, which Maersk invoices sometimes include). When the two checks
-disagree (an INR line named like freight) it's left out and flagged to review.
+Client rule (2026-09-28, narrowed 2026-09-30): on MAERSK invoices a charge is a
+destination charge (-> cost inclusion) only if BOTH checks agree — it's billed in
+INR, and its charge head isn't freight (Maersk invoices can include USD freight);
+when they disagree (an INR line named like freight) it's left out and flagged.
+Every other line's import invoice only carries destination charges: all count,
+whatever the currency.
 """
 from __future__ import annotations
 
@@ -37,6 +38,7 @@ AMOUNT = r"([\d,]+(?:\.\d+)?)"
 
 # (text on the invoice, display name) — first match wins
 CARRIERS = [
+    ("GOODRICH MARITIME", "Goodrich Maritime"), ("SEASTAR GLOBAL", "Seastar (Parekh)"), ("NAVIO SHIPPING", "Navio Shipping"),
     ("MAERSK", "Maersk"), ("CORDELIA", "Cordelia"), ("HAPAG", "Hapag-Lloyd"),
     ("MEDITERRANEAN SHIPPING", "MSC"), ("MSC ", "MSC"), ("CMA CGM", "CMA CGM"), ("OCEAN NETWORK EXPRESS", "ONE"),
     ("COSCO", "COSCO"), ("OOCL", "OOCL"), ("EVERGREEN", "Evergreen"), ("YANG MING", "Yang Ming"),
@@ -47,6 +49,9 @@ CARRIERS = [
 
 BEFORE_TAX = [
     r"Total\s+Base\s+Amount\s+(?:INR\s+)?" + AMOUNT,
+    r"Total\s+Excluding\s+Tax\s*:?\s*(?:INR\s+)?" + AMOUNT,              # CMA CGM
+    r"Taxable\s+Value\s*\(INR\)\s*:?\s*" + AMOUNT,                        # MSC
+    r"^\s*NET\s+" + AMOUNT + r"\s*INR\s*$",                                # Hapag-Lloyd
     r"Taxable\s+Amount\s*:?\s*(?:INR\s+)?" + AMOUNT,
     r"Total\s+Taxable\s+(?:Value|Amount)\s*:?\s*(?:INR|Rs\.?|₹)?\s*" + AMOUNT,
     r"Total\s*Amount\s*Before\s*Tax\s*:?\s*" + AMOUNT,
@@ -54,6 +59,8 @@ BEFORE_TAX = [
 ]
 GST_TOTAL = [
     r"Total\s+taxes\b[^\n]*?INR\s+" + AMOUNT,
+    r"Total\s+GST\s+TAX\s*:?\s*" + AMOUNT,                                   # CMA CGM
+    r"Total\s+GST\s+Amount\s*\(INR\)\s*:?\s*" + AMOUNT,                     # MSC
     r"Total\s+(?:GST|Tax)\s*(?:Amount)?\s*:?\s*(?:INR|Rs\.?|₹)?\s*" + AMOUNT,
     r"Tax\s*Amount\s*:?\s*GST\s*:?\s*" + AMOUNT,
 ]
@@ -61,6 +68,10 @@ GST_TOTAL = [
 GST_PART = re.compile(r"^\s*(?:[SCIU]-?GST)\b[^\n]*?(?:INR|Rs\.?|₹)\s*" + AMOUNT + r"\s*$", re.IGNORECASE | re.MULTILINE)
 AFTER_TAX = [
     r"Total\s+Payable\s+Amount\s+(?:INR\s+)?" + AMOUNT,
+    r"Total\s+Including\s+Tax\s*:?\s*(?:INR\s+)?" + AMOUNT,               # CMA CGM
+    r"Total\s+Invoice\s+Amount\s*(?:INR)?\s*:?\s*" + AMOUNT,                # MSC
+    r"Total\s+Invoice\s+Value\s*\(in\s+figure\)\s*:?\s*" + AMOUNT,          # ONE
+    r"^\s*GROSS\s+" + AMOUNT + r"\s*INR\s*$",                              # Hapag-Lloyd
     r"Total\s+Invoice\s+(?:Value|Amount)\s*:?\s*(?:INR|Rs\.?|₹)?\s*" + AMOUNT,
     r"Total\s+Amount\s+After\s+Tax\s*:?\s*" + AMOUNT,
     r"Grand\s+Total\s*:?\s*(?:INR|Rs\.?|₹)?\s*" + AMOUNT,
@@ -68,10 +79,18 @@ AFTER_TAX = [
 ]
 BL_NO = [
     r"Bill\s+of\s+Lading\s*(?:No\.?|Number|#)?\s*:?\s*([A-Z0-9]{6,20})\b",
+    r"\bB/L-\s*NO\.?\s*:?\s*([A-Z0-9]{8,20})\b",                           # Hapag-Lloyd
+    r"BL\s+Number[^\n]*\n\s*\S+\s+\S+\s+\S+\s+([A-Z0-9]{8,20})\b",          # Navio (values under the headings)
+    r"\b(MEDU[A-Z0-9]{6,12})\b",                                             # MSC
     r"\bM?HBL\s*#\s*:?\s*([A-Z0-9]{6,20})\b",
     r"\bB/?L\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9]{8,20})\b",
 ]
-INVOICE_NO = [r"Invoice\s+(?:Number|No\.?)\s*:?\s*([A-Z0-9/-]{6,})"]
+INVOICE_NO = [
+    r"Invoice\s+(?:Number|No\.?)\s*:?\s*(?=[A-Z0-9/-]*\d)([A-Z0-9/-]{6,})",
+    r"Client\s+no:\s*Invoice\s+no:[^\n]*\n\s*\S+\s+([A-Z0-9/-]{6,})",           # MSC (values under the headings)
+    r"Invoice\s+No\s+Invoice\s+Date[^\n]*\n\s*([A-Z0-9/-]{6,})",               # Navio
+    r"Invoice\s*#\s*Inv\s*Date[\s\S]{0,200}?\n\s*([A-Z0-9]{8,20})\s+\d{2}/\d{2}/\d{4}",  # Cordelia
+]
 
 # Maersk: "<desc> <qty> <UOM> <rate> <CUR> <extended> [IN IGST 18% <tax>] <taxable INR>", next line "SAC/HSN 996711"
 MAERSK_LINE = re.compile(
@@ -81,6 +100,25 @@ MAERSK_LINE = re.compile(
 AMOUNT_FIRST_LINE = re.compile(
     r"^(?P<qty>\d+(?:\.\d+)?)\s+(?P<cur>[A-Z]{3})\s+(?P<rate>[\d,]+(?:\.\d+)?)\s+[\d,]+(?:\.\d+)?\s+[\d.]+\s+(?P<amount>[\d,]+(?:\.\d+)?)\s*$")
 SAC_IN_DESC = re.compile(r"\(SAC\s*:?\s*(\d{6})\)")
+# Cordelia sometimes prints the unit note first: "D40H / 2,000 PER CTR 1 INR 1,600 1,600 1.0 1,600"
+AMOUNT_FIRST_ANYWHERE = re.compile(
+    r"(?:^|\s)(?P<qty>\d+(?:\.\d+)?)\s+(?P<cur>INR|USD|EUR)\s+(?P<rate>[\d,]+(?:\.\d+)?)\s+[\d,]+(?:\.\d+)?\s+[\d.]+\s+"
+    r"(?P<amount>[\d,]+(?:\.\d+)?)\s*$")
+# CMA CGM: "40HC C Terminal Handling Charge (DTHC) at destination IH 6UNI 17,925.00INR 107,550.00 107,550.00"
+CMA_LINE = re.compile(
+    r"^(?:\S+\s+[A-Z]\s+)?(?P<desc>[A-Za-z].*?)\s+[A-Z]{2}\s+(?P<qty>\d+)(?P<uom>[A-Z]{3})\s+(?P<rate>[\d,]+\.\d{2})"
+    r"(?P<cur>[A-Z]{3})\s+[\d,]+\.\d{2}\s+(?P<amount>[\d,]+\.\d{2})\s*$")
+# Hapag-Lloyd: "THC DESTINATION 996711 15725.00 INR 1 CTR 15725.00 INR G2"
+HAPAG_LINE = re.compile(
+    r"^(?P<desc>[A-Za-z].*?)\s+(?P<sac>99\d{4})\s+(?P<rate>[\d,]+\.\d{2})\s+(?P<cur>[A-Z]{3})\s+(?P<qty>\d+)\s+\S+\s+"
+    r"(?P<amount>[\d,]+\.\d{2})\s+[A-Z]{3}\s+\S+\s*$")
+# any line: "<description> <SAC 99xxxx> … <taxable> <GST %> <GST> [<GST %> <GST>]" — the GST must be that % of the amount
+SAC_ANY = re.compile(r"\b(99\d{4})\b")
+CURRENCY = re.compile(r"\b(INR|USD|EUR|AED|GBP|SGD|CNY|JPY)\b")
+MONEY = r"[\d,]+\.\d{2}"
+# overlapping (lookahead), so an exchange-rate column ("9,440.00 1.00 9,440.00 9.0 849.60") doesn't hide the pair
+GST_PAIR = re.compile(r"(?<![\d,.])(?=(?P<taxable>" + MONEY + r")\s+(?P<rate>\d{1,2}(?:\.\d+)?)\s*%?\s+(?P<gst>" + MONEY + r")"
+                      r"(?:\s+(?P<rate2>\d{1,2}(?:\.\d+)?)\s*%?\s+(?P<gst2>" + MONEY + r"))?)")
 # charge heads that are freight / origin, not destination charges
 FREIGHT_HEAD = re.compile(
     r"FREIGHT|\bBAS\b|\bBAF\b|BUNKER|\bEBS\b|\bCAF\b|CURRENCY\s+ADJ|PEAK\s+SEASON|\bPSS\b|\bGRI\b|"
@@ -97,10 +135,44 @@ def _num(raw: Optional[str]) -> Optional[float]:
 
 def _first(patterns: list[str], text: str) -> Optional[str]:
     for pat in patterns:
-        m = re.search(pat, text, re.IGNORECASE)
+        m = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
         if m:
             return m.group(1).strip()
     return None
+
+
+def _desc_before(line: str, stop: int) -> str:
+    """Charge name: the words before the SAC, up to the first number or currency code."""
+    words = []
+    for w in re.sub(r"^\d{1,2}\s+(?=[A-Za-z])", "", line[:stop]).split():
+        if w[0].isdigit() or CURRENCY.fullmatch(w):
+            break
+        words.append(w)
+    return " ".join(words).strip(" -:")
+
+
+def _generic_line(line: str, prev: str) -> Optional[dict[str, Any]]:
+    """A charge line on most invoices (Emirates, Seastar, Goodrich, Navio, MSC, ONE, HMM …)."""
+    sac = SAC_ANY.search(line)
+    if not sac:
+        return None
+    pair = None
+    for m in GST_PAIR.finditer(line, sac.end()):
+        taxable, rate, gst = _num(m["taxable"]), float(m["rate"]), _num(m["gst"])
+        if taxable and rate and gst is not None and abs(taxable * rate / 100 - gst) <= max(1.0, gst * 0.02):
+            pair = (m, taxable, gst + ((_num(m["gst2"]) or 0) if m["gst2"] and m["rate2"] and float(m["rate2"]) == rate else 0))
+            break
+    if pair is None:
+        return None
+    desc = _desc_before(line, sac.start())
+    if not desc:
+        return None  # a SAC summary row, not a charge
+    if (len(desc.split()) == 1 and prev and not re.search(r"\d", prev) and re.search(r"[A-Za-z]{3}", prev)
+            and not CURRENCY.search(prev) and not HEADER_WORDS.search(prev)):
+        desc = f"{prev.strip()} {desc}"  # the name wrapped onto the line above (Emirates)
+    cur = CURRENCY.search(line)
+    return {"description": desc, "sac": sac.group(1), "currency": cur.group(1) if cur else "INR",
+            "quantity": None, "rate": None, "amount": pair[1], "gst": pair[2]}
 
 
 def _charges(lines: list[str]) -> list[dict[str, Any]]:
@@ -115,22 +187,100 @@ def _charges(lines: list[str]) -> list[dict[str, Any]]:
             out.append({"description": m["desc"].strip(), "sac": sac.group(1) if sac else None,
                         "currency": m["cur"], "quantity": _num(m["qty"]), "rate": _num(m["rate"]),
                         "amount": _num(m["amount"]), "gst": _num(m["gst"]) if m["gst"] else 0.0})
+    if seen_maersk:
+        return _classify(out, strict=True)
+
+    # Cordelia: amounts first, the charge name (ending "(SAC:…)") on the following line(s)
+    for i, line in enumerate(lines):
+        m = AMOUNT_FIRST_LINE.match(line.strip()) or AMOUNT_FIRST_ANYWHERE.search(line.strip())
+        if not m:
             continue
-        if seen_maersk:
-            continue
-        m = AMOUNT_FIRST_LINE.match(line.strip())
-        if m and nxt:
-            sac = SAC_IN_DESC.search(nxt)
-            out.append({"description": SAC_IN_DESC.sub("", nxt).strip(" -"), "sac": sac.group(1) if sac else None,
-                        "currency": m["cur"], "quantity": _num(m["qty"]), "rate": _num(m["rate"]),
-                        "amount": _num(m["amount"]), "gst": None})
+        name = []
+        for nxt in lines[i + 1:i + 4]:
+            name.append(nxt.strip())
+            if SAC_IN_DESC.search(nxt):
+                break
+        text = " ".join(name)
+        sac = SAC_IN_DESC.search(text)
+        if sac:
+            desc = text[:sac.start()].strip(" -")
+        else:  # Cordelia proforma: the name is on the line above, no SAC
+            prev = lines[i - 1].strip() if i else ""
+            if not prev or re.search(r"\d{2,}", prev):
+                continue
+            desc = prev
+        out.append({"description": desc, "sac": sac.group(1) if sac else None,
+                    "currency": m["cur"], "quantity": _num(m["qty"]), "rate": _num(m["rate"]),
+                    "amount": _num(m["amount"]), "gst": None})
+    if out:
+        return _classify(out)
+
+    for line in lines:  # CMA CGM
+        m = CMA_LINE.match(line.strip())
+        if m:
+            out.append({"description": m["desc"].strip(), "sac": None, "currency": m["cur"], "quantity": _num(m["qty"]),
+                        "rate": _num(m["rate"]), "amount": _num(m["amount"]), "gst": None})
+    if out:
+        return _classify(out)
+
+    prev = ""
+    for line in lines:
+        text = line.strip()
+        h = HAPAG_LINE.match(text)
+        c = _generic_line(text, prev) if not h else None
+        if h:
+            c = {"description": h["desc"].strip(), "sac": h["sac"], "currency": h["cur"], "quantity": _num(h["qty"]),
+                 "rate": _num(h["rate"]), "amount": _num(h["amount"]), "gst": None}
+        if c:
+            out.append(c)
+        prev = text
+    return _classify(out)
+
+
+def _classify(out: list[dict[str, Any]], strict: bool = False) -> list[dict[str, Any]]:
+    """Which charges are destination charges (-> cost inclusion).
+    Maersk (strict): only INR charges whose head isn't freight — its invoices can carry freight.
+    Every other line (client, 2026-09-30): their import invoices only ever carry destination
+    charges, so every line counts, whatever the currency (e.g. HMM's ISPS fee in USD)."""
     for c in out:
+        if not strict:
+            c["in_cost_inclusion"], c["review"] = True, False
+            continue
         inr = c["currency"] == "INR"
         freight_head = bool(FREIGHT_HEAD.search(c["description"] or ""))
         c["in_cost_inclusion"] = inr and not freight_head
         # the two checks disagree -> left out, but worth a look
         c["review"] = inr and freight_head
     return out
+
+
+AMOUNTS_ON_LINE = re.compile(MONEY)
+# column headings — never part of a charge name
+HEADER_WORDS = re.compile(r"\b(?:AMOUNT|RATE|QTY|QUANTITY|DESCRIPTION|CODE|TAXABLE|HSN|SAC|CURR|TOTAL|UNITS?)\b", re.IGNORECASE)
+
+
+def _totals_from_lines(text: str, after: Optional[float]) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Totals without labels: a line whose amounts read taxable + GST(s) = total (Seastar, Goodrich,
+    HMM), or — when the total is known — taxable + the GSTs after it = that total (Navio, Emirates)."""
+    best = None
+    for line in text.splitlines():
+        nums = [_num(x) for x in AMOUNTS_ON_LINE.findall(line)]
+        nums = [n for n in nums if n is not None]
+        for start in range(len(nums)):
+            for end in range(start + 2, len(nums)):
+                base, taxes, total = nums[start], nums[start + 1:end], nums[end]
+                t = sum(taxes)
+                if base > 0 and 0.03 <= t / base <= 0.30 and abs(base + t - total) < 1.0:
+                    if best is None or total > best[2]:
+                        best = (base, round(t, 2), total)
+        if after is not None and nums:
+            base = nums[0]
+            rest = [n for n in nums[1:] if abs(n - base) >= 0.005]
+            t = sum(rest)
+            if base > 0 and rest and 0.03 <= t / base <= 0.30 and abs(base + t - after) < 1.0:
+                if best is None or after >= best[2]:
+                    best = (base, round(t, 2), after)
+    return best if best else (None, None, None)
 
 
 def scan_shipping_line_text(text: str) -> dict[str, Any]:
@@ -141,6 +291,11 @@ def scan_shipping_line_text(text: str) -> dict[str, Any]:
         parts = [_num(x) for x in GST_PART.findall(text)]
         gst = sum(p for p in parts if p is not None) if parts else None
     after = _num(_first(AFTER_TAX, text))
+    if before is None or after is None:
+        b, g, a = _totals_from_lines(text, after)
+        if b is not None:
+            before, after = before if before is not None else b, after if after is not None else a
+            gst = gst if gst is not None else g
     if gst is None and before is not None and after is not None and after >= before:
         gst = round(after - before, 2)
     if before is None and gst is not None and after is not None:
@@ -150,7 +305,8 @@ def scan_shipping_line_text(text: str) -> dict[str, Any]:
     result: dict[str, Any] = {
         "carrier": next((name for key, name in CARRIERS if key in upper), None),
         "invoice_no": _first(INVOICE_NO, text),
-        "is_proforma": "PROFORMA" in upper or "PRO FORMA" in upper,
+        "is_proforma": "PROFORMA" in upper or "PRO FORMA" in upper
+        or bool(re.search(r"\bDRAFT\s+(?:TAX\s+)?INVOICE\b", upper)),
         "bl_no": _first(BL_NO, text),
         "be_no": None,
         "cfs_before_tax": before,

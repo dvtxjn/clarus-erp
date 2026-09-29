@@ -213,16 +213,27 @@ def _charges(inv) -> list:
               colWidths=[WIDTH * 0.78, WIDTH * 0.22])
     g.setStyle(_style(("BACKGROUND", (0, 0), (-1, -1), BRAND_C), ("TOPPADDING", (0, 0), (-1, -1), 4),
                       ("BOTTOMPADDING", (0, 0), (-1, -1), 4)))
-    v = inv["value"]
-    vals = [num(x) for x in (v["value_of_goods"], v["gst_input"], v["value_per_kg"], v["bill_rate"],
-                             v["gst_output"], v["gst_difference"])]
-    out += [g, Spacer(1, 4),
-            _grid(["Value of Goods", "GST Input", "Value / Kg", "Bill Rate (per kg)", "GST Output", "GST Difference"],
-                  vals, [WIDTH / 6] * 6, TA_RIGHT)]
+    out += [g]
     rest = [s for s in shown if not s["counts_in_total"]]
     if rest:
         out += [Spacer(1, 4), section_table(rest)]
     return out
+
+
+def _value_grid(inv) -> Table:
+    v = inv["value"]
+    vals = [num(x) for x in (v["value_of_goods"], v["gst_input"], v["value_per_kg"], v["bill_rate"],
+                             v["gst_output"], v["gst_difference"])]
+    from app.invoice.build import VALUE_NOTE, value_label
+
+    grid = _grid([value_label(v), "GST Input", "Value / Kg", "Bill Rate (per kg)", "GST Output", "GST Difference"],
+                 vals, [WIDTH / 6] * 6, TA_RIGHT)
+    note = Table([[_p(VALUE_NOTE, 6.8, color=MUTED)]], colWidths=[WIDTH])
+    note.setStyle(_style(("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)))
+    t = Table([[grid], [note]], colWidths=[WIDTH])
+    t.setStyle(_style(("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                      ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)))
+    return t
 
 
 def _footer(inv) -> Table:
@@ -257,6 +268,9 @@ def render_pdf(inv: dict) -> bytes:
         *_header(inv),
         _parties(inv), Spacer(1, 5),
         _grid(["Assessable Value", "MBL", "HBL / HSS", "# Containers", "WT (KGS)", "Exam Applicable"], ref_vals, ref_w),
+        Spacer(1, 3),
+        # value of goods / GST input / bill rate right under the assessable value (client, 2026-09-30)
+        _value_grid(inv),
         Spacer(1, 5),
         *_charges(inv),
         Spacer(1, 6),

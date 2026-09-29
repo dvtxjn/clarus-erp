@@ -70,6 +70,18 @@ def split_mbl(cell: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     return (parts[0] if parts else None), ("/".join(parts[1:]) or None)
 
 
+FTA_NO = re.compile(r"^(?P<mbl>.*?)[\s-]*(?P<fta>[A-Z]{4}-\d{6}-[A-Z0-9]{5,8})\s*$")
+
+
+def split_fta(mbl: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """'LPL1543012-UKIN-160926-E96101' -> ('LPL1543012', 'UKIN-160926-E96101'): an FTA
+    certificate no written after the MBL isn't part of it (client, 2026-09-29)."""
+    m = FTA_NO.match((mbl or "").strip().upper())
+    if not m or not m.group("mbl").strip():
+        return mbl, None
+    return (mbl or "").strip()[: len(m.group("mbl").strip())], m.group("fta")
+
+
 def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
     """(rows as field dicts, unknown columns, skipped-row notes)."""
     text = data.decode("utf-8-sig", errors="replace")
@@ -85,6 +97,7 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
             continue
         r = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
         mbl, hbl = split_mbl(r.get("mbl"))
+        mbl, fta = split_fta(mbl)
         if "hbl" in r and _clean(r["hbl"]):
             hbl = _clean(r["hbl"])
         if not mbl and not hbl:
@@ -92,6 +105,8 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
             continue
         fields = {field: parse(r[col]) for col, (field, parse) in COLUMNS.items() if col in r}
         fields["mbl"], fields["hbl"] = mbl or "", hbl
+        if fta:  # only when the sheet has one — never blanks an FTA no typed in the app
+            fields["fta_info"] = fta
         pod = fields.get("pod")
         m = re.match(r"(IN[A-Z]{3}\d)", (pod or "").upper())
         if m or "pod" in r:

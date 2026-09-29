@@ -3,6 +3,8 @@ draft (every change audit-logged — this is what goes to the authorities), then
 (numbered + locked). See app/invoice/final.py."""
 from __future__ import annotations
 
+import io
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
@@ -10,6 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import storage
@@ -17,7 +20,8 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
 from app.core.locking import locked_proforma
-from app.invoice.final import TAX_TYPES, compute, create_from_proforma, issue
+from app.invoice.final import TAX_TYPES, alter_until, compute, create_from_proforma, fy_of, issue
+from app.models.settings import get_setting
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
 from app.models.proforma import Proforma
@@ -39,7 +43,8 @@ class FinalLine(BaseModel):
 
 
 class FinalInvoiceUpdate(BaseModel):
-    """Manual overrides. Draft: anything. Issued: only irn / ack_no / ack_date."""
+    """Manual overrides. Draft: anything. Issued: irn / ack_no / ack_date any time; anything else
+    until the 10th of next month (and, with e-invoicing, only while the e-invoice isn't filed)."""
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
     customer: Optional[dict[str, Any]] = None
@@ -50,6 +55,8 @@ class FinalInvoiceUpdate(BaseModel):
     irn: Optional[str] = Field(default=None, max_length=100)
     ack_no: Optional[str] = Field(default=None, max_length=50)
     ack_date: Optional[str] = Field(default=None, max_length=30)
+    # altering an issued invoice with e-invoicing on: has its e-invoice (IRN) been filed?
+    e_invoice_filed: Optional[bool] = None
 
 
 class CancelIn(BaseModel):
@@ -92,6 +99,113 @@ def create_final_invoices(proforma_id: int, db: Session = Depends(get_db),
     return [compute(i) for i in created]
 
 
+def _register_row(inv: FinalInvoice) -> dict:
+    """One line of the invoice register (the Invoices page)."""
+    d = compute(inv)
+    s = inv.shipment
+    return {
+        "id": inv.id, "kind": inv.kind, "status": inv.status, "number": inv.number, "seq": inv.seq, "fy": inv.fy,
+        "invoice_date": d["invoice_date"], "customer": d["customer"].get("name") or "", "gstin": d["customer"].get("gstin") or "",
+        "shipment_id": inv.shipment_id, "job": s.job if s else None, "mbl": s.mbl if s else None,
+        "be_no": (inv.header or {}).get("be_no"), "not_applicable": d["not_applicable"],
+        "taxable": d["totals"]["sub_taxable"], "non_gst": d["totals"]["sub_non_gst"], "gst": d["totals"]["gst"],
+        "net_payable": d["totals"]["net_payable"], "irn": inv.irn,
+    }
+
+
+def _register(db: Session, fy: Optional[str], month: Optional[str], kind: Optional[str], status: Optional[str],
+              client: Optional[str], q: Optional[str], ids: Optional[str] = None) -> list[FinalInvoice]:
+    query = db.query(FinalInvoice)
+    if ids:
+        wanted = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+        query = query.filter(FinalInvoice.id.in_(wanted))
+    if kind in ("tax", "reimbursement"):
+        query = query.filter(FinalInvoice.kind == kind)
+    if status in ("draft", "issued", "cancelled"):
+        query = query.filter(FinalInvoice.status == status)
+    rows = query.order_by(FinalInvoice.invoice_date.desc().nullslast(), FinalInvoice.seq.desc().nullslast(),
+                          FinalInvoice.kind.desc()).all()
+    out = []
+    for inv in rows:
+        d = inv.invoice_date
+        if fy and (inv.fy or (fy_of(d) if d else None)) != fy:
+            continue
+        if month and (not d or f"{d:%Y-%m}" != month):
+            continue
+        if client and client.lower() not in ((inv.customer or {}).get("name") or "").lower():
+            continue
+        if q:
+            s = inv.shipment
+            hay = " ".join(str(x or "") for x in (inv.number, s.job if s else "", s.mbl if s else "",
+                                                     (inv.header or {}).get("be_no"), inv.irn)).lower()
+            if q.lower() not in hay:
+                continue
+        out.append(inv)
+    return out
+
+
+@router.get("/final-invoices")
+def invoice_register(fy: Optional[str] = None, month: Optional[str] = None, kind: Optional[str] = None,
+                     status: Optional[str] = None, client: Optional[str] = None, q: Optional[str] = None,
+                     db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """Every final invoice (tax + reimbursement) across shipments, filtered — the Invoices page
+    (client, 2026-09-30: print / extract without opening each shipment)."""
+    rows = _register(db, fy, month, kind, status, client, q)
+    fys = sorted({r.fy or fy_of(r.invoice_date) for r in db.query(FinalInvoice).all() if r.fy or r.invoice_date}, reverse=True)
+    return {"invoices": [_register_row(i) for i in rows], "financial_years": fys}
+
+
+@router.get("/final-invoices/export.pdf")
+def export_pdf(ids: str, db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """The chosen invoices in one PDF (one per page, in the order listed) — to print or send."""
+    import pypdfium2
+
+    rows = _register(db, None, None, None, None, None, None, ids=ids)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No invoices chosen")
+    out = pypdfium2.PdfDocument.new()
+    for inv in sorted(rows, key=lambda i: (i.fy or "", i.seq or 0, i.kind != "tax", i.id)):
+        out.import_pages(pypdfium2.PdfDocument(render_final_pdf(compute(inv))))
+    buf = io.BytesIO()
+    out.save(buf)
+    filename = f"Invoices ({len(rows)}).pdf"
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename",
+    })
+
+
+@router.get("/final-invoices/register.xlsx")
+def export_register(fy: Optional[str] = None, month: Optional[str] = None, kind: Optional[str] = None,
+                    status: Optional[str] = None, client: Optional[str] = None, q: Optional[str] = None,
+                    db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """The filtered register as an Excel sheet (number, date, client, GSTIN, job, BE, amounts, IRN)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    rows = [_register_row(i) for i in _register(db, fy, month, kind, status, client, q)]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Invoices"
+    heads = ["Number", "Type", "Status", "Date", "Client", "GSTIN", "Job", "MBL", "BE No", "Taxable", "Non-GST", "GST",
+             "Net payable", "IRN"]
+    ws.append(heads)
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    for r in rows:
+        ws.append([r["number"] or "Draft", "Tax" if r["kind"] == "tax" else "Reimbursement", r["status"],
+                   r["invoice_date"], r["customer"], r["gstin"], r["job"], r["mbl"], r["be_no"],
+                   float(r["taxable"]), float(r["non_gst"]), float(r["gst"]), float(r["net_payable"]), r["irn"]])
+    for col, w in zip("ABCDEFGHIJKLMN", (18, 14, 10, 12, 34, 18, 8, 20, 12, 13, 13, 12, 14, 30)):
+        ws.column_dimensions[col].width = w
+    buf = io.BytesIO()
+    wb.save(buf)
+    filename = f"Invoice register{' ' + fy if fy else ''}.xlsx"
+    return Response(content=buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+                             "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename"})
+
+
 @router.get("/shipments/{shipment_id}/final-invoices")
 def list_final_invoices(shipment_id: int, db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
     rows = db.query(FinalInvoice).filter(FinalInvoice.shipment_id == shipment_id).order_by(FinalInvoice.id.desc()).all()
@@ -125,13 +239,29 @@ def update_final_invoice(invoice_id: int, payload: FinalInvoiceUpdate, db: Sessi
                          user: User = Depends(require_billing_access)):
     inv = _get(db, invoice_id)
     changes = payload.model_dump(exclude_unset=True, mode="json")
-    if inv.status != "draft":
-        locked = set(changes) - {"irn", "ack_no", "ack_date"}
-        if locked:
-            raise HTTPException(status_code=400, detail="This invoice is issued — only IRN / ACK can be filled in. "
-                                                        "Cancel it and make a new one to change anything else.")
-        if inv.status == "cancelled":
-            raise HTTPException(status_code=400, detail="This invoice is cancelled.")
+    filed = changes.pop("e_invoice_filed", None)
+    altered = False
+    if inv.status == "cancelled":
+        raise HTTPException(status_code=400, detail="This invoice is cancelled.")
+    if inv.status == "issued" and set(changes) - {"irn", "ack_no", "ack_date"}:
+        # altering an issued bill (client, 2026-09-30): mistakes happen — allowed until the 10th of
+        # next month; with e-invoicing, only while its e-invoice isn't filed
+        until = alter_until(inv)
+        if until is not None and date.today() > until:
+            raise HTTPException(status_code=400, detail=f"Issued invoices can be altered until {until:%d %b %Y} "
+                                "(that month's GSTR-1 is filed) — cancel it or issue a credit note instead.")
+        if get_setting(db, "e_invoicing"):
+            if inv.irn or filed:
+                raise HTTPException(status_code=400, detail="Its e-invoice is filed, so it can't be altered — cancel "
+                                    "the e-invoice (within 24 hours on the IRP) or issue a credit note.")
+            if filed is None:
+                raise HTTPException(status_code=409, detail={"ask": "e_invoice_filed",
+                                                             "message": "Has the e-invoice for this bill been filed?"})
+        altered = True
+        if db.get_bind().dialect.name != "postgresql":
+            raise HTTPException(status_code=400, detail="Altering issued invoices needs the Postgres database.")
+        # the database lock lets this one transaction through (number / status stay fixed) — 0039
+        db.execute(text("SET LOCAL clarus.invoice_alter = 'on'"))
     for field, value in changes.items():
         if field in ("invoice_date", "due_date") and value:
             value = date.fromisoformat(value)
@@ -143,7 +273,15 @@ def update_final_invoice(invoice_id: int, payload: FinalInvoiceUpdate, db: Sessi
         if old != value:
             record_change(db, "final_invoices", inv.id, field, old, value, user.id)
             setattr(inv, field, value)
+    if altered:
+        record_change(db, "final_invoices", inv.id, "altered after issue", None, inv.number, user.id)
     db.commit()
+    if altered:  # keep the corrected PDF as its own file (the issued one stays — nothing is deleted)
+        data = compute(inv)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        storage.save_pdf(db, f"final_invoice_pdf_altered_{stamp}", inv.id, f"Invoices/{inv.fy}",
+                         _pdf_name(data, inv).replace(".pdf", f" (altered {stamp}).pdf"), render_final_pdf(data))
+        db.commit()
     db.refresh(inv)
     return compute(inv)
 
@@ -154,7 +292,7 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
     inv = _get(db, invoice_id)
     if inv.status != "draft":
         raise HTTPException(status_code=400, detail="Only a draft can be issued")
-    if not inv.lines:
+    if not inv.lines and not (inv.header or {}).get("not_applicable"):
         raise HTTPException(status_code=400, detail="The invoice has no lines")
     if not (inv.customer or {}).get("gstin"):
         raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
@@ -168,6 +306,62 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
     db.commit()
     db.refresh(inv)
     return compute(inv)
+
+
+@router.post("/proformas/{proforma_id}/final-invoices/issue")
+def issue_pair(proforma_id: int, db: Session = Depends(get_db), user: User = Depends(require_billing_access)):
+    """One action for the pair (client, 2026-09-30): number and lock the tax AND the
+    reimbursement invoice together — same <n> — and keep both PDFs."""
+    locked_proforma(db, proforma_id)
+    drafts = (db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id, FinalInvoice.status == "draft")
+              .order_by(FinalInvoice.kind.desc()).all())  # tax first
+    if not drafts:
+        raise HTTPException(status_code=400, detail="No draft invoices to issue — make them from the proforma first")
+    for inv in drafts:
+        if not inv.lines and not (inv.header or {}).get("not_applicable"):
+            raise HTTPException(status_code=400, detail=f"The {inv.kind} invoice has no lines")
+        if not (inv.customer or {}).get("gstin"):
+            raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
+    for inv in drafts:
+        issue(db, inv)
+        db.flush()  # so the second one finds the first's number (the pair shares <n>)
+        record_change(db, "final_invoices", inv.id, "issued", None, inv.number, user.id)
+    db.commit()
+    for inv in drafts:
+        data = compute(inv)
+        storage.save_pdf(db, "final_invoice_pdf", inv.id, f"Invoices/{inv.fy}", _pdf_name(data, inv),
+                         render_final_pdf(data))
+    db.commit()
+    return [compute(i) for i in drafts]
+
+
+@router.get("/proformas/{proforma_id}/final-invoices.pdf")
+def pair_pdf(proforma_id: int, db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """Both invoices of the pair in one PDF — tax invoice, then reimbursement (one per page).
+    (Separate PDFs: /final-invoices/{id}.pdf for each.)"""
+    import pypdfium2
+
+    rows = (db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id, FinalInvoice.status != "cancelled")
+            .order_by(FinalInvoice.kind.desc(), FinalInvoice.id.desc()).all())
+    pair = {}
+    for inv in rows:  # newest of each kind
+        pair.setdefault(inv.kind, inv)
+    if not pair:
+        raise HTTPException(status_code=404, detail="No final invoices for this proforma")
+    out = pypdfium2.PdfDocument.new()
+    for kind in ("tax", "reimbursement"):
+        if kind in pair:
+            out.import_pages(pypdfium2.PdfDocument(render_final_pdf(compute(pair[kind]))))
+    buf = io.BytesIO()
+    out.save(buf)
+    first = pair.get("tax") or next(iter(pair.values()))
+    data = compute(first)
+    number = (first.number or f"DRAFT-{first.id}").replace("/", "-")
+    filename = f"{data['customer'].get('name') or 'Client'} - {number} - Tax + Reimbursement.pdf"
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename",
+    })
 
 
 @router.post("/final-invoices/{invoice_id}/cancel")

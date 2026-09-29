@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
+import DateCellEditor from "./dateEditor";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -40,6 +42,7 @@ import { useSaveShipment } from "./useSaveShipment";
 import { colorIndex, connectLive, PRESENCE_COLORS, sendPresence, TAB_ID } from "./live";
 import ColumnsPanel, { type PanelColumn } from "./ColumnsPanel";
 import { useConfirm } from "./ConfirmDialog";
+import { ShipmentDetail } from "./ShipmentDetailPage";
 import { formatPort, usePorts } from "./ports";
 import { SHIPMENT_STATUS_LABELS, type Port, type Shipment, type ShipmentStatus, type TrackerColumn } from "./types";
 
@@ -53,7 +56,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
  * an Enterprise (paid) feature.
  */
 
-const COLUMN_STATE_KEY = "tracker.columnState.v4";  // + "." + tab
+const COLUMN_STATE_KEY = "tracker.columnState.v5"; // v5: new column set / order (2026-09-29)  // + "." + tab
 const TAB_KEY = "tracker.tab";
 // Ongoing = no Cleared Date yet (live tracking). Cleared = has a Cleared Date;
 // removing the date sends the shipment back to Ongoing.
@@ -88,13 +91,51 @@ function loadView(): ViewMode {
     return "client";
   }
 }
+/**
+ * Column views (client, 2026-09-29): one click shows only the columns a job needs.
+ * "Full grid" shows everything, like the sheet. Picking columns by hand makes it "Custom".
+ */
+const COLUMN_VIEWS = {
+  clearance: {
+    label: "Clearance",
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "remarks", "cleared_date"],
+  },
+  movement: {
+    label: "Movement",
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "igm", "container", "gross_wt", "container_status", "cfs", "poc",
+      "delivery_status", "remark"],
+  },
+  billing: {
+    label: "Billing",
+    cols: ["job", "mbl", "consignee", "license", "be_no", "be_dt", "cleared_date", "checklist", "is_billed"],
+  },
+  grid: { label: "Full grid", cols: null },
+} as const;
+type ColumnView = keyof typeof COLUMN_VIEWS | "custom";
+const COLVIEW_KEY = "tracker.columnView"; // + "." + tab
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2026-08-27" -> "27-Aug-26" (compact form of the sheet's dates). */
-function shortDate(v: string | null | undefined): string {
+/** "2026-08-27" -> "27 Aug" ("27 Aug 25" when it isn't this year) — compact dates, denser columns. */
+function shortDate(v: string | null | undefined, withYear = false): string {
   if (!v) return "";
   const [y, m, d] = v.split("-");
-  return `${d}-${MONTHS[Number(m) - 1]}-${y.slice(2)}`;
+  const year = !withYear && String(new Date().getFullYear()) === y ? "" : ` ${y.slice(2)}`;
+  return `${d} ${MONTHS[Number(m) - 1]}${year}`;
+}
+/** INW is typed text ("19-Sep-2026", "19/09/2026", "2026-09-19"): shown the same short way. */
+function shortInw(v: string | null | undefined): string {
+  const t = (v ?? "").trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return shortDate(t);
+  m = t.match(/^(\d{1,2})[-\s/.]([A-Za-z]{3})[A-Za-z]*[-\s/.](\d{2,4})$/);
+  if (m) {
+    const mon = MONTHS.findIndex((x) => x.toLowerCase() === m![2].toLowerCase());
+    if (mon >= 0) return shortDate(`${m[3].length === 2 ? "20" + m[3] : m[3]}-${String(mon + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`);
+  }
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) return shortDate(`${m[3].length === 2 ? "20" + m[3] : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`);
+  return t;
 }
 function formatDate(p: ValueFormatterParams): string {
   return shortDate(p.value as string | null);
@@ -113,13 +154,15 @@ const text = (field: keyof Shipment, headerName: string, width = 130): ColDef<Sh
   headerName,
   width,
   cellDataType: "text",
-  autoHeight: true, // text can wrap; see defaultColDef
 });
-const dateCol = (field: keyof Shipment, headerName: string, width = 92): ColDef<Shipment> => ({
+const dateCol = (field: keyof Shipment, headerName: string, width = 76): ColDef<Shipment> => ({
   field,
   headerName,
   width,
   cellDataType: "dateString",
+  cellEditor: DateCellEditor, // Google-Sheets style calendar (client, 2026-09-29)
+  cellEditorPopup: true,
+  cellEditorParams: { format: "iso" },
   valueFormatter: formatDate,
   comparator: dateComparator,
 });
@@ -159,6 +202,7 @@ const FLAG_LABELS = Object.fromEntries([...FLAGS, ...CFS_TDS_FLAGS].map(([f, , t
 
 interface GridContext {
   toggleFlag: (s: Shipment, field: FlagField) => void;
+  saveText: (s: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => Promise<void>;
 }
 
 function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & { flags: FlagList }) {
@@ -205,13 +249,14 @@ function customColumn(c: TrackerColumn): ColDef<Shipment> {
     headerName: c.label,
     width: c.data_type === "boolean" ? 100 : 140,
     cellDataType: CUSTOM_TYPES[c.data_type],
-    autoHeight: c.data_type === "text",
     valueGetter: (p) => p.data?.custom_fields?.[c.key] ?? null,
     valueSetter: (p) => {
       p.data.custom_fields = { ...(p.data.custom_fields ?? {}), [c.key]: p.newValue };
       return true;
     },
-    ...(c.data_type === "date" ? { valueFormatter: formatDate, comparator: dateComparator } : {}),
+    ...(c.data_type === "date"
+      ? { valueFormatter: formatDate, comparator: dateComparator, cellEditor: DateCellEditor, cellEditorPopup: true, cellEditorParams: { format: "iso" } }
+      : {}),
   };
 }
 
@@ -246,7 +291,7 @@ function withSavedState(defs: ColDef<Shipment>[], key: string): ColDef<Shipment>
     .map((x) => x.d);
 }
 
-function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]): ColDef<Shipment>[] {
+function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], byClient: boolean): ColDef<Shipment>[] {
   const removed = new Set(trackerCols.filter((c) => !c.is_custom && c.is_removed).map((c) => c.key));
   const all: ColDef<Shipment>[] = [
     {
@@ -261,72 +306,106 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       suppressMovable: true,
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
-          <Link to={`/shipments/${p.data.id}`} className="grid-open-link" title="Open shipment">
+          <Link
+            to={`/shipments/${p.data.id}`}
+            className="grid-open-link"
+            title="Open in a side panel (Ctrl / ⌘-click: full page)"
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab / full page as usual
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent("tracker:peek", { detail: p.data!.id }));
+            }}
+          >
             ↗
           </Link>
         ) : null,
     },
     { ...text("job", "Job", 58), pinned: "left" },
     {
-      ...text("mbl", "MBL", 170),
+      ...text("mbl", "MBL", 190),
+      minWidth: 150, // the number + the HBL / FTA buttons
       pinned: "left",
-      cellClass: "grid-wrap grid-wrap-anywhere",
-      cellRenderer: (p: ICellRendererParams<Shipment>) => (
-        <span>
-          {p.value}
-          {p.data?.missing_from_sheet_at && (
-            <span className="exception-badge" title="Not in the last tracker CSV import — check it (never deleted automatically)">
-              {" "}not in sheet
-            </span>
+      cellRenderer: (p: ICellRendererParams<Shipment, string, GridContext>) => (
+        <span className="mbl-cell">
+          <span className="mbl-text">
+            {p.value}
+            {p.data?.missing_from_sheet_at && (
+              <span className="exception-badge" title="Not in the last tracker CSV import — check it (never deleted automatically)">
+                {" "}not in sheet
+              </span>
+            )}
+          </span>
+          {p.data && (
+            <>
+              <MiniFieldButton row={p.data} field="hbl" label="HBL" ctx={p.context} />
+              <MiniFieldButton row={p.data} field="fta_info" label="FTA" ctx={p.context} />
+            </>
           )}
         </span>
       ),
     },
-    text("hbl", "HBL", 150),
-    text("be_description", "BE Description", 220),
-    { ...dateCol("eta", "ETA"), sort: "asc" },
+    { ...text("be_description", "Desc", 200), headerTooltip: "BE Description" },
+    {
+      ...dateCol("eta", "ETA", 118),
+      minWidth: 112, // "d" + date + deadline
+      sort: "asc",
+      // redraw when the deadline switch changes too (the ETA value itself doesn't)
+      equals: () => false,
+      headerTooltip: "d = deadline: the shipment must be moved to the CFS 4 days before the ETA",
+      cellRenderer: (p: ICellRendererParams<Shipment, string, GridContext>) =>
+        p.data ? <EtaCell row={p.data} ctx={p.context} /> : null,
+    },
     {
       // INW with the sheet's Day count as a badge (Day is calculated from INW)
-      ...text("inw", "INW · Day", 132),
+      ...text("inw", "INW", 118),
+      cellEditor: DateCellEditor, // INW is typed text ("08-Oct-2026"); the calendar writes it the same way
+      cellEditorPopup: true,
+      cellEditorParams: { format: "sheet" },
       headerTooltip: "Day = today − INW (+1 if INW is today or past)",
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
           <span className="inw-cell">
-            <span>{p.data.inw}</span>
+            <span title={p.data.inw ?? undefined}>{shortInw(p.data.inw)}</span>
             <span className={`day-badge${p.data.days === "Pending" ? " day-pending" : ""}`}>
               {p.data.days === "Pending" ? "Pending" : p.data.days.replace(/ days?$/, "d")}
             </span>
           </span>
         ) : null,
     },
-    text("license", "License", 88),
-    text("client", "Client", 105),
-    { ...text("consignee", "Consignee", 120), cellClass: "grid-wrap" },
-    {
-      ...flag("is_hss", "HSS", 56),
-      headerTooltip: "High sea sale — set automatically when the consignee is 'SELLER - BUYER'; tick/untick to override",
-    },
+    { ...text("license", "Lic", 80), headerTooltip: "License" },
+    // grouped by client, each section's bar already names it
+    ...(byClient ? [] : [text("client", "Client", 105)]),
+    text("consignee", "Consignee", 130),
     {
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
       headerName: "POD",
-      autoHeight: true,
       width: 132,
       cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["", ...ports.map((p) => p.code)] },
       valueFormatter: (p) => formatPort(p.value, ports),
       filterValueGetter: (p) => formatPort(p.data?.port, ports),
     },
-    text("container_status", "Cntr Status", 80),
+    { ...text("container_status", "Cntr St", 72), headerTooltip: "Container Status" },
     text("cfs", "CFS", 90),
     text("be_no", "BE No", 78),
-    dateCol("be_dt", "BE Dt"),
+    { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
     text("container", "Cntr", 52),
-    text("gross_wt", "Gross Wt", 88),
+    {
+      // weight is always MTS: the unit sits in the title, cells show the number
+      ...text("gross_wt", "Wt (MTS)", 76),
+      headerTooltip: "Gross Weight, MTS",
+      cellClass: "num-cell",
+      valueFormatter: (p) => (typeof p.value === "string" ? p.value.replace(/\s*MTS\s*$/i, "") : p.value),
+      valueParser: (p) => {
+        const v = String(p.newValue ?? "").trim();
+        return /^\d+(\.\d+)?$/.test(v) ? `${v} MTS` : v || null;
+      },
+    },
     text("remark", "Remark", 72),
     text("poc", "POC", 95),
-    { ...text("remarks", "Remarks", 130), cellClass: "grid-wrap" },
-    dateCol("cleared_date", "Cleared Date"),
+    text("remarks", "Remarks", 150),
+    { ...dateCol("cleared_date", "Cleared"), headerTooltip: "Cleared Date" },
     {
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
       colId: "checklist",
@@ -339,58 +418,27 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       cellRenderer: ChecklistCell,
       cellRendererParams: { flags: FLAGS },
     },
-    {
-      colId: "cfs_tds",
-      headerName: "CFS / TDS",
-      width: 190,
-      editable: false,
-      sortable: false,
-      headerTooltip: "CFS paid by us · TDS cut on the shipment · TDS cut on CFS payment. Filter with e.g. TDS:Y",
-      valueGetter: (p) =>
-        p.data ? CFS_TDS_FLAGS.map(([f, l]) => `${l}:${p.data![f] ? "Y" : "N"}`).join(" ") : "",
-      cellRenderer: ChecklistCell,
-      cellRendererParams: { flags: CFS_TDS_FLAGS },
-    },
     text("igm", "IGM", 72),
-    text("delivery_status", "Delivery", 82),
-    {
-      field: "status",
-      headerName: "Status",
-      autoHeight: true,
-      width: 108,
-      headerTooltip:
-        "Updates itself from the evidence: IGM no → IGM Filed, BE no → BE Filed, duty amount → BE Assessed, Duty Paid → Duty Paid, OOC → OOC Done, Cleared Date → Cleared. You can still set it by hand.",
-      cellEditor: "agSelectCellEditor",
-      cellEditorParams: { values: Object.keys(SHIPMENT_STATUS_LABELS) },
-      valueFormatter: (p) => SHIPMENT_STATUS_LABELS[p.value as ShipmentStatus] ?? p.value,
-      filterValueGetter: (p) => (p.data ? SHIPMENT_STATUS_LABELS[p.data.status] : ""),
-      cellRenderer: (p: ICellRendererParams<Shipment>) =>
-        p.value ? (
-          <span className="status-cell">
-            <span className={`status-pill status-${p.value}`}>{SHIPMENT_STATUS_LABELS[p.value as ShipmentStatus]}</span>
-            {isException(p.data) && (
-              <span className="exception-badge" title="Has a Cleared Date but these aren't ticked yet">
-                Missing: {p.data!.missing_for_clearance.join(", ")}
-              </span>
-            )}
-          </span>
-        ) : null,
-    },
-    dateCol("mbl_date", "MBL Date"),
-    dateCol("hbl_date", "HBL Date"),
+    { ...text("delivery_status", "Deliv", 76), headerTooltip: "Delivery" },
+    dateCol("mbl_date", "MBL Dt"),
+    dateCol("hbl_date", "HBL Dt"),
     text("gw", "GW", 80),
-    text("total_pkg", "Total Pkg", 80),
-    text("pkg_code", "Pkg Code", 80),
-    text("line_no", "Line No", 80),
-    dateCol("igm_date", "IGM Date"),
+    { ...text("total_pkg", "Pkgs", 64), headerTooltip: "Total Packages" },
+    { ...text("pkg_code", "Pkg", 64), headerTooltip: "Package Code" },
+    { ...text("line_no", "Line#", 64), headerTooltip: "Line No" },
+    dateCol("igm_date", "IGM Dt"),
     text("voyage", "Voyage", 90),
     text("cont", "Cont", 80),
-    { ...flag("is_billed", "Billed?", 66), headerTooltip: "Tick when billed. Un-ticking (cancelling a bill) is admin-only." },
-    text("shipping_line", "Line", 78),
+    { ...flag("is_billed", "Billed", 62), headerTooltip: "Tick when billed. Un-ticking (cancelling a bill) is admin-only." },
     ...trackerCols.filter((c) => c.is_custom).map(customColumn),
   ];
   const defs = all.filter((d) => !d.field || !removed.has(d.field as string));
-  if (tab === "ongoing") return defs;
+  if (tab === "ongoing") {
+    // Billed belongs to cleared shipments; Cleared date goes last (client, 2026-09-29)
+    const rest = defs.filter((d) => d.field !== "is_billed" && d.field !== "cleared_date");
+    const cleared = defs.find((d) => d.field === "cleared_date");
+    return cleared ? [...rest, cleared] : rest;
+  }
   // Cleared: sorted by clearance date, with Cleared Date + Billed? up front
   // for the "what did we clear / is it billed" review.
   const up = ["cleared_date", "is_billed"];
@@ -404,20 +452,23 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
 
 const gridTheme = themeQuartz.withParams({
   fontFamily: "inherit",
-  fontSize: 12,
   headerFontSize: 11,
   headerFontWeight: 600,
-  rowHeight: 30,
-  headerHeight: 34,
+  rowHeight: 26,
+  headerHeight: 30,
   spacing: 4,
   cellHorizontalPadding: 6,
-  // Clarus palette (see :root in index.css)
-  accentColor: "#C2611F",
-  foregroundColor: "#2A2420",
-  borderColor: "#E7E1DA",
-  headerBackgroundColor: "#F6F2EE",
-  rowHoverColor: "#FBF6F1",
-  selectedRowBackgroundColor: "rgba(210, 107, 33, 0.08)",
+  fontSize: 12,
+  // palette from :root in index.css (follows the chosen accent)
+  accentColor: "var(--color-accent)",
+  backgroundColor: "var(--color-surface)", // follows the theme (light / dim / dark)
+  foregroundColor: "var(--color-text)",
+  headerTextColor: "var(--color-text-muted)",
+  chromeBackgroundColor: "var(--color-subtle)",
+  borderColor: "var(--color-border)",
+  headerBackgroundColor: "var(--color-subtle)",
+  rowHoverColor: "var(--color-inv-sub)",
+  selectedRowBackgroundColor: "var(--color-accent-soft)",
 });
 
 // --- live presence: which cell each other person/tab is on (Google-Sheets style) ---
@@ -440,12 +491,14 @@ const defaultColDef: ColDef<Shipment> = {
   suppressFloatingFilterButton: true, // narrower filter boxes
   wrapHeaderText: true, // two-line headers, like Excel, so columns can be narrow
   autoHeaderHeight: true,
-  // Nothing is ever cut off: long values wrap and the row grows to fit. Only text columns
-  // measure their height (autoHeight) — measuring makes the grid render that column for
-  // every row even off-screen, and doing it for all ~40 columns froze the page ~1s on load.
-  // Dates, flags and chips are fixed-size and never need it.
-  wrapText: true,
+  // One line per row (client, 2026-09-29): long values are cut with "…" for now — the full
+  // value shows on hover. Column widths get tuned later.
+  wrapText: false,
   autoHeight: false,
+  tooltipValueGetter: (p) => {
+    const v = p.valueFormatted ?? p.value;
+    return typeof v === "string" && v.length > 12 ? v : undefined;
+  },
 };
 // Client/month sections have no visible header row
 const sectionColDef: ColDef<Shipment> = { ...defaultColDef, wrapHeaderText: false, autoHeaderHeight: false, floatingFilter: false };
@@ -471,6 +524,33 @@ export default function ShipmentGridPage() {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const statusFilter = (searchParams.get("status") as ShipmentStatus | null) ?? undefined;
+  // side panel ("peek"): the shipment opens over the tracker; kept in the URL (?peek=58)
+  const peekId = Number(searchParams.get("peek")) || null;
+  const setPeek = useCallback(
+    (id: number | null) =>
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set("peek", String(id));
+          else next.delete("peek");
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+  useEffect(() => {
+    const open = (e: Event) => setPeek((e as CustomEvent<number>).detail);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector(".ag-cell-inline-editing, .confirm-dialog")) setPeek(null);
+    };
+    window.addEventListener("tracker:peek", open);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("tracker:peek", open);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [setPeek]);
   const ports = usePorts();
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -480,12 +560,23 @@ export default function ShipmentGridPage() {
   const [showImport, setShowImport] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
+  const [colView, setColView] = useState<ColumnView>(() => {
+    try {
+      return (localStorage.getItem(`${COLVIEW_KEY}.${tab}`) as ColumnView | null) ?? "custom";
+    } catch {
+      return "custom";
+    }
+  });
   const columnStateKey = `${COLUMN_STATE_KEY}.${tab}`;
   // Saved widths/order/pinning go into the definitions, so every grid first renders at its
   // final layout — applying them after load re-wrapped and re-measured every row (visible jump).
   const columnDefs = useMemo(
-    () => withSavedState(buildColumnDefs(ports, tab, trackerCols), `${COLUMN_STATE_KEY}.${tab}`),
-    [ports, tab, trackerCols],
+    () =>
+      withSavedState(
+        buildColumnDefs(ports, tab, trackerCols, tab === "ongoing" && view === "client"),
+        `${COLUMN_STATE_KEY}.${tab}`,
+      ),
+    [ports, tab, trackerCols, view],
   );
 
   const refresh = useCallback(async () => {
@@ -751,6 +842,7 @@ export default function ShipmentGridPage() {
   const sectionApis = () =>
     [...sectionRefs.current.values()].map((r) => r.current?.api).filter((a): a is GridApi<Shipment> => !!a);
 
+
   // --- header grid drives filters + sort for every client section ---
   function syncSection(api: GridApi<Shipment>) {
     const header = headerRef.current?.api;
@@ -766,6 +858,25 @@ export default function ShipmentGridPage() {
     sectionApis().forEach(syncSection);
     saveColumnState();
   };
+
+  /** Excel-style autosize: each column as narrow as its longest value (or its title) allows. */
+  function fitToContent(ids: string[]) {
+    const header = headerRef.current?.api;
+    if (!header) return;
+    const need = new Map<string, number>();
+    const measure = (api: GridApi<Shipment>, skipHeader: boolean) => {
+      api.autoSizeColumns(ids, skipHeader);
+      for (const c of api.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, Math.max(need.get(c.colId) ?? 0, c.width ?? 0));
+    };
+    // the title's width first (the header grid just autosized to it), then every section's rows
+    for (const c of header.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, c.width ?? 0);
+    const apis = sectionApis();
+    apis.forEach((api) => measure(api, true));
+    const state = ids.map((colId) => ({ colId, width: need.get(colId) ?? 60 }));
+    header.applyColumnState({ state });
+    apis.forEach((api) => api.applyColumnState({ state }));
+    saveColumnState();
+  }
 
   function saveColumnState() {
     const state = headerRef.current?.api.getColumnState();
@@ -787,7 +898,17 @@ export default function ShipmentGridPage() {
     syncHidden();
   }
 
+  // each tab (ongoing / cleared) remembers its own column view
+  useEffect(() => {
+    try {
+      setColView((localStorage.getItem(`${COLVIEW_KEY}.${tab}`) as ColumnView | null) ?? "custom");
+    } catch {
+      setColView("custom");
+    }
+  }, [tab]);
+
   function resetLayout() {
+    rememberColView("grid");
     try {
       localStorage.removeItem(columnStateKey);
     } catch {
@@ -937,7 +1058,20 @@ export default function ShipmentGridPage() {
       setMessage({ kind: "error", text: `Couldn't save — ${saveErrorText(err)}` });
     }
   }, [record, saveShipment]);
-  const gridContext = useMemo<GridContext>(() => ({ toggleFlag }), [toggleFlag]);
+  // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
+  const saveText = useCallback(async (row: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => {
+    try {
+      const { shipment: saved, kept } = await saveShipment(row, { [field]: value } as Partial<Shipment>, label);
+      setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
+      if (kept === "theirs") return;
+      record({ id: row.id, field, customKey: null, oldValue: row[field], newValue: value, label });
+      setMessage({ kind: "ok", text: `Saved ${label}` });
+    } catch (err) {
+      setMessage({ kind: "error", text: `Couldn't save ${label} — ${saveErrorText(err)}` });
+      throw err;
+    }
+  }, [record, saveShipment]);
+  const gridContext = useMemo<GridContext>(() => ({ toggleFlag, saveText }), [toggleFlag, saveText]);
 
   // Ctrl/⌘+C copies the focused cell (as shown), unless you've selected text yourself.
   const copyCell = useCallback((e: CellKeyDownEvent<Shipment>) => {
@@ -1004,16 +1138,40 @@ export default function ShipmentGridPage() {
         visible: !hiddenCols.has(colId),
         isCustom: trackerCols.some((c) => c.is_custom && c.key === colId),
         // mbl is required; checklist is a combined view of five fields
-        removable: colId !== "mbl" && colId !== "checklist" && colId !== "cfs_tds",
+        removable: colId !== "mbl" && colId !== "checklist",
       };
     });
+  function rememberColView(v: ColumnView) {
+    setColView(v);
+    try {
+      localStorage.setItem(`${COLVIEW_KEY}.${tab}`, v);
+    } catch {
+      /* private window */
+    }
+  }
+  function applyColumnView(v: keyof typeof COLUMN_VIEWS) {
+    const all = panelColumns.map((c) => c.colId);
+    const keep: readonly string[] = COLUMN_VIEWS[v].cols ?? all;
+    const show = all.filter((id) => keep.includes(id));
+    const hide = all.filter((id) => !keep.includes(id));
+    for (const api of [headerRef.current?.api, ...sectionApis()]) {
+      if (!api) continue;
+      api.setColumnsVisible(hide, false);
+      api.setColumnsVisible(show, true);
+    }
+    syncHidden();
+    saveColumnState();
+    rememberColView(v);
+  }
   function toggleColumn(colId: string, visible: boolean) {
+    rememberColView("custom");
     headerRef.current?.api.setColumnsVisible([colId], visible);
     sectionApis().forEach((api) => api.setColumnsVisible([colId], visible));
     syncHidden();
     saveColumnState();
   }
   function showAllColumns() {
+    rememberColView("grid");
     const ids = panelColumns.map((c) => c.colId);
     headerRef.current?.api.setColumnsVisible(ids, true);
     sectionApis().forEach((api) => api.setColumnsVisible(ids, true));
@@ -1126,6 +1284,20 @@ export default function ShipmentGridPage() {
           ))}
         </div>
         )}
+        <div className="view-switch" role="tablist" aria-label="Columns shown">
+          {(Object.keys(COLUMN_VIEWS) as (keyof typeof COLUMN_VIEWS)[]).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={colView === v}
+              className={colView === v ? "view-switch-btn active" : "view-switch-btn"}
+              onClick={() => applyColumnView(v)}
+              title={v === "grid" ? "Every column, like the sheet" : `Only the ${COLUMN_VIEWS[v].label.toLowerCase()} columns`}
+            >
+              {COLUMN_VIEWS[v].label}
+            </button>
+          ))}
+        </div>
         <div className="tracker-search">
           <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
         </div>
@@ -1199,13 +1371,20 @@ export default function ShipmentGridPage() {
               columnDefs={columnDefs}
               defaultColDef={defaultColDef}
               domLayout="autoHeight"
+              tooltipShowDelay={350}
               suppressNoRowsOverlay
               alignedGrids={alignedWithSections}
               onGridReady={onHeaderReady}
               onFilterChanged={onHeaderFilterChanged}
               onSortChanged={onHeaderSortChanged}
               onColumnMoved={saveColumnState}
-              onColumnResized={(e) => e.finished && saveColumnState()}
+              onColumnResized={(e) => {
+                if (!e.finished) return;
+                // Autosize (double-click a column edge, or the column menu) on the header grid
+                // only sees the header — size to the rows in every client section instead
+                if (e.source === "autosizeColumns" && e.columns?.length) fitToContent(e.columns.map((c) => c.getColId()));
+                else saveColumnState();
+              }}
               onColumnPinned={saveColumnState}
             />
           </div>
@@ -1230,6 +1409,7 @@ export default function ShipmentGridPage() {
                   shipments
                   {tab === "cleared" && ` · ${rows.filter((r) => r.is_billed).length} billed`}
                 </span>
+                <SectionGlance rows={rows} />
               </h2>
               <AgGridReact<Shipment>
                 ref={refFor(client)}
@@ -1240,6 +1420,7 @@ export default function ShipmentGridPage() {
                 context={gridContext}
                 onCellKeyDown={copyCell}
                 domLayout="autoHeight"
+              tooltipShowDelay={350}
                 headerHeight={0}
                 floatingFiltersHeight={0}
                 alignedGrids={() =>
@@ -1248,9 +1429,13 @@ export default function ShipmentGridPage() {
                   )
                 }
                 getRowId={(p) => String(p.data.id)}
-                getRowClass={(p: RowClassParams<Shipment>) => (isException(p.data) ? "row-exception" : undefined)}
+                getRowClass={(p: RowClassParams<Shipment>) =>
+                  // coloured left edge by status: scan the stage without reading (client, 2026-09-29)
+                  [isException(p.data) ? "row-exception" : "", p.data ? `row-st-${p.data.status}` : ""].join(" ")
+                }
                 quickFilterText={quickFilter}
                 onGridReady={(e) => syncSection(e.api)}
+                suppressColumnVirtualisation // autosize measures every column, not just the visible ones
                 onModelUpdated={(e) => {
                   const n = e.api.getDisplayedRowCount();
                   setVisibleCounts((prev) => (prev[client] === n ? prev : { ...prev, [client]: n }));
@@ -1273,6 +1458,11 @@ export default function ShipmentGridPage() {
 
           {shownGroups.length === 0 && <div className="tracker-empty">No shipments match this view.</div>}
         </SettledStack>
+      )}
+      {peekId && (
+        <aside className="peek-panel" aria-label="Shipment">
+          <ShipmentDetail key={peekId} shipmentId={peekId} onClose={() => setPeek(null)} />
+        </aside>
       )}
     </div>
   );
@@ -1475,5 +1665,172 @@ function AddShipmentForm({
       </button>
       {error && <div className="auth-error">{error}</div>}
     </form>
+  );
+}
+
+/** Client section at a glance: containers and weight (client, 2026-09-29). */
+function SectionGlance({ rows }: { rows: Shipment[] }) {
+  const cntr = rows.reduce((n, r) => n + (parseInt(r.container ?? "", 10) || 0), 0);
+  const tonnes = rows.reduce((n, r) => n + (parseFloat((r.gross_wt ?? "").replace(/,/g, "")) || 0), 0);
+  return (
+    <span className="section-glance">
+      <span>{cntr} cntr</span>
+      <span>{tonnes.toLocaleString("en-IN", { maximumFractionDigits: 1 })} t</span>
+    </span>
+  );
+}
+
+type MiniField = "hbl" | "fta_info";
+
+/**
+ * Small "HBL" / "FTA" button on the MBL (client, 2026-09-29): click to see, copy, add or edit
+ * it without a column of its own. Filled = has a value.
+ */
+function MiniFieldButton({ row, field, label, ctx }: { row: Shipment; field: MiniField; label: string; ctx: GridContext }) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const value = row[field] ?? "";
+  return (
+    <>
+      <button
+        type="button"
+        className={`mini-field${value ? " mini-field-on" : ""}`}
+        title={value ? `${label}: ${value}` : `Add ${label}`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 340) });
+        }}
+      >
+        {label}
+      </button>
+      {at &&
+        createPortal(
+          <MiniFieldPopover
+            at={at}
+            label={label}
+            initial={value}
+            multiline={field === "fta_info"}
+            onClose={() => setAt(null)}
+            onSave={async (v) => {
+              await ctx.saveText(row, field, v.trim() || null, label);
+              setAt(null);
+            }}
+          />,
+          document.body,
+        )}
+    </>
+  );
+}
+
+function MiniFieldPopover({
+  at,
+  label,
+  initial,
+  multiline,
+  onClose,
+  onSave,
+}: {
+  at: { top: number; left: number };
+  label: string;
+  initial: string;
+  multiline: boolean;
+  onClose: () => void;
+  onSave: (v: string) => Promise<void>;
+}) {
+  const [v, setV] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && onClose();
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [onClose]);
+  const save = async () => {
+    if (v === initial) return onClose();
+    setBusy(true);
+    try {
+      await onSave(v);
+    } catch {
+      setBusy(false);
+    }
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (e.key === "Escape") onClose();
+    if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      save();
+    }
+  };
+  return (
+    <div className="mini-popover" ref={box} style={at} role="dialog" aria-label={label} onKeyDown={keys}>
+      <div className="mini-popover-head">{label}</div>
+      {multiline ? (
+        <textarea autoFocus rows={3} value={v} onChange={(e) => setV(e.target.value)} placeholder={`${label} no / notes`} />
+      ) : (
+        <input autoFocus value={v} onChange={(e) => setV(e.target.value)} placeholder={`${label} no`} />
+      )}
+      <div className="mini-popover-actions">
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={!v}
+          onClick={() => {
+            navigator.clipboard?.writeText(v).then(() => setCopied(true));
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn-secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" disabled={busy} onClick={save}>
+          Save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const DEADLINE_DAYS = 4;
+
+/** ETA − 4 days: the deadline to move the shipment to the CFS (client, 2026-09-29). */
+export function etaDeadline(eta: string | null): string | null {
+  if (!eta) return null;
+  const [y, m, d] = eta.split("-").map(Number);
+  const dl = new Date(y, m - 1, d - DEADLINE_DAYS);
+  return `${dl.getFullYear()}-${String(dl.getMonth() + 1).padStart(2, "0")}-${String(dl.getDate()).padStart(2, "0")}`;
+}
+
+/** ETA cell: the small "d" in front turns the deadline on/off; the deadline shows beside the ETA. */
+function EtaCell({ row, ctx }: { row: Shipment; ctx: GridContext }) {
+  const dl = row.eta_is_deadline ? etaDeadline(row.eta) : null;
+  const today = new Date(new Date().toDateString()).getTime();
+  const left = dl ? Math.round((new Date(`${dl}T00:00:00`).getTime() - today) / 86_400_000) : null;
+  const tone = left == null ? "" : left < 0 ? " dl-past" : left <= 2 ? " dl-soon" : "";
+  return (
+    <span className="eta-cell">
+      <button
+        type="button"
+        className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}`}
+        title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.saveText(row, "eta_is_deadline", !row.eta_is_deadline, "Deadline").catch(() => {});
+        }}
+      >
+        d
+      </button>
+      <span>{shortDate(row.eta)}</span>
+      {dl && (
+        <span className={`dl-date${tone}`} title={left != null && left < 0 ? "Deadline passed" : `Deadline in ${left} day(s)`}>
+          {shortDate(dl)}
+        </span>
+      )}
+    </span>
   );
 }

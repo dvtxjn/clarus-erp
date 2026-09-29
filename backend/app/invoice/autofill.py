@@ -339,13 +339,10 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
             db.delete(li)
             updated.append(f"{li.description}: removed (no longer applies)")
 
-    # HSS: suggest the bill rate once the BE figures are in (editable; never overwrites one set by hand)
-    if full and s.is_hss and proforma.bill_rate is None and s.assessable_value is not None:
-        suggestion = value_summary(proforma)["suggested_bill_rate"]
-        if suggestion is not None:
-            proforma.bill_rate = suggestion
-            added.append(f"Bill rate ₹{suggestion}/kg (suggested — check it)")
-
+    # HSS: the bill rate follows the rules (sync_gst_difference -> sync_bill_rate)
+    if full and s.is_hss and proforma.bill_rate is None and not proforma.bill_rate_manual \
+            and value_summary(proforma)["suggested_bill_rate"] is not None:
+        added.append(f"Bill rate ₹{value_summary(proforma)['suggested_bill_rate']}/kg (by the rules — follows the costs)")
     sync_gst_difference(db, proforma)
     return added, updated, skipped
 

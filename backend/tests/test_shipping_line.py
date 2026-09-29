@@ -50,8 +50,8 @@ def test_cordelia_gst_parts_and_freight_head_in_inr():
     assert (r["carrier"], r["bl_no"], r["is_proforma"]) == ("Cordelia", "CSX26JEDNSA021814", True)
     assert (r["cfs_before_tax"], r["cfs_gst"], r["cfs_after_tax"]) == (135500.0, 24390.0, 159890.0)
     baf = next(x for x in r["charges"] if x["description"].startswith("BAF"))
-    # INR but a freight head: both checks must agree, so it's left out and flagged
-    assert (baf["in_cost_inclusion"], baf["review"]) == (False, True)
+    # not Maersk (client, 2026-09-30): the import invoice only has destination charges — BAF counts too
+    assert (baf["in_cost_inclusion"], baf["review"]) == (True, False)
 
 
 def test_cost_inclusion_default_override_and_reset(client, admin_headers):
@@ -106,7 +106,7 @@ def test_receipts_and_line_proforma_until_tax_invoice(client, admin_headers):
     sid = client.post("/shipments", json={"mbl": "CSXRCPT0001", "consignee": "Divine"}, headers=h).json()["id"]
     _upload(client, h, sid, "shipping_line_proforma", CORDELIA.replace("CSX26JEDNSA021814", "CSXRCPT0001").splitlines())
     s = client.get(f"/shipments/{sid}", headers=h).json()
-    assert float(s["line_amount_before_tax"]) == 121400.0      # proforma counts (BAF left out) until a tax invoice
+    assert float(s["line_amount_before_tax"]) == 135500.0      # proforma counts (every line: not Maersk) until a tax invoice
     _upload(client, h, sid, "shipping_line_invoice", ["Tax Invoice", "Bill of Lading CSXRCPT0001",
             "Total Base Amount INR 100,000.00", "I-GST Total taxes (see tax specification) INR 18,000.00",
             "Total Payable Amount INR 118,000.00"])
@@ -234,3 +234,14 @@ def test_line_cost_inclusion_client_default_and_shipment_switch(client, admin_he
     assert has_line()
     client.patch(f"/shipments/{other}", json={"line_cost_inclusion": "exclude"}, headers=h)
     assert not has_line()
+
+
+def test_fta_number_after_the_mbl_is_split_off():
+    """Client, 2026-09-29: 'LPL1543012-UKIN-160926-E96101' — the MBL is LPL1543012, the rest is the FTA no."""
+    from app.tracker_import import split_fta
+
+    assert split_fta("LPL1543012-UKIN-160926-E96101") == ("LPL1543012", "UKIN-160926-E96101")
+    assert split_fta("HDMUBHMA79827900 -UKIN-100926-CEAACE") == ("HDMUBHMA79827900", "UKIN-100926-CEAACE")
+    assert split_fta("BHMA07216400- UKIN-170926-342EE1") == ("BHMA07216400", "UKIN-170926-342EE1")
+    assert split_fta("CSX26JEDNSA021814") == ("CSX26JEDNSA021814", None)
+    assert split_fta("UKIN-160926-E96101") == ("UKIN-160926-E96101", None)  # nothing before it: leave alone

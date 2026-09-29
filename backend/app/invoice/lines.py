@@ -50,9 +50,36 @@ def recalc(li: ProformaLineItem, gst_amount: Optional[Decimal] = None,
     li.total = total_override if total_override is not None else total
 
 
+def sync_bill_rate(proforma: Proforma) -> Optional[str]:
+    """HSS bill rate follows the rules (client, 2026-09-30): always pre-filled with the
+    suggested rate and re-worked, up or down, whenever the costs change. A rate typed by
+    hand is kept — unless the costs rise past it; then it goes up to the suggested rate.
+    Drafts only. Returns a note when a hand-typed rate had to move."""
+    from app.core.enums import ProformaStatus
+
+    s = proforma.shipment
+    if proforma.status != ProformaStatus.DRAFT or s is None or not s.is_hss:
+        return None
+    v = value_summary(proforma)
+    suggested, minimum = v["suggested_bill_rate"], v["minimum_bill_rate"]
+    if suggested is None:
+        return None
+    current = Decimal(proforma.bill_rate) if proforma.bill_rate is not None else None
+    if not proforma.bill_rate_manual:
+        if current != suggested:
+            proforma.bill_rate = suggested
+        return None
+    if current is None or (minimum is not None and current < minimum):
+        proforma.bill_rate = suggested
+        return f"Bill rate raised to ₹{suggested}/kg — the costs went above the rate typed by hand"
+    return None
+
+
 def sync_gst_difference(db: Session, proforma: Proforma) -> None:
     """Keep the automatic GST Difference line in step: present (= max(0, GST
-    output - GST input)) while a bill rate is set, gone when it isn't."""
+    output - GST input)) while a bill rate is set, gone when it isn't. The bill rate
+    itself is brought up to date first (sync_bill_rate)."""
+    sync_bill_rate(proforma)
     existing = [li for li in proforma.line_items if li.charge and li.charge.code == GST_DIFFERENCE_CODE]
     diff = value_summary(proforma)["gst_difference"] if proforma.bill_rate is not None else None
     if diff is None:

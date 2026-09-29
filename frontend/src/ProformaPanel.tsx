@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   listProformas,
@@ -85,8 +85,9 @@ export default function ProformaPanel({
 
   if (loading) return <div className="tracker-empty">Loading…</div>;
 
-  return (
-    <div className="proforma-panel">
+  // versions, the bill-to and notes — top of the left column
+  const side = (
+    <>
       <div className="proforma-toolbar">
         <div className="version-tabs">
           {proformas.map((p) => (
@@ -191,12 +192,25 @@ export default function ProformaPanel({
         </div>
       )}
 
+    </>
+  );
+
+  return (
+    <div className="proforma-panel">
       {!active ? (
-        <div className="tracker-empty">
-          No proforma yet — {shipment.is_hss ? "create the seller and/or buyer invoice." : "create the first version."}
+        <div className="pf-split">
+          <aside className="pf-left">{side}</aside>
+          <section className="pf-right">
+            <div className="tracker-empty">
+              No proforma yet — {shipment.is_hss ? "create the seller and/or buyer invoice." : "create the first version."}
+            </div>
+            <FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />
+          </section>
         </div>
       ) : (
         <ProformaVersion
+          side={side}
+          finals={<FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />}
           proforma={active}
           charges={charges}
           containerCount={containerCount(shipment)}
@@ -209,8 +223,6 @@ export default function ProformaPanel({
           }}
         />
       )}
-
-      <FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />
     </div>
   );
 }
@@ -329,6 +341,8 @@ function errorText(e: unknown): string {
 }
 
 function ProformaVersion({
+  side,
+  finals,
   proforma,
   charges,
   containerCount,
@@ -338,6 +352,8 @@ function ProformaVersion({
   onPrefilled,
   onChange,
 }: {
+  side: ReactNode;
+  finals: ReactNode;
   proforma: Proforma;
   charges: ChargeMasterEntry[];
   containerCount: number | null;
@@ -356,6 +372,7 @@ function ProformaVersion({
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
   const confirm = useConfirm();
   const draft = proforma.status === "draft";
+  const [pane, setPane] = useState<"proforma" | "final">("proforma");
 
   // The invoice layout is rebuilt server-side after every change
   useEffect(() => {
@@ -471,166 +488,193 @@ function ProformaVersion({
     run(() => updateProformaLineItem(proforma.id, lineId, changes));
 
   return (
-    <div className="proforma-version">
-      <div className="invoice-actions">
-        {draft && (
-          <button
-            onClick={handleFill}
-            disabled={busy}
-            title="Add Agency, Examination, Customs Duty (+ challan interest), Stamp Duty, CFS, Royalty (HSS) and shipping line from what the shipment knows; refreshes Customs / Stamp Duty"
-          >
-            Fill / refresh from shipment
-          </button>
-        )}
-        <button className="btn-secondary" onClick={() => handleDownload("xlsx")} disabled={!!downloading}>
-          {downloading === "xlsx" ? "Preparing…" : "Download Excel"}
-        </button>
-        <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading}>
-          {downloading === "pdf" ? "Preparing…" : "Download PDF"}
-        </button>
-        {draft && proforma.line_items.length > 0 && (
-          <button
-            onClick={async () => {
-              if (
-                invoice?.customs_duty?.source === "be" &&
-                !(await confirm({
-                  title: "No duty challan",
-                  message:
-                    "There's no duty challan or OOC copy for this BE, so the interest is unknown and Customs Duty is only the BE amount. Upload the challan and Fill / refresh first, or mark as sent anyway?",
-                  confirmLabel: "Mark as sent anyway",
-                }))
-              )
-                return;
-              run(() => updateProformaStatus(proforma.id, "sent")).catch(() => {});
-            }}
-          >
-            Mark as Sent
-          </button>
-        )}
-        {draft && (
-          <span className="field-note">
-            Click any shaded cell to edit it. Draft lines update themselves when documents or the challan change — except
-            ones you've edited (marked ✎).
-          </span>
-        )}
-      </div>
-
-      {error && <div className="invoice-error">{error}</div>}
-      {draft && (proforma.suppressed?.length ?? 0) > 0 && (
-        <div className="removed-lines">
-          <span>Removed from this proforma (not updated automatically):</span>
-          {proforma.suppressed!.map((key) => (
-            <span key={key} className="removed-line">
-              {FROM_DOCUMENTS[key.split(":")[0]] ?? key}
-              <button type="button" className="link-button" disabled={busy} onClick={() => restore(key)}>
-                Restore
+    // split pane (client, 2026-09-30): everything you do on the left, one uniform column;
+    // the invoice on the right — or the final invoices made from it
+    <div className="proforma-version pf-split">
+      <aside className="pf-left">
+        {side}
+          <div className="invoice-actions">
+            {draft && (
+              <button
+                onClick={handleFill}
+                disabled={busy}
+                title="Add Agency, Examination, Customs Duty (+ challan interest), Stamp Duty, CFS, Royalty (HSS) and shipping line from what the shipment knows; refreshes Customs / Stamp Duty"
+              >
+                Fill / refresh from shipment
               </button>
-            </span>
-          ))}
-        </div>
-      )}
-      {fillResult && (
-        <div className="fill-result">
-          <div>
-            <strong>Added:</strong> {fillResult.added.length ? fillResult.added.join(", ") : "nothing new"}
+            )}
+            <button className="btn-secondary" onClick={() => handleDownload("xlsx")} disabled={!!downloading}>
+              {downloading === "xlsx" ? "Preparing…" : "Download Excel"}
+            </button>
+            <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading}>
+              {downloading === "pdf" ? "Preparing…" : "Download PDF"}
+            </button>
+            {draft && proforma.line_items.length > 0 && (
+              <button
+                onClick={async () => {
+                  if (
+                    invoice?.customs_duty?.source === "be" &&
+                    !(await confirm({
+                      title: "No duty challan",
+                      message:
+                        "There's no duty challan or OOC copy for this BE, so the interest is unknown and Customs Duty is only the BE amount. Upload the challan and Fill / refresh first, or mark as sent anyway?",
+                      confirmLabel: "Mark as sent anyway",
+                    }))
+                  )
+                    return;
+                  run(() => updateProformaStatus(proforma.id, "sent")).catch(() => {});
+                }}
+              >
+                Mark as Sent
+              </button>
+            )}
+            {draft && (
+              <span className="field-note">
+                Click any shaded cell to edit it. Draft lines update themselves when documents or the challan change — except
+                ones you've edited (marked ✎).
+              </span>
+            )}
           </div>
-          {fillResult.updated.length > 0 && (
-            <div>
-              <strong>Refreshed:</strong> {fillResult.updated.join(", ")}
+
+          {error && <div className="invoice-error">{error}</div>}
+          {draft && (proforma.suppressed?.length ?? 0) > 0 && (
+            <div className="removed-lines">
+              <span>Removed from this proforma (not updated automatically):</span>
+              {proforma.suppressed!.map((key) => (
+                <span key={key} className="removed-line">
+                  {FROM_DOCUMENTS[key.split(":")[0]] ?? key}
+                  <button type="button" className="link-button" disabled={busy} onClick={() => restore(key)}>
+                    Restore
+                  </button>
+                </span>
+              ))}
             </div>
           )}
-          {fillResult.skipped.length > 0 && (
-            <ul>
-              {fillResult.skipped.map((s) => (
-                <li key={s}>{s}</li>
-              ))}
-            </ul>
+          {fillResult && (
+            <div className="fill-result">
+              <div>
+                <strong>Added:</strong> {fillResult.added.length ? fillResult.added.join(", ") : "nothing new"}
+              </div>
+              {fillResult.updated.length > 0 && (
+                <div>
+                  <strong>Refreshed:</strong> {fillResult.updated.join(", ")}
+                </div>
+              )}
+              {fillResult.skipped.length > 0 && (
+                <ul>
+                  {fillResult.skipped.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+              )}
+              <button className="btn-secondary" onClick={() => setFillResult(null)}>
+                Dismiss
+              </button>
+            </div>
           )}
-          <button className="btn-secondary" onClick={() => setFillResult(null)}>
-            Dismiss
+
+          {draft && (
+            <form className="add-shipment-form" onSubmit={handleAdd}>
+              <select value={chargeId} onChange={(e) => selectCharge(e.target.value ? Number(e.target.value) : "")}>
+                <option value="">Select charge…</option>
+                {pickable.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.sac_code}, {Number(c.gst_rate)}% GST){standardRate(c)}
+                    {FROM_DOCUMENTS[c.code] ? " — or from documents" : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                id="proforma-rate"
+                placeholder="Rate"
+                type="number"
+                step="0.01"
+                value={rate}
+                onChange={(e) => setRate(e.target.value)}
+                required
+              />
+              <input
+                placeholder="Qty"
+                type="number"
+                step="0.01"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+              <select value={category} onChange={(e) => setCategory(e.target.value as ChargeCategory | "")} aria-label="Section">
+                <option value="">Section: charge default</option>
+                {(Object.keys(SECTION_LABELS) as ChargeCategory[]).map((c) => (
+                  <option key={c} value={c}>
+                    {SECTION_LABELS[c]}
+                  </option>
+                ))}
+              </select>
+              {perKg && (
+                <span className="field-note">
+                  {weightKg
+                    ? `₹/kg × ${weightKg.toLocaleString("en-IN")} kg = ₹${((Number(rate) || 0) * (Number(quantity) || 0)).toLocaleString("en-IN")} + GST`
+                    : "Per kg — this shipment has no gross weight; enter the quantity."}
+                </span>
+              )}
+              {perContainer && (
+                <span className="field-note">
+                  {containerCount
+                    ? `× ${containerCount} container${containerCount > 1 ? "s" : ""} = ₹${((Number(rate) || 0) * (Number(quantity) || 0)).toLocaleString("en-IN")} + GST`
+                    : "Per container — this shipment has no container count; enter the quantity."}
+                </span>
+              )}
+              <button type="submit" disabled={busy}>
+                Add Line Item
+              </button>
+              {selected && FROM_DOCUMENTS[selected.code] && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={busy}
+                  title="Use the figure from the uploaded invoice / BE / challan instead of typing a rate"
+                  onClick={() => restore(selected.code === "DO" ? "DO:Liner Inv" : selected.code).then(() => selectCharge(""))}
+                >
+                  Add from documents
+                </button>
+              )}
+            </form>
+          )}
+
+        <div className="pf-finals-link">
+          <span>Final invoices (tax + reimbursement)</span>
+          <button type="button" className="btn-secondary" onClick={() => setPane("final")}>
+            Open →
           </button>
         </div>
-      )}
-
-      {draft && (
-        <form className="add-shipment-form" onSubmit={handleAdd}>
-          <select value={chargeId} onChange={(e) => selectCharge(e.target.value ? Number(e.target.value) : "")}>
-            <option value="">Select charge…</option>
-            {pickable.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.sac_code}, {Number(c.gst_rate)}% GST){standardRate(c)}
-                {FROM_DOCUMENTS[c.code] ? " — or from documents" : ""}
-              </option>
-            ))}
-          </select>
-          <input
-            id="proforma-rate"
-            placeholder="Rate"
-            type="number"
-            step="0.01"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-            required
-          />
-          <input
-            placeholder="Qty"
-            type="number"
-            step="0.01"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
-          <select value={category} onChange={(e) => setCategory(e.target.value as ChargeCategory | "")} aria-label="Section">
-            <option value="">Section: charge default</option>
-            {(Object.keys(SECTION_LABELS) as ChargeCategory[]).map((c) => (
-              <option key={c} value={c}>
-                {SECTION_LABELS[c]}
-              </option>
-            ))}
-          </select>
-          {perKg && (
-            <span className="field-note">
-              {weightKg
-                ? `₹/kg × ${weightKg.toLocaleString("en-IN")} kg = ₹${((Number(rate) || 0) * (Number(quantity) || 0)).toLocaleString("en-IN")} + GST`
-                : "Per kg — this shipment has no gross weight; enter the quantity."}
-            </span>
-          )}
-          {perContainer && (
-            <span className="field-note">
-              {containerCount
-                ? `× ${containerCount} container${containerCount > 1 ? "s" : ""} = ₹${((Number(rate) || 0) * (Number(quantity) || 0)).toLocaleString("en-IN")} + GST`
-                : "Per container — this shipment has no container count; enter the quantity."}
-            </span>
-          )}
-          <button type="submit" disabled={busy}>
-            Add Line Item
+      </aside>
+      <section className="pf-right">
+        <div className="pf-pane-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={pane === "proforma"} className={pane === "proforma" ? "on" : ""} onClick={() => setPane("proforma")}>
+            Proforma
           </button>
-          {selected && FROM_DOCUMENTS[selected.code] && (
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={busy}
-              title="Use the figure from the uploaded invoice / BE / challan instead of typing a rate"
-              onClick={() => restore(selected.code === "DO" ? "DO:Liner Inv" : selected.code).then(() => selectCharge(""))}
-            >
-              Add from documents
-            </button>
+          <button type="button" role="tab" aria-selected={pane === "final"} className={pane === "final" ? "on" : ""} onClick={() => setPane("final")}>
+            Final invoices
+          </button>
+        </div>
+        {pane === "final" ? (
+          <div className="pf-final-pane">{finals}</div>
+        ) : (
+      <InvoicePreview>
+          {invoice && <DutyNotice invoice={invoice} />}
+
+          {!invoice ? (
+            <div className="tracker-empty">Loading invoice…</div>
+          ) : (
+            <InvoiceSheet
+              invoice={invoice}
+              editable={draft}
+              onSave={saveLine}
+              onSaveProforma={(changes) => run(() => updateProforma(proforma.id, changes))}
+              onRemove={(id) => run(() => removeProformaLineItem(proforma.id, id)).catch(() => {})}
+            />
           )}
-        </form>
-      )}
-
-      {invoice && <DutyNotice invoice={invoice} />}
-
-      {!invoice ? (
-        <div className="tracker-empty">Loading invoice…</div>
-      ) : (
-        <InvoiceSheet
-          invoice={invoice}
-          editable={draft}
-          onSave={saveLine}
-          onSaveProforma={(changes) => run(() => updateProforma(proforma.id, changes))}
-          onRemove={(id) => run(() => removeProformaLineItem(proforma.id, id)).catch(() => {})}
-        />
-      )}
+      </InvoicePreview>
+        )}
+      </section>
     </div>
   );
 }
@@ -808,6 +852,59 @@ function InvoiceSheet({
         <KV k="Examination" v={ref.exam_applicable} />
       </div>
 
+      {/* value of goods / GST beside the assessable value (client, 2026-09-30) */}
+      <div className="tracker-grid-wrap">
+        <table className="inv-table inv-value">
+          <thead>
+            <tr>
+              <th className="num">{inv.value.label}</th>
+              <th className="num">GST input</th>
+              <th className="num">Value / kg</th>
+              <th className="num">Bill rate (₹/kg)</th>
+              <th className="num">GST output (18%)</th>
+              <th className="num">GST difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="num">{inr(inv.value.value_of_goods)}</td>
+              <td className="num">{inr(inv.value.gst_input)}</td>
+              <td className="num">{inr(inv.value.value_per_kg) || "—"}</td>
+              <EditCell
+                editable={editable}
+                numeric
+                allowEmpty
+                raw={inv.value.bill_rate ?? ""}
+                display={inv.value.bill_rate ? inr(inv.value.bill_rate) : editable ? "enter…" : "—"}
+                className="num"
+                title="HSS bill rate per kg — set by the rules; type one to fix it by hand, clear it to go back to automatic."
+                onSave={(v) => onSaveProforma({ bill_rate: v === "" ? null : Number(v) })}
+              />
+              <td className="num">{inr(inv.value.gst_output) || "—"}</td>
+              <td className="num">{inr(inv.value.gst_difference) || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+        {inv.value.bill_rate && (
+          <div className="bill-rate-suggest">
+            {inv.value.bill_rate_manual ? (
+              <>
+                Bill rate typed by hand — kept unless the costs pass it.{" "}
+                {editable && (
+                  <button type="button" className="link-button" onClick={() => onSaveProforma({ bill_rate: null }).catch(() => {})}>
+                    Back to automatic (₹{inr(inv.value.suggested_bill_rate)}/kg)
+                  </button>
+                )}
+              </>
+            ) : (
+              <>Bill rate by the rules: value/kg + at least 10 paise, GST difference positive, next 25 paise — follows the costs.</>
+            )}
+          </div>
+        )}
+        <div className="inv-value-note">{inv.value.note}</div>
+      </div>
+
+
       <div className="tracker-grid-wrap">
         <table className="inv-table">
           <thead>
@@ -892,57 +989,6 @@ function InvoiceSheet({
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <div className="tracker-grid-wrap">
-        <table className="inv-table inv-value">
-          <thead>
-            <tr>
-              <th className="num">Value of goods</th>
-              <th className="num">GST input</th>
-              <th className="num">Value / kg</th>
-              <th className="num">Bill rate (₹/kg)</th>
-              <th className="num">GST output (18%)</th>
-              <th className="num">GST difference</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="num">{inr(inv.value.value_of_goods)}</td>
-              <td className="num">{inr(inv.value.gst_input)}</td>
-              <td className="num">{inr(inv.value.value_per_kg) || "—"}</td>
-              <EditCell
-                editable={editable}
-                numeric
-                allowEmpty
-                raw={inv.value.bill_rate ?? ""}
-                display={inv.value.bill_rate ? inr(inv.value.bill_rate) : editable ? "enter…" : "—"}
-                className="num"
-                title="HSS bill rate per kg — adds the GST Difference line. Clear it to remove the line."
-                onSave={(v) => onSaveProforma({ bill_rate: v === "" ? null : Number(v) })}
-              />
-              <td className="num">{inr(inv.value.gst_output) || "—"}</td>
-              <td className="num">{inr(inv.value.gst_difference) || "—"}</td>
-            </tr>
-          </tbody>
-        </table>
-        {editable && inv.value.suggested_bill_rate && inv.value.suggested_bill_rate !== inv.value.bill_rate && (
-          <div className="bill-rate-suggest">
-            Suggested bill rate <strong>₹{inr(inv.value.suggested_bill_rate)}/kg</strong> (value/kg ₹
-            {inr(inv.value.value_per_kg)} + at least 10 paise, GST difference positive, rounded up to 25 paise)
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => onSaveProforma({ bill_rate: Number(inv.value.suggested_bill_rate) }).catch(() => {})}
-            >
-              Use
-            </button>
-          </div>
-        )}
-        <div className="inv-value-note">
-          Value = assessable value + every basic amount (incl. cost inclusion). GST difference = 18% × bill rate × weight − GST input
-          (never below 0); it's added to Reimbursement as its own line.
-        </div>
       </div>
 
       <div className="inv-footer">
@@ -1053,5 +1099,88 @@ function EditCell({
         }}
       />
     </td>
+  );
+}
+
+/**
+ * The invoice as one A4 page in the right half, like a document preview (client, 2026-09-30).
+ * The page is always A4 (794 × 1123 px at 96 dpi): an invoice taller than that is shrunk to
+ * fit inside it, as the PDF is. "Fit page" scales the page to the pane; "100 %" shows it
+ * full size to edit.
+ */
+const A4_W = 794;
+const A4_H = 1123;
+
+function InvoicePreview({ children }: { children: ReactNode }) {
+  const pane = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = useState<"fit" | "full">(() => {
+    try {
+      return localStorage.getItem("clarus.invoiceZoom") === "full" ? "full" : "fit";
+    } catch {
+      return "fit";
+    }
+  });
+  const [pageScale, setPageScale] = useState(0.7);
+  const [inner, setInner] = useState(1); // content shrunk to fit one A4 page
+  const [paneH, setPaneH] = useState(800);
+
+  useLayoutEffect(() => {
+    const el = pane.current;
+    const c = content.current;
+    if (!el || !c) return;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const h = Math.max(480, window.innerHeight - top - 12);
+      setPaneH(h);
+      const natural = c.scrollHeight; // at the content's own (unscaled) size
+      setInner(Math.min(1, (A4_H - 76) / Math.max(1, natural))); // page margins + a little air
+      const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 44) / A4_H);
+      setPageScale(mode === "fit" ? Math.max(0.3, fit) : 1);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(c);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [mode]);
+
+  const pick = (m: "fit" | "full") => {
+    setMode(m);
+    try {
+      localStorage.setItem("clarus.invoiceZoom", m);
+    } catch {
+      /* private window */
+    }
+  };
+
+  return (
+    <div className="invoice-preview" ref={pane} style={{ height: paneH }}>
+      <div className="invoice-preview-zoom">
+        <button type="button" className={mode === "fit" ? "on" : ""} onClick={() => pick("fit")}>
+          Fit page
+        </button>
+        <button type="button" className={mode === "full" ? "on" : ""} onClick={() => pick("full")}>
+          100 %
+        </button>
+      </div>
+      {/* the A4 sheet, scaled to the pane */}
+      <div className="a4-frame" style={{ width: A4_W * pageScale, height: A4_H * pageScale }}>
+        <div className="a4-page" style={{ transform: `scale(${pageScale})` }}>
+          {/* the invoice, shrunk to fit one page when it's longer */}
+          <div
+            ref={content}
+            className="a4-content"
+            style={inner < 1 ? { transform: `scale(${inner})`, width: `${100 / inner}%` } : undefined}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

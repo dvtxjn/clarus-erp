@@ -3,6 +3,8 @@ import {
   createCharge,
   deletePricingRule,
   getInvoiceCounters,
+  getSettings,
+  setSetting,
   setInvoiceCounter,
   listAllCharges,
   listLicences,
@@ -12,6 +14,7 @@ import {
   updateCharge,
 } from "./api";
 import { usePorts } from "./ports";
+import { useSearchParams } from "react-router-dom";
 import { useConfirm } from "./ConfirmDialog";
 import { useAuth } from "./AuthContext";
 import type { ChargeCategory, ChargeMasterEntry, Licence, LicenceRate, PricingRule, PricingRuleLine } from "./types";
@@ -53,6 +56,9 @@ export default function RatesPage() {
   const [showRetired, setShowRetired] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  // one section at a time instead of one long page (design refresh, 2026-09-29)
+  const [params, setParams] = useSearchParams();
+  const tab = (["standard", "licences", "hss", "numbering"] as const).find((t) => t === params.get("tab")) ?? "standard";
 
   useEffect(() => {
     listAllCharges().then(setCharges);
@@ -73,9 +79,25 @@ export default function RatesPage() {
 
   return (
     <div className="rates-page">
+      <h1>Rates</h1>
+      <div className="detail-tabs rates-tabs">
+        {(
+          [
+            ["standard", "Standard rates"],
+            ["licences", "Licences"],
+            ["hss", "HSS rules"],
+            ["numbering", "Invoicing"],
+          ] as const
+        ).map(([id, label]) => (
+          <button key={id} className={tab === id ? "tab active" : "tab"} onClick={() => setParams(id === "standard" ? {} : { tab: id })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "standard" && (
+      <>
       <div className="rates-head">
         <div>
-          <h1>Standard rates</h1>
           <p className="tracker-subtitle">
             The standard rate fills in when a charge is added to a proforma — it can still be changed on each proforma.
             Changing it here doesn't alter proformas already made.
@@ -202,9 +224,11 @@ export default function RatesPage() {
         </table>
       </div>
 
-      <InvoiceNumbering canEdit={canEdit} />
-      <Licences charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />
-      <HssRules charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />
+      </>
+      )}
+      {tab === "numbering" && <InvoiceNumbering canEdit={canEdit} />}
+      {tab === "licences" && <Licences charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />}
+      {tab === "hss" && <HssRules charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />}
     </div>
   );
 }
@@ -554,6 +578,14 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
   const ports = usePorts();
   const [items, setItems] = useState<(Licence & { dirty?: boolean })[] | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set()); // licences shown as rows; click to open
+  const toggleOpen = (id: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const load = () => listLicences().then(setItems);
   useEffect(() => {
     load();
@@ -595,9 +627,11 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
         {canEdit && (
           <div className="rates-actions">
             <button
-              onClick={() =>
-                setItems((prev) => [...(prev ?? []), { id: -Date.now(), number: "", importer_name: "", rates: [{ code: "AC", per_container: 7000 }], is_active: true, notes: null, dirty: true }])
-              }
+              onClick={() => {
+                const id = -Date.now();
+                setItems((prev) => [...(prev ?? []), { id, number: "", importer_name: "", rates: [{ code: "AC", per_container: 7000 }], is_active: true, notes: null, dirty: true }]);
+                setOpen((prev) => new Set(prev).add(id));
+              }}
             >
               + Add licence
             </button>
@@ -605,8 +639,21 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
         )}
       </div>
       {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      <div className="licence-list">
       {items.map((l, i) => (
-        <div className={`hss-rule${l.is_active ? "" : " licence-closed"}`} key={l.id}>
+        <div className={`licence-item${l.is_active ? "" : " licence-closed"}${open.has(l.id) ? " is-open" : ""}`} key={l.id}>
+          <button type="button" className="licence-summary" aria-expanded={open.has(l.id)} onClick={() => toggleOpen(l.id)}>
+            <span className="licence-caret">{open.has(l.id) ? "▾" : "▸"}</span>
+            <span className="licence-no">{l.number || "New licence"}</span>
+            <span className="licence-importer">{l.importer_name || "—"}</span>
+            <span className="licence-count">
+              {l.rates.length} rate{l.rates.length === 1 ? "" : "s"}
+            </span>
+            <span className={`status-pill ${l.is_active ? "status-cleared" : ""}`}>{l.is_active ? "Active" : "Closed"}</span>
+            {l.dirty && <span className="edited-tag">unsaved</span>}
+          </button>
+          {open.has(l.id) && (
+          <div className="licence-body">
           <div className="hss-rule-parties">
             <label>
               <span>Licence no.</span>
@@ -696,8 +743,11 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
               </button>
             </div>
           )}
+          </div>
+          )}
         </div>
       ))}
+      </div>
     </section>
   );
 }
@@ -711,6 +761,7 @@ function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
   }, []);
   return (
     <section className="hss-rules">
+      <EInvoicing canEdit={canEdit} />
       <h2>Invoice numbering</h2>
       <p className="tracker-subtitle">
         Next final-invoice number per financial year — Tax Invoice CL/&lt;n&gt;/&lt;FY&gt;, Reimbursement RI/CL/&lt;n&gt;/&lt;FY&gt;
@@ -739,5 +790,49 @@ function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
       </div>
       {msg && <div className="field-note">{msg}</div>}
     </section>
+  );
+}
+
+/**
+ * Admin: does e-invoicing (IRN) apply to Clarus? When on, altering an issued bill first asks
+ * whether its e-invoice has been filed — a filed one can't be altered (client, 2026-09-30).
+ * Either way, issued bills can be altered only until the 10th of the next month.
+ */
+function EInvoicing({ canEdit }: { canEdit: boolean }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    getSettings()
+      .then((s) => setOn(s.e_invoicing))
+      .catch(() => setOn(null));
+  }, []);
+  if (on === null) return null;
+  return (
+    <div className="hss-rule">
+      <label className="toggle-row" title={canEdit ? "" : "Only the admin can change this"}>
+        <span>
+          <strong>E-invoicing applies to Clarus</strong>
+          <span className="field-note" style={{ display: "block" }}>
+            On: before altering an issued bill you're asked whether its e-invoice is filed — filed bills can't be altered.
+            Either way, bills can be altered until the 10th of the next month (September bills until 10 October).
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={on}
+          disabled={!canEdit}
+          onChange={async () => {
+            setErr(null);
+            try {
+              setOn((await setSetting("e_invoicing", !on)).e_invoicing);
+            } catch {
+              setErr("Couldn't save — only the admin can change this.");
+            }
+          }}
+        />
+      </label>
+      {err && <div className="auth-error">{err}</div>}
+    </div>
   );
 }

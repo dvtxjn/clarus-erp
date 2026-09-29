@@ -19,6 +19,9 @@ def _date(iso):
     return date.fromisoformat(iso).strftime("%d-%b-%Y") if iso else "-"
 
 
+from app.invoice.final import NOT_APPLICABLE  # noqa: E402
+
+
 def render_final_pdf(inv: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN,
@@ -93,6 +96,8 @@ def render_final_pdf(inv: dict) -> bytes:
     k = sum(fr)
     w = [WIDTH * f / k for f in fr]
     rows = [[_p(x, 6.8, True, align=TA_CENTER, width=w[i]) for i, x in enumerate(heads)]]
+    if inv.get("not_applicable"):  # the pair's other invoice has the charges; this one keeps the number
+        rows.append([_p(NOT_APPLICABLE, 16, True, colors.HexColor("#B42318"), TA_CENTER, WIDTH)] + [""] * (len(heads) - 1))
     for ln in inv["lines"]:
         desc = ln["description"] + (f"\n{ln['sub_description']}" if ln.get("sub_description") else "")
         tax_cells = [ln["cgst"], ln["sgst"]] if intra else [ln["igst"]]
@@ -115,7 +120,9 @@ def render_final_pdf(inv: dict) -> bytes:
     lt.setStyle(_style(("BACKGROUND", (0, 0), (-1, 0), HEAD_C), ("GRID", (0, 0), (-1, -1), 0.3, GRID),
                        ("SPAN", (0, last), (1, last)), ("SPAN", (2, last), (3, last)),
                        ("BACKGROUND", (0, last), (-1, last), SUB_C),
-                       ("VALIGN", (0, 1), (-1, -1), "TOP")))
+                       ("VALIGN", (0, 1), (-1, -1), "TOP"),
+                       *((("SPAN", (0, 1), (-1, 1)), ("TOPPADDING", (0, 1), (-1, 1), 14),
+                          ("BOTTOMPADDING", (0, 1), (-1, 1), 14)) if inv.get("not_applicable") else ())))
     body += [lt, Spacer(1, 5)]
 
     # --- SAC summary + bank | totals ---
@@ -158,7 +165,18 @@ def render_final_pdf(inv: dict) -> bytes:
                          ("RIGHTPADDING", (0, 0), (-1, -1), 0)))
     body += [Spacer(1, 6), foot]
 
-    doc.build([KeepInFrame(WIDTH, HEIGHT - 2, body, mode="shrink")])
+    def stamp(canvas, _doc):  # across the page too, so it can't be missed
+        if not inv.get("not_applicable"):
+            return
+        canvas.saveState()
+        canvas.setFillColor(colors.HexColor("#B42318"), alpha=0.13)
+        canvas.setFont("Helvetica-Bold", 30)
+        canvas.translate(A4[0] / 2, A4[1] / 2)
+        canvas.rotate(35)
+        canvas.drawCentredString(0, 0, NOT_APPLICABLE)
+        canvas.restoreState()
+
+    doc.build([KeepInFrame(WIDTH, HEIGHT - 2, body, mode="shrink")], onFirstPage=stamp)
     return buf.getvalue()
 
 

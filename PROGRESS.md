@@ -627,3 +627,81 @@ The client will pick features they like from other software and feed them in. Re
 - Picker origins + API key restrictions include both addresses.
 - To do: delete `first-admin-password` secret · rotate `job-token` (was printed in the setup output) ·
   ₹3,000/month budget alert · soft launch alongside the sheet.
+
+## 🟡 Design refresh (2026-09-29, branch `design/refresh` — not deployed yet)
+- Shell: left sidebar (collapsible to icons), full-width pages, Inter, Linear-style neutrals, softer orange, accent trial dots.
+- Shipment page: BL + BE left / clearance chips right; Shipment & movement block (+ remarks) across the top; Customs duty + Status | CFS | Shipping line; invoices scroll inside their box; cost-inclusion charges in an overlay.
+- Documents: groups Basic / Customs / Line / CFS with small markers, two columns.
+- Proforma: options in the sidebar, invoice in a preview pane (Whole page / 100 %).
+- Dashboard: containers + gross weight (by ETA and by Cleared Date, per port), pies, containers/weight switch.
+- Rates: tabs; licences as rows that open.
+- Tracker: one line per row (cut with …, hover for full value — widths to tune), short dates (BE Dt with year, INW 19 Sep),
+  shorter headers, column views (Clearance / Movement / Billing / Full grid), side panel (peek), status edge colours,
+  client bar = containers + weight, HBL / FTA buttons on the MBL (FTA split from MBL: migration 0035 + CSV import),
+  calendar on date cells, "d" deadline on ETA (ETA − 4 days, migration 0036), Excel-style autosize,
+  removed from the grid: HBL, HSS, CFS/TDS, Status, Line, Billed (ongoing), Client (by-client view); Cleared last; Wt (MTS).
+- Next: column widths; Remark / POC / Remarks (client to decide); filter chips; group by; Recently deleted page; phone proforma.
+
+## 📝 Next session — client notes (2026-09-29, start here)
+1. **Documents table:** show only the type is marked (✓ + small kind badge); the file name moves to a hover view —
+   file names take unpredictable width, the table should be uniform.
+2. **Proforma & Billing — rework:**
+   - Moving options into the sidebar was not a good call: font / button sizes inconsistent. Undo it.
+   - Full-screen layout: split pane — data / options uniformly on the **left**, the invoice on the **right**.
+   - Section is too cluttered overall — simplify.
+   - The PDF download format is perfect; keep it.
+   - Move the "value of goods / GST input …" block up next to the assessable value on the invoice (it confuses people).
+   - Always pre-apply the suggested bill rate, AND adjust it by our rules when costs change (add / subtract) so the
+     value follows — the rules should be smart.
+   - If CFS is switched to taxable, it shows in the tax invoice as the final invoice.
+3. **Invoice numbering (Phase 3 revisited) — decided:** tax and reimbursement invoices always share the same number.
+   When a shipment has no reimbursement, a reimbursement invoice is **still issued** with that number: all the usual
+   details (party, shipment, references) but **no charge heads**, and **"BILL CANCELLED — NOT APPLICABLE"** in bold
+   across the bill so it's obvious. The chain never breaks.
+4. **One final-invoice interface:** tax + reimbursement are two invoices, but finalised together in **one** screen,
+   one action (not twice the manual work). Export on demand: one PDF with both sheets, or two separate PDFs.
+5. **Invoicing starts in October 2026** — the above must be ready by then.
+6. **(P5) Delhi / non-sea-port shipments:** INW = sea-port inward; there's also an arrival date at FPOD, from which
+   the free days start. The tracker's Day count is wrong for these (free days haven't started). Needs an FPOD arrival
+   date and Day counted from it.
+
+## ✅ Invoicing for October (2026-09-30, branch `design/refresh`)
+- Documents table uniform: file name on hover (File / File 1, 2), short date, ↻ / ✕, short badges; columns end level.
+- Proforma: split view — controls left (uniform cards, one button size), invoice as an A4 page right (Fit page / 100 %);
+  Proforma / Final invoices tabs. Sidebar options removed.
+- Invoice (PDF, Excel, screen): value block under the assessable value; "Value of Goods (w shipping)" / "(w/o shipping)";
+  note "Value calculated in the proforma is tentative, not as per the final bill, and can vary slightly."
+- HSS bill rate follows the rules (0037 `bill_rate_manual`): pre-filled, re-worked up/down when costs change; a rate
+  typed by hand is kept unless the costs pass the rule minimum (then raised); clearing it = back to automatic.
+- CFS taxable → Billed by Clarus → on the tax invoice (already so; confirmed).
+- Final invoices: always both kinds; a kind with no charges is issued as "BILL CANCELLED — NOT APPLICABLE" (bold row +
+  diagonal stamp) so tax + reimbursement always share the number; `POST /proformas/{id}/final-invoices/issue` issues
+  the pair together; `GET /proformas/{id}/final-invoices.pdf` = one PDF with both (each still on its own).
+
+- Proforma page: split down the centre — controls left (stacked, one button size), the invoice as **one A4 page** right.
+  **The page is LOCKED to A4 (aspect never changes)**; a longer invoice is shrunk to fit inside it, like the PDF.
+  Fit page (scaled to the pane) / 100 % (full size, scroll).
+- 📝 Later: make the proforma page work on phones (client, 2026-09-30) — same locked A4 page, controls above/below it.
+- Altering issued bills (client, 2026-09-30): "Alter invoice" on an issued tax / reimbursement invoice — same number,
+  every change audit-logged, the corrected PDF kept as its own file. Allowed until the 10th of the month after the
+  invoice month (September bills until 10 October); after that: cancel / credit note. Admin setting **E-invoicing
+  applies to Clarus** (Rates → Invoicing, `app_settings`, 0038): when on, altering first asks whether the e-invoice is
+  filed — filed (or IRN entered) = can't be altered. The DB lock stays; 0039 lets a deliberate, checked alteration
+  through (`SET LOCAL clarus.invoice_alter`), never the number / series / status.
+- Themes (2026-09-30): calm light (sage-grey, sage-teal accent), Dim (semi-dark) and Dark — switch in the sidebar,
+  remembered per browser; status colours are theme tokens; the invoice page stays white paper; text keeps AA contrast.
+- 📝 The Maersk cost-inclusion rule (INR + not freight) is open to change — to discuss (client, 2026-09-30).
+- Invoices page (admin, 2026-09-30): every tax / reimbursement invoice across shipments; filter by FY, month, type,
+  status, client, number / job / MBL / BE / IRN; totals; tick invoices → one PDF to print (or all filtered);
+  register as Excel. API: GET /final-invoices, /final-invoices/export.pdf?ids=, /final-invoices/register.xlsx.
+
+## 📌 Roadmap — client priorities (2026-09-30)
+- **P0** Settings page — company details, bank details, invoice terms, e-invoicing, numbering, default rates, Drive
+  folders, backup status, user permissions (so the admin changes them, not code).
+- **P1** Payments & outstanding (mark paid / part-paid, what each client owes, ageing, reminders).
+- **P1** Tally export of issued invoices.
+- **P1** Alerts: "d" deadlines, free days (incl. Delhi FPOD fix), missing documents before BE filing.
+- **P1** Phone-friendly proforma.
+- **P3** Reports (monthly billing, per-client volume / billing, containers per port).
+- **P3** Change history viewer (the audit log is recorded, not shown yet).
+- **P6** Credit / debit notes.

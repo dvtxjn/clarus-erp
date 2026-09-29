@@ -203,18 +203,33 @@ BILL_RATE_MARGIN = Decimal("0.10")  # at least 10 paise above value / kg
 BILL_RATE_STEP = Decimal("0.25")    # and a standard-looking rate: next 25 paise step
 
 
+def bill_rate_minimum(value_per_kg: Optional[Decimal], gst_input: Decimal, weight: Optional[Decimal]) -> Optional[Decimal]:
+    """The lowest rate the rules allow: 10 paise over the value per kg, and enough that the
+    GST difference isn't negative."""
+    if value_per_kg is None or not weight:
+        return None
+    return max(value_per_kg + BILL_RATE_MARGIN, gst_input / (GST_OUTPUT_RATE * weight) + Decimal("0.01"))
+
+
 def suggest_bill_rate(value_per_kg: Optional[Decimal], gst_input: Decimal, weight: Optional[Decimal]) -> Optional[Decimal]:
     """HSS bill rate (client, 2026-09-28): a little over the value per kg — at least
     10 paise above it and enough for a positive GST difference (18% x rate x weight >
     GST input) — rounded UP to the next 25 paise so it looks like a standard rate.
     11.80 -> 12.00; 12.15 -> 12.25."""
-    if value_per_kg is None or not weight:
+    minimum = bill_rate_minimum(value_per_kg, gst_input, weight)
+    if minimum is None:
         return None
-    floor = value_per_kg + BILL_RATE_MARGIN
-    breakeven = gst_input / (GST_OUTPUT_RATE * weight)
-    minimum = max(floor, breakeven + Decimal("0.01"))
     steps = (minimum / BILL_RATE_STEP).to_integral_value(rounding=ROUND_CEILING)
     return (steps * BILL_RATE_STEP).quantize(Decimal("0.01"))
+
+
+SHIPPING_LINE_CODE = "DO"  # charge master "Shipping Line Charges"
+VALUE_NOTE = "Value calculated in the proforma is tentative, not as per the final bill, and can vary slightly."
+
+
+def value_label(v: dict) -> str:
+    """'Value of Goods (w shipping)' / '(w/o shipping)' — whether the shipping line is in it (client, 2026-09-30)."""
+    return f"Value of Goods ({'w' if v.get('with_shipping') else 'w/o'} shipping)"
 
 
 def value_summary(proforma: Proforma) -> dict[str, Optional[Decimal]]:
@@ -229,9 +244,11 @@ def value_summary(proforma: Proforma) -> dict[str, Optional[Decimal]]:
     output = (GST_OUTPUT_RATE * rate * wt).quantize(Decimal("0.01")) if rate is not None and wt else None
     return {
         "value_of_goods": value,
+        "with_shipping": any(li.charge is not None and li.charge.code == SHIPPING_LINE_CODE for li in lines),
         "gst_input": gst_input,
         "value_per_kg": (value / wt).quantize(Decimal("0.01")) if wt else None,
         "suggested_bill_rate": suggest_bill_rate(value / wt if wt else None, gst_input, wt),
+        "minimum_bill_rate": bill_rate_minimum(value / wt if wt else None, gst_input, wt),
         "bill_rate": rate,
         "gst_output": output,
         "gst_difference": max(ZERO, output - gst_input) if output is not None else None,
@@ -379,7 +396,9 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
             "challan_uploaded_at": challan.uploaded_at.isoformat() if challan else None,
             "challan_today": bool(challan and challan.uploaded_at.date() == date.today()),
         } if duty else None,
-        "value": {k: _money(v) for k, v in value.items()},
+        "value": {**{k: (v if isinstance(v, bool) else _money(v)) for k, v in value.items()},
+                  "label": value_label(value), "note": VALUE_NOTE,
+                  "bill_rate_manual": bool(proforma.bill_rate_manual)},
         "grand_total": _money(round_off(grand)[0]),
         "round_off": _money(round_off(grand)[1]),  # + / − paise to the rupee
         "grand_total_label": grand_total_label,

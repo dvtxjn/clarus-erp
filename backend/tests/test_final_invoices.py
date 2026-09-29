@@ -41,8 +41,9 @@ def test_final_invoices_from_proforma(client, admin_headers):
     r2 = client.post(f"/final-invoices/{reim['id']}/issue", headers=h).json()
     n = t["number"].split("/")[1]
     assert t["number"].startswith("CL/") and r2["number"] == f"RI/CL/{n}/{t['number'].split('/')[2]}"
-    # issued = locked (IRN still allowed)
-    assert client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "x"}, headers=h).status_code == 400
+    # issued: still alterable until the 10th of next month (client, 2026-09-30); IRN any time
+    if __import__("os").environ.get("TEST_DATABASE_URL"):  # altering needs Postgres (the lock trigger's switch)
+        assert client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "x"}, headers=h).status_code == 200
     assert client.patch(f"/final-invoices/{tax['id']}", json={"irn": "abc123"}, headers=h).json()["irn"] == "abc123"
     pdf = client.get(f"/final-invoices/{tax['id']}.pdf", headers=h)
     assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
@@ -59,3 +60,145 @@ def test_intra_state_splits_cgst_sgst(client, admin_headers):
     tax = next(i for i in client.post(f"/proformas/{pid}/final-invoices", headers=h).json() if i["kind"] == "tax")
     ln = tax["lines"][0]
     assert tax["intra_state"] and ln["cgst"] == ln["sgst"] == "1260.00" and ln["igst"] is None
+
+
+def test_no_reimbursement_still_issued_as_not_applicable_and_pair_issued_together(client, admin_headers):
+    """Client, 2026-09-30: tax and reimbursement always share one number. With no charges paid
+    by us, the reimbursement invoice is still issued — no charge heads, "BILL CANCELLED — NOT
+    APPLICABLE" — and both are issued in one action; one PDF with both, or two."""
+    import pypdfium2
+
+    h = admin_headers
+    client.post("/organizations", json={"name": "Solo Tax Traders", "gstin": "24AAAAA1111A1Z5"}, headers=h)
+    sid = client.post("/shipments", json={"mbl": "SOLOTAX0001", "consignee": "Solo Tax Traders", "container": "1"},
+                      headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]  # agency only: nothing reimbursed
+    made = {i["kind"]: i for i in client.post(f"/proformas/{pid}/final-invoices", headers=h).json()}
+    assert set(made) == {"tax", "reimbursement"}
+    assert made["reimbursement"]["not_applicable"] is True and made["reimbursement"]["lines"] == []
+    assert made["tax"]["not_applicable"] is False
+
+    both = client.post(f"/proformas/{pid}/final-invoices/issue", headers=h).json()
+    nums = {i["kind"]: i["number"] for i in both}
+    n, fy = nums["tax"].split("/")[1], nums["tax"].split("/")[2]
+    assert nums["reimbursement"] == f"RI/CL/{n}/{fy}"                    # the chain doesn't break
+    assert all(i["status"] == "issued" for i in both)
+    assert client.post(f"/proformas/{pid}/final-invoices/issue", headers=h).status_code == 400  # already issued
+
+    pdf = client.get(f"/proformas/{pid}/final-invoices.pdf", headers=h)
+    assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 2   # tax + reimbursement
+    ri = next(i for i in both if i["kind"] == "reimbursement")
+    text = pypdfium2.PdfDocument(client.get(f"/final-invoices/{ri['id']}.pdf", headers=h).content)[0].get_textpage().get_text_range()
+    assert "BILL CANCELLED" in text and "NOT APPLICABLE" in text
+
+
+import os
+
+import pytest
+
+
+@pytest.mark.skipif(not os.environ.get("TEST_DATABASE_URL"), reason="altering issued invoices needs Postgres")
+def test_altering_an_issued_invoice(client, admin_headers, monkeypatch):
+    """Client, 2026-09-30: issued bills can be altered (mistakes happen) until the 10th of the next
+    month; if e-invoicing applies (admin setting), only after confirming the e-invoice isn't filed."""
+    from datetime import date as real_date
+
+    import app.routers.final_invoices as fi
+    from app.invoice.final import alter_until
+    from app.models.final_invoice import FinalInvoice
+
+    assert alter_until(FinalInvoice(invoice_date=real_date(2026, 9, 17))) == real_date(2026, 10, 10)
+    assert alter_until(FinalInvoice(invoice_date=real_date(2026, 12, 3))) == real_date(2027, 1, 10)
+
+    h = admin_headers
+    client.post("/organizations", json={"name": "Alter Traders", "gstin": "24AAAAA2222A1Z5"}, headers=h)
+    sid = client.post("/shipments", json={"mbl": "ALTER0001", "consignee": "Alter Traders", "container": "1"},
+                      headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    client.post(f"/proformas/{pid}/final-invoices", headers=h)
+    tax = next(i for i in client.post(f"/proformas/{pid}/final-invoices/issue", headers=h).json() if i["kind"] == "tax")
+    assert tax["alter_until"]
+
+    # e-invoicing off (default): alter straight away, number kept
+    r = client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "corrected"}, headers=h)
+    assert r.status_code == 200 and r.json()["remarks"] == "corrected" and r.json()["number"] == tax["number"]
+
+    # e-invoicing on: asked first; filed = blocked; not filed = altered
+    assert client.put("/settings/e_invoicing", json={"value": True}, headers=h).json()["e_invoicing"] is True
+    ask = client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "again"}, headers=h)
+    assert ask.status_code == 409 and ask.json()["detail"]["ask"] == "e_invoice_filed"
+    assert client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "again", "e_invoice_filed": True},
+                        headers=h).status_code == 400
+    ok = client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "again", "e_invoice_filed": False}, headers=h)
+    assert ok.status_code == 200 and ok.json()["remarks"] == "again"
+    # an IRN entered = filed
+    client.patch(f"/final-invoices/{tax['id']}", json={"irn": "IRN123"}, headers=h)
+    assert client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "x", "e_invoice_filed": False},
+                        headers=h).status_code == 400
+    client.put("/settings/e_invoicing", json={"value": False}, headers=h)
+
+    # after the 10th of next month: no longer
+    class Later(real_date):
+        @classmethod
+        def today(cls):
+            return real_date(2099, 1, 1)
+
+    monkeypatch.setattr(fi, "date", Later)
+    late = client.patch(f"/final-invoices/{tax['id']}", json={"remarks": "late"}, headers=h)
+    assert late.status_code == 400 and "credit note" in late.json()["detail"]
+
+
+def test_settings_are_admin_only(client, admin_headers):
+    assert client.put("/settings/e_invoicing", json={"value": "yes"}, headers=admin_headers).status_code == 422
+    assert client.put("/settings/nope", json={"value": True}, headers=admin_headers).status_code == 404
+    assert client.get("/settings").status_code == 401
+
+
+def test_invoice_register_filters_and_exports(client, admin_headers):
+    """Client, 2026-09-30: one Invoices page — every tax / reimbursement invoice, filtered by year,
+    type, status, client, number; printed as one PDF or exported as a register, without opening shipments."""
+    import io
+
+    import pypdfium2
+    from openpyxl import load_workbook
+
+    h = admin_headers
+    for name, gst in (("Register Alpha Ltd", "24AAAAA3333A1Z5"), ("Register Beta Ltd", "24AAAAA4444A1Z5")):
+        client.post("/organizations", json={"name": name, "gstin": gst}, headers=h)
+        sid = client.post("/shipments", json={"mbl": f"REG{gst[7:11]}", "consignee": name, "container": "1", "job": gst[7:10]},
+                          headers=h).json()["id"]
+        pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+        client.post(f"/proformas/{pid}/final-invoices", headers=h)
+        client.post(f"/proformas/{pid}/final-invoices/issue", headers=h)
+
+    reg = client.get("/final-invoices", params={"client": "register alpha"}, headers=h).json()
+    assert {r["kind"] for r in reg["invoices"]} == {"tax", "reimbursement"} and all(r["customer"] == "Register Alpha Ltd" for r in reg["invoices"])
+    assert reg["financial_years"]
+    tax_only = client.get("/final-invoices", params={"client": "register", "kind": "tax"}, headers=h).json()["invoices"]
+    assert len(tax_only) == 2 and all(r["kind"] == "tax" for r in tax_only)
+    one = client.get("/final-invoices", params={"q": tax_only[0]["number"]}, headers=h).json()["invoices"]
+    # a number finds the pair (they share it): CL/n and RI/CL/n
+    assert sorted(r["number"] for r in one) == sorted([tax_only[0]["number"], "RI/" + tax_only[0]["number"]])
+
+    ids = ",".join(str(r["id"]) for r in client.get("/final-invoices", params={"client": "register"}, headers=h).json()["invoices"])
+    pdf = client.get("/final-invoices/export.pdf", params={"ids": ids}, headers=h)
+    assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 4
+    xl = client.get("/final-invoices/register.xlsx", params={"client": "register"}, headers=h)
+    ws = load_workbook(io.BytesIO(xl.content)).active
+    assert ws.max_row == 5 and ws["A1"].value == "Number"
+    assert client.get("/final-invoices").status_code == 401
+
+
+def test_proforma_register(client, admin_headers):
+    import pypdfium2
+
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "PFREG0001", "consignee": "Proforma Register Co", "job": "881"},
+                      headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    rows = client.get("/proformas", params={"q": "881"}, headers=h).json()
+    assert [r["id"] for r in rows["proformas"]] == [pid] and rows["proformas"][0]["status"] == "draft"
+    assert rows["proformas"][0]["grand_total"] and rows["financial_years"]
+    assert client.get("/proformas", params={"q": "881", "status": "sent"}, headers=h).json()["proformas"] == []
+    pdf = client.get("/proformas/export.pdf", params={"ids": str(pid)}, headers=h)
+    assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 1

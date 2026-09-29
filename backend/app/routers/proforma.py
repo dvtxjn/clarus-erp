@@ -461,6 +461,9 @@ def update_proforma_status(
         _require_draft(proforma)
     if changes.get("bill_to_org_id") is not None and not db.get(OrganizationEntry, changes["bill_to_org_id"]):
         raise HTTPException(status_code=404, detail="Organization not found")
+    if "bill_rate" in changes:
+        # typed rate: kept (never below the rule minimum); cleared: back to the automatic rate
+        proforma.bill_rate_manual = changes["bill_rate"] is not None
     for field, value in changes.items():
         if field in ("name", "bill_to") and isinstance(value, str):
             value = value.strip() or None
@@ -507,3 +510,68 @@ def _to_out(proforma: Proforma) -> ProformaOut:
     out.grand_total = round_off(sum((li.total for li in proforma.line_items
                                      if li.category != ChargeCategory.COST_INCLUSION), Decimal("0")))[0]
     return out
+
+
+# --- proforma register: every proforma across shipments (the Invoices page, client 2026-09-30) ---
+
+def _proforma_rows(db: Session, fy: Optional[str], month: Optional[str], status: Optional[str],
+                   client: Optional[str], q: Optional[str], ids: Optional[str] = None) -> list[Proforma]:
+    query = db.query(Proforma)
+    if ids:
+        query = query.filter(Proforma.id.in_([int(x) for x in ids.split(",") if x.strip().isdigit()]))
+    if status in ("draft", "sent", "superseded"):
+        query = query.filter(Proforma.status == ProformaStatus(status))
+    out = []
+    for p in query.order_by(Proforma.created_at.desc(), Proforma.id.desc()).all():
+        d = p.created_at.date() if p.created_at else None
+        if fy and (not d or fy_of(d) != fy):
+            continue
+        if month and (not d or f"{d:%Y-%m}" != month):
+            continue
+        s = p.shipment
+        party = (p.bill_to or be_importer_name(s) or "") if s else (p.bill_to or "")
+        if client and client.lower() not in party.lower():
+            continue
+        if q and q.lower() not in " ".join(str(x or "") for x in (s.job, s.mbl, s.be_no, p.name) if s).lower():
+            continue
+        out.append(p)
+    return out
+
+
+@router.get("/proformas")
+def proforma_register(fy: Optional[str] = None, month: Optional[str] = None, status: Optional[str] = None,
+                      client: Optional[str] = None, q: Optional[str] = None, db: Session = Depends(get_db)):
+    rows = []
+    for p in _proforma_rows(db, fy, month, status, client, q):
+        inv = build_invoice(p)
+        s = p.shipment
+        rows.append({
+            "id": p.id, "shipment_id": p.shipment_id, "job": s.job, "mbl": s.mbl, "be_no": s.be_no,
+            "version": p.version_number, "name": p.name, "status": p.status.value, "role": p.bill_to_role,
+            "bill_to": inv["bill_to"]["name"], "date": p.created_at.date().isoformat() if p.created_at else None,
+            "grand_total": inv["grand_total"],
+        })
+    fys = sorted({fy_of(p.created_at.date()) for p in db.query(Proforma).all() if p.created_at}, reverse=True)
+    return {"proformas": rows, "financial_years": fys}
+
+
+@router.get("/proformas/export.pdf")
+def export_proformas(ids: str, db: Session = Depends(get_db)):
+    """The chosen proformas in one PDF (one per page)."""
+    import io
+
+    import pypdfium2
+
+    rows = _proforma_rows(db, None, None, None, None, None, ids=ids)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No proformas chosen")
+    out = pypdfium2.PdfDocument.new()
+    for p in rows:
+        out.import_pages(pypdfium2.PdfDocument(render_pdf(build_invoice(p))))
+    buf = io.BytesIO()
+    out.save(buf)
+    filename = f"Proformas ({len(rows)}).pdf"
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename",
+    })

@@ -25,11 +25,29 @@ import { useUploadQueue } from "./uploadQueue";
 import {
   DOCUMENT_TYPE_LABELS,
   LEGACY_DOCUMENT_TYPES,
+  DOCUMENT_GROUPS,
+  documentGroup,
   type DocumentChecklistItem,
   type DocumentType,
   type Shipment,
   type ShipmentDocument,
 } from "./types";
+
+// shorter names inside the grouped table (the group already says "Shipping line" / "CFS")
+const SHORT_LABELS: Partial<Record<DocumentType, string>> = {
+  shipping_line_proforma: "Destination Proforma",
+  shipping_line_invoice: "Destination Tax Invoice",
+  shipping_line_receipt: "Receipt",
+  do_empty_letter: "DO + Empty Letter",
+  cfs_proforma_invoice: "Proforma Invoice",
+  cfs_tax_invoice: "Tax Invoice",
+  cfs_receipt: "Receipt",
+  assessed_bill_of_entry: "Assessed BE",
+  ooc_bill_of_entry: "OOC BE",
+  gatepass_bill_of_entry: "Gatepass BE",
+  fta_certificate_of_origin: "FTA COO",
+  certificate_of_origin: "Certificate of Origin",
+};
 
 const UPLOAD_TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter(
   (t) => !LEGACY_DOCUMENT_TYPES.includes(t),
@@ -216,10 +234,14 @@ export default function DocumentManagerPanel({
 
       <form className="add-shipment-form" onSubmit={handleUpload}>
         <select value={docType} onChange={(e) => setDocType(e.target.value as DocumentType)}>
-          {UPLOAD_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {DOCUMENT_TYPE_LABELS[t]}
-            </option>
+          {DOCUMENT_GROUPS.map((g) => (
+            <optgroup key={g.id} label={g.label}>
+              {g.types.filter((t) => UPLOAD_TYPES.includes(t)).map((t) => (
+                <option key={t} value={t}>
+                  {DOCUMENT_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <input
@@ -260,28 +282,46 @@ export default function DocumentManagerPanel({
       ) : checklist.length === 0 ? (
         <div className="tracker-empty">No documents yet.</div>
       ) : (
-        <div className="tracker-grid-wrap">
-          <table className="tracker-grid">
-            <thead>
-              <tr>
-                <th>Document Type</th>
-                <th>Required</th>
-                <th>Status</th>
-                <th>File</th>
-                <th>Uploaded</th>
-              </tr>
-            </thead>
-            <tbody>
-              {checklist.map((row) => {
+        // two columns of group cards (client, 2026-09-29): basic + CFS | customs + shipping line
+        <div className="doc-columns">
+          {[["basic", "cfs"], ["customs", "line", "other"]].map((ids) => (
+            <div className="doc-col" key={ids[0]}>
+              {DOCUMENT_GROUPS.filter((g) => ids.includes(g.id)).map((g) => {
+                const rows = checklist
+                  .filter((r) => documentGroup(r.document_type).id === g.id)
+                  .sort((a, b) => g.types.indexOf(a.document_type) - g.types.indexOf(b.document_type));
+                if (rows.length === 0) return null;
+                const done = rows.filter((r) => r.uploaded).length;
+                return (
+                  <section className="doc-group tracker-grid-wrap" key={g.id}>
+                    <div className="doc-group-head">
+                      <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {g.label}
+                      <span className="doc-group-count">
+                        {done} of {rows.length}
+                      </span>
+                    </div>
+                    <table className="tracker-grid doc-table">
+                      <thead>
+                        <tr>
+                          <th>Document</th>
+                          <th>Status</th>
+                          <th>File</th>
+                          <th>Uploaded</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row) => {
                 const missing = !row.uploaded;
                 const coveredByCombined = row.document && row.document.document_type !== row.document_type;
                 return (
                   <tr key={row.document_type} className={row.required && !row.optional && missing ? "row-stuck" : ""}>
-                    <td>{DOCUMENT_TYPE_LABELS[row.document_type]}</td>
-                    <td>{!row.required ? "No" : row.optional ? "Optional" : "Yes"}</td>
+                    <td>
+                      <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span>{" "}
+                      <span title={DOCUMENT_TYPE_LABELS[row.document_type]}>{SHORT_LABELS[row.document_type] ?? DOCUMENT_TYPE_LABELS[row.document_type]}</span>
+                    </td>
                     <td>
                       <span className={`status-pill ${row.uploaded ? "status-cleared" : ""}`}>
-                        {row.uploaded ? "Uploaded" : row.optional ? "Not uploaded" : "Missing"}
+                        {row.uploaded ? "Uploaded" : !row.required ? "Not needed" : row.optional ? "Optional" : "Missing"}
                       </span>
                       {coveredByCombined && (
                         <span className="tracker-subtitle"> in {DOCUMENT_TYPE_LABELS[row.document!.document_type]}</span>
@@ -290,32 +330,44 @@ export default function DocumentManagerPanel({
                     <td>
                       {row.documents.length === 0
                         ? "—"
-                        : row.documents.map((d) => (
+                        : row.documents.map((d, n) => (
                             <div key={d.id} className="doc-file-line">
-                              {d.generated_filename} <PdfKindBadge kind={d.pdf_kind} />
+                              {/* the file name is on hover only — it takes unpredictable width (client, 2026-09-30) */}
+                              <span className="doc-file-chip" title={d.generated_filename}>
+                                {row.documents.length > 1 ? `File ${n + 1}` : "File"}
+                              </span>{" "}
+                              <PdfKindBadge kind={d.pdf_kind} />
                               {d.extraction?.fields?.gst_missing === true && (
                                 <span className="pdf-kind pdf-kind-scanned" title="These invoices always have GST — check the figures (Overview → correct amounts)">
-                                  GST not found
+                                  No GST
+                                </span>
+                              )}
+                              {d.extraction?.fields?.bl_mismatch === true && (
+                                <span
+                                  className="pdf-kind pdf-kind-scanned"
+                                  title={`BL on this invoice (${String(d.extraction?.fields?.bl_no ?? "")}) isn't this shipment's MBL / HBL — not counted in the totals until it matches`}
+                                >
+                                  BL ≠ shipment
                                 </span>
                               )}
                               {d.extraction?.duplicate_of && (
                                 <span className="pdf-kind pdf-kind-partly" title="Same invoice number as another file here — its amounts are counted once">
-                                  Duplicate — counted once
+                                  Duplicate
                                 </span>
                               )}{" "}
                               <button type="button" className="link-btn" onClick={() => openDocumentFile(shipment.id, d.id)}>
                                 View
                               </button>
                               {d.drive_sync_pending && (
-                                <span className="exception-badge" title={d.drive_error ?? ""}>
-                                  {" "}not in Drive yet — retrying
+                                <span className="exception-badge" title={`Not in Drive yet — retrying. ${d.drive_error ?? ""}`}>
+                                  {" "}Drive pending
                                 </span>
                               )}
                               {d.drive_link && (
                                 <>
                                   {" "}
-                                  <a href={d.drive_link} target="_blank" rel="noreferrer" className="drive-link">
-                                    open in Drive ↗
+                                  <a href={d.drive_link} target="_blank" rel="noreferrer" className="drive-link" title="Open in Google Drive">
+                                    Drive ↗
                                   </a>
                                 </>
                               )}
@@ -327,7 +379,9 @@ export default function DocumentManagerPanel({
                         ? "—"
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
-                              {new Date(d.uploaded_at).toLocaleString()}
+                              <span title={new Date(d.uploaded_at).toLocaleString("en-IN")}>
+                                {new Date(d.uploaded_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                              </span>
                               {READ_ON_UPLOAD.includes(d.document_type) && (
                                 <>
                                   {" "}
@@ -335,10 +389,11 @@ export default function DocumentManagerPanel({
                                     type="button"
                                     className="link-btn"
                                     disabled={uploading}
-                                    title="Read this document again and update the shipment"
+                                    title="Re-read: read this document again and update the shipment"
+                                    aria-label="Re-read"
                                     onClick={() => handleReread(d)}
                                   >
-                                    Re-read
+                                    ↻
                                   </button>
                                 </>
                               )}
@@ -349,9 +404,10 @@ export default function DocumentManagerPanel({
                                     type="button"
                                     className="link-btn link-danger"
                                     title="Remove this document from the shipment"
+                                    aria-label="Remove"
                                     onClick={() => handleRemove(d)}
                                   >
-                                    Remove
+                                    ✕
                                   </button>
                                 </>
                               )}
@@ -360,9 +416,14 @@ export default function DocumentManagerPanel({
                     </td>
                   </tr>
                 );
+                        })}
+                      </tbody>
+                    </table>
+                  </section>
+                );
               })}
-            </tbody>
-          </table>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -622,11 +683,15 @@ function AssignDriveFiles({
                     onChange={(e) => setTypes((t) => ({ ...t, [f.id]: e.target.value as DocumentType | "" }))}
                   >
                     <option value="">Skip</option>
-                    {UPLOAD_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {DOCUMENT_TYPE_LABELS[t]}
-                        {missing.includes(t) ? " (needed)" : ""}
-                      </option>
+                    {DOCUMENT_GROUPS.map((g) => (
+                      <optgroup key={g.id} label={g.label}>
+                        {g.types.filter((t) => UPLOAD_TYPES.includes(t)).map((t) => (
+                          <option key={t} value={t}>
+                            {DOCUMENT_TYPE_LABELS[t]}
+                            {missing.includes(t) ? " (needed)" : ""}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </td>

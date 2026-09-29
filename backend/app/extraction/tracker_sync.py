@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_change
 from app.core.status_rules import EVIDENCE_FIELDS, status_after_evidence_change
 from app.core.enums import DocumentType, ShipmentStatus
-from app.extraction.cfs_totals import default_cost_inclusion, invoice_charges, recompute_invoice_totals
+from app.extraction.cfs_totals import bl_mismatch, default_cost_inclusion, invoice_charges, recompute_invoice_totals
 from app.extraction.document_extract import BE_TYPES, CFS_TYPES, INVOICE_TYPES, LINE_TYPES, RECEIPT_TYPES, parse_ddmmyyyy
 from app.models.document import ShipmentDocument
 from app.models.shipment import Shipment
@@ -102,11 +102,13 @@ class _Sync:
 
 def _shipping_line_checks(sync: "_Sync", shipment: Shipment, document: ShipmentDocument, fields: dict) -> None:
     """BL on the invoice vs the tracker; which charges are cost inclusion."""
-    bl = (fields.get("bl_no") or "").upper()
-    ours = re.sub(r"\s+", "", f"{shipment.mbl or ''}/{shipment.hbl or ''}").upper()
-    if bl and bl not in ours:
-        sync.notes.append(f"BL on the shipping line invoice ({bl}) differs from the tracker ({shipment.mbl}).")
     document.extraction = {**(document.extraction or {}), "fields": fields}
+    if bl_mismatch(document, shipment):  # the BL must match the shipment (client, 2026-09-30)
+        fields["bl_mismatch"] = True
+        document.extraction = {**(document.extraction or {}), "fields": fields}
+        sync.notes.append(f"BL on this invoice ({fields.get('bl_no')}) doesn't match the shipment "
+                          f"({' / '.join(x for x in (shipment.mbl, shipment.hbl) if x)}) — it isn't counted in the "
+                          "shipping line totals until it matches. Check it's the right shipment's invoice.")
     default_cost_inclusion(document)
     charges = invoice_charges(document)
     if fields.get("charges") and not charges:

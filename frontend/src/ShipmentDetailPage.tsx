@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { useParams, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion } from "./api";
@@ -29,7 +29,15 @@ function fmtMoney(v: string | null): string | null {
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const shipmentId = Number(id);
+  return <ShipmentDetail shipmentId={Number(id)} />;
+}
+
+/**
+ * The shipment: a page of its own, or (peek) a panel over the tracker — open a row,
+ * glance, close, next row (client, 2026-09-29).
+ */
+export function ShipmentDetail({ shipmentId, onClose }: { shipmentId: number; onClose?: () => void }) {
+  const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
@@ -46,10 +54,21 @@ export default function ShipmentDetailPage() {
   if (!shipment) return <div className="tracker-empty">Shipment not found.</div>;
 
   return (
-    <div className="detail-page">
-      <Link to="/shipments" className="back-link">
-        ← Back to Shipment Tracker
-      </Link>
+    <div className={peek ? "detail-page detail-peek" : "detail-page"}>
+      {peek ? (
+        <div className="peek-bar">
+          <Link to={`/shipments/${shipment.id}`} className="back-link">
+            Open full page ↗
+          </Link>
+          <button type="button" className="peek-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+            ✕
+          </button>
+        </div>
+      ) : (
+        <Link to="/shipments" className="back-link">
+          ← Back to Shipment Tracker
+        </Link>
+      )}
 
       <header className="detail-header">
         <div className="detail-title">
@@ -58,24 +77,38 @@ export default function ShipmentDetailPage() {
             {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
           </span>
         </div>
+        {/* left: the two keys everything is filed and searched by; right: where the clearance stands */}
+        <div className="key-ids">
+          <div className="key-id key-id-keys">
+            <div className={`key-id-cell${(shipment.mbl ?? "").length + (shipment.hbl ?? "").length > 26 ? " key-id-long" : ""}`}>
+              <span className="key-id-label">BL No (MBL{shipment.hbl ? " / HBL" : ""})</span>
+              <span className="key-id-value" title={[shipment.mbl, shipment.hbl].filter(Boolean).join(" / ")}>
+                {shipment.mbl}
+                {shipment.hbl && <span className="key-id-date"> / {shipment.hbl}</span>}
+              </span>
+            </div>
+            <div className={`key-id-cell${shipment.be_no ? "" : " key-id-missing"}`}>
+              <span className="key-id-label">BE No · BE Date</span>
+              <span className="key-id-value">
+                {shipment.be_no ?? "Not filed yet"}
+                {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
+              </span>
+            </div>
+          </div>
+          <div className="key-id key-id-flags">
+            <span className="key-id-label">Clearance</span>
+            <div className="flag-row">
+              {statusFlags(shipment).map(([label, value]) => (
+                <span className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label} title={value ? "Done" : "Pending"}>
+                  <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
         <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
       </header>
 
-      {/* BL and BE are the two keys everything is filed and searched by */}
-      <div className="key-ids">
-        <div className="key-id">
-          <span className="key-id-label">BL No (MBL / HBL)</span>
-          <span className="key-id-value">{shipment.mbl}</span>
-          {shipment.hbl && <span className="key-id-sub">HBL {shipment.hbl}</span>}
-        </div>
-        <div className={`key-id${shipment.be_no ? "" : " key-id-missing"}`}>
-          <span className="key-id-label">BE No · BE Date</span>
-          <span className="key-id-value">
-            {shipment.be_no ?? "Not filed yet"}
-            {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
-          </span>
-        </div>
-      </div>
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -126,13 +159,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
     ["tds_deducted", "TDS cut on the shipment"],
     ["tds_on_cfs", "TDS cut on CFS payment"],
   ];
-  const flagFields: [string, boolean][] = [
-    ["Duty Paid", s.duty_paid],
-    ["OOC", s.ooc],
-    ["CFS Invoice", s.cfs_inv_received],
-    ["Line Paid", s.line_paid],
-    ["DO", s.do],
-  ];
   const examination =
     s.under_examination == null
       ? null
@@ -143,135 +169,156 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         : "No";
 
   return (
+    // shipment & movement (+ remarks) across the top; then customs duty + status | CFS | shipping line
     <div className="detail-grid">
-      <section className="detail-section">
-        <h3>Status</h3>
-        <div className="flag-grid">
-          {flagFields.map(([label, value]) => (
-            <div className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label}>
-              <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
-              {!value && <span className="flag-pending-text">Pending</span>}
-            </div>
-          ))}
+      {/* shipment + container & movement: one wide block across the top, fields in a grid */}
+      <section className="detail-section detail-wide">
+        <h3>Shipment &amp; movement</h3>
+        <div className="field-grid">
+            <EditField label="Port (POD)" field="port" kind="port" s={s} onChange={onChange} display={formatPort(s.port, ports) || null} />
+            <EditField label="ETA" field="eta" kind="date" s={s} onChange={onChange} display={fmtDate(s.eta)} />
+            <EditField label="INW" field="inw" s={s} onChange={onChange} hint="Typed like the sheet, e.g. 19-Sep-2026" />
+            <Field label="Day" value={s.days} />
+            <EditField label="IGM" field="igm" s={s} onChange={onChange} />
+            <EditField label="License" field="license" s={s} onChange={onChange} />
+            <EditField label="Containers" field="container" s={s} onChange={onChange} />
+            <EditField label="Gross Wt" field="gross_wt" s={s} onChange={onChange} />
+            <EditField label="Container Status" field="container_status" s={s} onChange={onChange} />
+            <EditField label="CFS" field="cfs" s={s} onChange={onChange} />
+            <EditField label="POC" field="poc" s={s} onChange={onChange} />
+            <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
+            <EditField label="Shipping Line" field="shipping_line" s={s} onChange={onChange} />
         </div>
-        <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
-        <Field label="Examination" value={examination} hint="Read from the OOC copy" />
-        <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
-          <span>Under examination</span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={!!s.under_examination}
-            disabled={saving === "under_examination"}
-            onChange={() => toggle("under_examination")}
-          />
-        </label>
-        <Field label="Cleared Date" value={fmtDate(s.cleared_date)} />
+        <div className="detail-wide-foot">
+          <HssEditor shipment={s} onChange={onChange} />
+          <div className="detail-remarks">
+            <EditField label="Remark" field="remark" s={s} onChange={onChange} />
+            <EditField label="Remarks" field="remarks" s={s} onChange={onChange} multiline />
+          </div>
+        </div>
       </section>
-
-      <section className="detail-section">
-        <h3>Duty &amp; CFS amounts</h3>
-        <BeAmounts shipment={s} onChange={onChange} />
-        <div className="field-divider" />
-        <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
-        {s.cfs_paid_by_us ? (
-          <>
-            <Field
-              label="TDS @ 2% of basic"
-              value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
-              hint="2% of the CFS basic value (before GST)"
-            />
-            <Field
-              label="Payment after TDS"
-              value={fmtMoney(s.cfs_payment_after_tds)}
-              hint="Basic + GST − 2% of basic"
-              strong
-            />
-            <label className="toggle-row" title="How CFS goes on the proforma">
-              <span>CFS on the proforma</span>
-              <select
-                value={s.cfs_billed_as}
-                onChange={async (e) =>
-                  onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)
-                }
-              >
-                <option value="reimbursement">Reimbursement (at actuals)</option>
-                <option value="taxable">Taxable — Billed by Clarus + 18% GST</option>
-              </select>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>Customs duty</h3>
+          <BeAmounts shipment={s} onChange={onChange} />
+          {toggles.filter(([f]) => f === "tds_deducted").map(([field, label]) => (
+            <label className="toggle-row" key={field}>
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!!s[field]}
+                disabled={saving === field}
+                onChange={() => toggle(field)}
+              />
             </label>
-          </>
-        ) : (
-          <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
-        )}
-        <div className="field-divider" />
-        <InvoiceGroup group="line" shipment={s} onChange={onChange} />
-        <p className="field-note">
-          {s.line_paid_by_us
-            ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
-            : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
-        </p>
-        <div className="field-divider" />
-        {toggles.map(([field, label]) => (
-          <label className="toggle-row" key={field}>
-            <span>{label}</span>
+          ))}
+        </section>
+        <section className="detail-section">
+          <h3>Status</h3>
+          <EditField label="OOC Date" field="ooc_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.ooc_date)} />
+          <Field label="Examination" value={examination} hint="Read from the OOC copy" />
+          <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
+            <span>Under examination</span>
             <input
               type="checkbox"
               role="switch"
-              checked={!!s[field]}
-              disabled={saving === field}
-              onChange={() => toggle(field)}
+              checked={!!s.under_examination}
+              disabled={saving === "under_examination"}
+              onChange={() => toggle("under_examination")}
             />
           </label>
-        ))}
-        <label
-          className="toggle-row"
-          title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
-        >
-          <span>Shipping line in cost inclusion</span>
-          <select
-            value={s.line_cost_inclusion ?? "auto"}
-            disabled={s.line_paid_by_us}
-            onChange={async (e) => {
-              const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
-              onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
-            }}
-          >
-            <option value="auto">Auto (client's setting)</option>
-            <option value="include">Include</option>
-            <option value="exclude">Leave out</option>
-          </select>
-        </label>
-      </section>
-
-      <section className="detail-section">
-        <h3>Shipment</h3>
-        <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
-        <Field label="ETA" value={fmtDate(s.eta)} />
-        <Field label="INW" value={s.inw} />
-        <Field label="Day" value={s.days} />
-        <Field label="IGM" value={s.igm} />
-        <Field label="License" value={s.license} />
-        <HssEditor shipment={s} onChange={onChange} />
-      </section>
-
-      <section className="detail-section">
-        <h3>Container &amp; Movement</h3>
-        <Field label="Containers" value={s.container} />
-        <Field label="Gross Wt" value={s.gross_wt} />
-        <Field label="Container Status" value={s.container_status} />
-        <Field label="CFS" value={s.cfs} />
-        <Field label="POC" value={s.poc} />
-        <Field label="Delivery" value={s.delivery_status} />
-        <Field label="Shipping Line" value={s.shipping_line} />
-      </section>
-
-      {(s.remark || s.remarks) && (
-        <section className="detail-section">
-          <h3>Remarks</h3>
-          {s.remark && <p>{s.remark}</p>}
-          {s.remarks && <p>{s.remarks}</p>}
+          <EditField label="Cleared Date" field="cleared_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.cleared_date)} />
         </section>
-      )}
+      </div>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>CFS</h3>
+          {toggles.filter(([f]) => f === "cfs_paid_by_us" || f === "tds_on_cfs").map(([field, label]) => (
+            <label className="toggle-row" key={field}>
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!!s[field]}
+                disabled={saving === field}
+                onChange={() => toggle(field)}
+              />
+            </label>
+          ))}
+          <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
+          {s.cfs_paid_by_us ? (
+            <>
+              <Field
+                label="TDS @ 2% of basic"
+                value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
+                hint="2% of the CFS basic value (before GST)"
+              />
+              <Field
+                label="Payment after TDS"
+                value={fmtMoney(s.cfs_payment_after_tds)}
+                hint="Basic + GST − 2% of basic"
+                strong
+              />
+              <label className="toggle-row" title="How CFS goes on the proforma">
+                <span>CFS on the proforma</span>
+                <select
+                  value={s.cfs_billed_as}
+                  onChange={async (e) =>
+                    onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)
+                  }
+                >
+                  <option value="reimbursement">Reimbursement (at actuals)</option>
+                  <option value="taxable">Taxable — Billed by Clarus + 18% GST</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
+          )}
+        </section>
+      </div>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>Shipping line</h3>
+          {toggles.filter(([f]) => f === "line_paid_by_us").map(([field, label]) => (
+            <label className="toggle-row" key={field}>
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!!s[field]}
+                disabled={saving === field}
+                onChange={() => toggle(field)}
+              />
+            </label>
+          ))}
+          <InvoiceGroup group="line" shipment={s} onChange={onChange} />
+          <p className="field-note">
+            {s.line_paid_by_us
+              ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
+              : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
+          </p>
+          <label
+            className="toggle-row"
+            title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
+          >
+            <span>Shipping line in cost inclusion</span>
+            <select
+              value={s.line_cost_inclusion ?? "auto"}
+              disabled={s.line_paid_by_us}
+              onChange={async (e) => {
+                const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
+                onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
+              }}
+            >
+              <option value="auto">Auto (client's setting)</option>
+              <option value="include">Include</option>
+              <option value="exclude">Leave out</option>
+            </select>
+          </label>
+        </section>
+      </div>
     </div>
   );
 }
@@ -514,6 +561,8 @@ function InvoiceGroup({
         </span>
       </div>
       {docs.length === 0 && <p className="field-note">{cfg.empty}</p>}
+      {/* several invoices scroll inside the box instead of stretching it */}
+      <div className="invoice-list">
       {docs.map((d) => (
         <div key={d.id} className={`invoice-row${counted.has(d.id) ? "" : " invoice-not-counted"}`}>
           <div className="invoice-row-head">
@@ -567,6 +616,7 @@ function InvoiceGroup({
           )}
         </div>
       ))}
+      </div>
       {receipts.length > 0 && <Receipts receipts={receipts} onSaved={async () => { onChange(await getShipment(s.id)); load(); }} />}
       {docs.length > 0 &&
         cfg.totals.map(([field, label], i) => (
@@ -638,6 +688,8 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
   const charges = fields.charges_complete ? fields.charges ?? [] : [];
   const excluded = new Set(doc.cost_excluded ?? []);
   const [typing, setTyping] = useState(false);
+  const [open, setOpen] = useState<{ top: number; left: number } | null>(null); // charge lines: an overlay
+  const popover = useRef<HTMLDivElement>(null);
   const [before, setBefore] = useState("");
   const [gst, setGst] = useState("");
   const [busy, setBusy] = useState(false);
@@ -657,9 +709,29 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
     }
   }
 
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (popover.current && !popover.current.contains(e.target as Node)) setOpen(null);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    const scrolled = (e: Event) => {
+      if (!(e.target instanceof Node && popover.current?.contains(e.target))) setOpen(null);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    window.addEventListener("scroll", scrolled, true);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", scrolled, true);
+    };
+  }, [open]);
+
   const partial = doc.cost_before_tax != null;
+  const leftOut = charges.filter((_, i) => excluded.has(i)).length;
   return (
-    <div className="cost-inclusion">
+    <div className="cost-inclusion" ref={popover}>
       <div className="cost-inclusion-head">
         <span>
           {[fields.carrier, fields.invoice_no].filter(Boolean).join(" · ")}
@@ -707,36 +779,165 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
         </div>
       )}
       {charges.length > 0 && !doc.cost_manual && (
-        <ul className="charge-lines">
-          {charges.map((c, i) => (
-            <li key={i} className={excluded.has(i) ? "charge-out" : undefined}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!excluded.has(i)}
-                  disabled={busy}
-                  onChange={() => {
-                    const next = new Set(excluded);
-                    if (next.has(i)) next.delete(i);
-                    else next.add(i);
-                    send({ excluded: [...next] });
-                  }}
-                />
-                <span className="charge-desc">
-                  {c.description}
-                  {c.currency !== "INR" && <span className="charge-tag">{c.currency}</span>}
-                  {c.review && <span className="charge-tag charge-review" title="Billed in INR but named like freight — left out; tick if it's a destination charge">check</span>}
-                </span>
-              </label>
-              <span className="charge-amt">{fmtMoney(String(c.amount ?? ""))}</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <button
+            type="button"
+            className="charge-toggle"
+            aria-expanded={!!open}
+            onClick={(e) => {
+              if (open) return setOpen(null);
+              const r = e.currentTarget.getBoundingClientRect();
+              setOpen({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 460)) });
+            }}
+          >
+            {charges.length} charge{charges.length === 1 ? "" : "s"}
+            {leftOut > 0 && ` · ${leftOut} left out`} — choose {open ? "▴" : "▾"}
+          </button>
+          {open && (
+            <div className="charge-popover" style={open} role="dialog" aria-label="Charges in the cost inclusion">
+              <div className="charge-popover-head">Tick the charges that go in the cost inclusion</div>
+            <ul className="charge-lines">
+              {charges.map((c, i) => (
+                <li key={i} className={excluded.has(i) ? "charge-out" : undefined}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!excluded.has(i)}
+                      disabled={busy}
+                      onChange={() => {
+                        const next = new Set(excluded);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        send({ excluded: [...next] });
+                      }}
+                    />
+                    <span className="charge-desc">
+                      {c.description}
+                      {c.currency !== "INR" && <span className="charge-tag">{c.currency}</span>}
+                      {c.review && <span className="charge-tag charge-review" title="Billed in INR but named like freight — left out; tick if it's a destination charge">check</span>}
+                    </span>
+                  </label>
+                  <span className="charge-amt">{fmtMoney(String(c.amount ?? ""))}</span>
+                </li>
+              ))}
+            </ul>
+            </div>
+          )}
+        </>
       )}
       {charges.length === 0 && !doc.cost_manual && (
         <p className="field-note">Charge lines couldn't be read from this invoice — the whole invoice counts. Use "Type figure" to change it.</p>
       )}
       {error && <span className="auth-error">{error}</span>}
+    </div>
+  );
+}
+
+/** The clearance checks, shown as chips at the top of the shipment page. */
+function statusFlags(s: Shipment): [string, boolean][] {
+  return [
+    ["Duty Paid", s.duty_paid],
+    ["OOC", s.ooc],
+    ["CFS Invoice", s.cfs_inv_received],
+    ["Line Paid", s.line_paid],
+    ["DO", s.do],
+  ];
+}
+
+type EditKind = "text" | "date" | "port";
+
+/**
+ * A field on the Overview you can edit in place, like Notion (client, 2026-09-30): click it,
+ * type, Enter (or click away) saves — Esc cancels. Saved like a tracker cell (someone else's
+ * newer change is never overwritten silently).
+ */
+function EditField({
+  label,
+  field,
+  s,
+  onChange,
+  kind = "text",
+  display,
+  hint,
+  multiline,
+}: {
+  label: string;
+  field: keyof Shipment;
+  s: Shipment;
+  onChange: (s: Shipment) => void;
+  kind?: EditKind;
+  display?: string | null;
+  hint?: string;
+  multiline?: boolean;
+}) {
+  const ports = usePorts();
+  const saveShipment = useSaveShipment();
+  const raw = (s[field] as string | null | undefined) ?? "";
+  const [editing, setEditing] = useState(false);
+  const [v, setV] = useState(raw);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const start = () => {
+    setV(raw);
+    setErr(null);
+    setEditing(true);
+  };
+  const save = async (value = v) => {
+    const next = value.trim() === "" ? null : value.trim();
+    if ((next ?? "") === (raw ?? "")) return setEditing(false);
+    setBusy(true);
+    try {
+      onChange((await saveShipment(s, { [field]: next } as Partial<Shipment>, label)).shipment);
+      setEditing(false);
+    } catch {
+      setErr("Couldn't save");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      save();
+    }
+  };
+
+  const shown = display !== undefined ? display : raw || null;
+  return (
+    <div className={`field-row edit-field${editing ? " is-editing" : ""}`} title={hint}>
+      <span className="field-label">{label}</span>
+      {editing ? (
+        kind === "port" ? (
+          <select autoFocus value={v} disabled={busy} onChange={(e) => save(e.target.value)} onBlur={() => setEditing(false)} onKeyDown={keys}>
+            <option value="">—</option>
+            {ports.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.code} · {p.name}
+              </option>
+            ))}
+          </select>
+        ) : multiline ? (
+          <textarea autoFocus rows={2} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={() => save()} onKeyDown={keys} />
+        ) : (
+          <input
+            autoFocus
+            type={kind === "date" ? "date" : "text"}
+            onFocus={(e) => e.currentTarget.select()}
+            value={v}
+            disabled={busy}
+            onChange={(e) => setV(e.target.value)}
+            onBlur={() => save()}
+            onKeyDown={keys}
+          />
+        )
+      ) : (
+        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}`} onClick={start} title="Click to edit">
+          {shown ?? "—"}
+        </button>
+      )}
+      {err && <span className="auth-error">{err}</span>}
     </div>
   );
 }
