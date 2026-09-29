@@ -58,7 +58,7 @@ export default function RatesPage() {
   const [adding, setAdding] = useState(false);
   // one section at a time instead of one long page (design refresh, 2026-09-29)
   const [params, setParams] = useSearchParams();
-  const tab = (["standard", "licences", "hss", "numbering"] as const).find((t) => t === params.get("tab")) ?? "standard";
+  const tab = (["standard", "licences", "hss"] as const).find((t) => t === params.get("tab")) ?? "standard";
 
   useEffect(() => {
     listAllCharges().then(setCharges);
@@ -86,7 +86,6 @@ export default function RatesPage() {
             ["standard", "Standard rates"],
             ["licences", "Licences"],
             ["hss", "HSS rules"],
-            ["numbering", "Invoicing"],
           ] as const
         ).map(([id, label]) => (
           <button key={id} className={tab === id ? "tab active" : "tab"} onClick={() => setParams(id === "standard" ? {} : { tab: id })}>
@@ -226,7 +225,6 @@ export default function RatesPage() {
 
       </>
       )}
-      {tab === "numbering" && <InvoiceNumbering canEdit={canEdit} />}
       {tab === "licences" && <Licences charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />}
       {tab === "hss" && <HssRules charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />}
     </div>
@@ -753,7 +751,7 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
 }
 
 /** Where the final-invoice series continues (CL/<n>/<FY>, RI/CL/<n>/<FY>). */
-function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
+export function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
   const [rows, setRows] = useState<{ fy: string; next_seq: number }[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => {
@@ -761,7 +759,6 @@ function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
   }, []);
   return (
     <section className="hss-rules">
-      <EInvoicing canEdit={canEdit} />
       <h2>Invoice numbering</h2>
       <p className="tracker-subtitle">
         Next final-invoice number per financial year — Tax Invoice CL/&lt;n&gt;/&lt;FY&gt;, Reimbursement RI/CL/&lt;n&gt;/&lt;FY&gt;
@@ -798,7 +795,7 @@ function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
  * whether its e-invoice has been filed — a filed one can't be altered (client, 2026-09-30).
  * Either way, issued bills can be altered only until the 10th of the next month.
  */
-function EInvoicing({ canEdit }: { canEdit: boolean }) {
+export function EInvoicing({ canEdit }: { canEdit: boolean }) {
   const [on, setOn] = useState<boolean | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => {

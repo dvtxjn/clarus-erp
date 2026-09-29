@@ -704,4 +704,9 @@ The client will pick features they like from other software and feed them in. Re
 - **P1** Phone-friendly proforma.
 - **P3** Reports (monthly billing, per-client volume / billing, containers per port).
 - **P3** Change history viewer (the audit log is recorded, not shown yet).
+- **P4** Sandbox account: made-up sample data everywhere (tweaked, not the real data) for staff to try things;
+  no invoicing / rates in it (kept private) (client, 2026-09-30).
 - **P6** Credit / debit notes.
+- ✅ P0 Settings page (2026-09-30): Company, Bank details, Invoice wording (proforma notes, final terms) — printed on
+  invoices from Settings, validated (GSTIN / state code); Invoicing (e-invoicing, numbering — moved from Rates);
+  Storage & backups status (read-only); Users & permissions. Defaults = the previous hard-coded values.

@@ -590,8 +590,34 @@ export async function forgotPassword(email: string): Promise<void> {
 }
 
 /** Admin switches (e.g. e-invoicing applies to the company). Admin changes them. */
+export interface CompanySettings {
+  name: string;
+  address_lines: string[];
+  gstin: string;
+  pan: string;
+  cin: string;
+  state_code: string;
+  state: string;
+  email: string;
+  phone: string;
+}
 export interface AppSettings {
   e_invoicing: boolean;
+  company: CompanySettings;
+  bank: [string, string][];
+  final_terms: string[];
+  proforma_notes: string[];
+}
+export interface SystemStatus {
+  storage: string;
+  drive_folders: Record<string, string | null>;
+  backups: { enabled: boolean; last_ok_at: string | null; last_ok_age_hours: number | null; in_drive: boolean; warnings: string[] };
+  environment: string;
+  public_url: string | null;
+}
+export async function getSystemStatus(): Promise<SystemStatus> {
+  const { data } = await client.get("/settings/system");
+  return data;
 }
 export async function getSettings(): Promise<AppSettings> {
   const { data } = await client.get("/settings");

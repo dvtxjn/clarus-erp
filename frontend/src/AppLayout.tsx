@@ -18,6 +18,7 @@ const ICONS = {
   rates: icon(<><path d="M3 2.5h7l3 3v8H3z" /><path d="M6 8h4M6 10.5h4" /></>),
   invoices: icon(<><path d="M4 1.5h8v13l-2-1.3-2 1.3-2-1.3-2 1.3z" /><path d="M6 5h4M6 7.5h4M6 10h2.5" /></>),
   deleted: icon(<><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9" /></>),
+  settings: icon(<><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" /></>),
   users: icon(<><circle cx="6" cy="5.5" r="2.5" /><path d="M1.5 13.5c.6-2.4 2.3-3.5 4.5-3.5s3.9 1.1 4.5 3.5M11 3.5a2.2 2.2 0 0 1 0 4.2M12.5 10.3c1 .5 1.7 1.6 2 3.2" /></>),
 };
 
@@ -92,6 +93,7 @@ export default function AppLayout() {
               <Item to="/rates" label="Rates" i="rates" />
               <Item to="/users" label="Users" i="users" />
               <Item to="/deleted" label="Recently deleted" i="deleted" />
+              <Item to="/settings" label="Settings" i="settings" />
             </>
           )}
         </nav>

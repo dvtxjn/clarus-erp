@@ -1,5 +1,8 @@
 """Issuer details printed on every invoice (from the client's template
-reference/Clarus_Logistics_Proforma_Invoice_flexible.xlsm)."""
+reference/Clarus_Logistics_Proforma_Invoice_flexible.xlsm).
+
+The constants below are the defaults; the admin edits them on the Settings page (client,
+2026-09-30), and invoices read the live values through company() / bank() / terms() / notes()."""
 
 COMPANY = {
     "name": "CLARUS LOGISTICS LLP",
@@ -41,3 +44,49 @@ BAR = "3A2F29"        # section bars (warm charcoal)
 HEADER = "F3E4D7"     # column header cells
 SUBTOTAL = "FAF2EB"   # subtotal rows
 HIGHLIGHT = "FBE7D3"  # the HSS note
+
+
+# --- live values (Settings page), falling back to the defaults above ---
+
+def _setting(key: str):
+    from app.core.database import SessionLocal
+    from app.models.settings import get_setting
+
+    try:
+        with SessionLocal() as db:
+            return get_setting(db, key)
+    except Exception:  # noqa: BLE001 — no database (e.g. a PDF rendered offline): defaults
+        return None
+
+
+def company_settings_default() -> dict:
+    """The editable company fields (Settings → Company)."""
+    return {"name": COMPANY["name"], "address_lines": list(COMPANY["address_lines"]), "gstin": COMPANY["gstin"],
+            "pan": COMPANY["pan"], "cin": COMPANY["cin"], "state_code": COMPANY["state_code"], "state": COMPANY["state"],
+            "email": "business@claruslogistics.in", "phone": "+91 98106 19155"}
+
+
+def company() -> dict:
+    c = {**company_settings_default(), **(_setting("company") or {})}
+    lines = [x for x in c.get("address_lines") or [] if x]
+    state = (c.get("state") or "").title()
+    return {
+        **c,
+        "address": " ".join(lines),
+        "address_lines": lines,
+        "tax_line": f"GSTIN: {c['gstin']}      PAN: {c['pan']}      State: {state} [{c['state_code']}]",
+        "contact_line": f"Email: {c['email']}      Phone: {c['phone']}",
+    }
+
+
+def bank() -> list[tuple[str, str]]:
+    saved = _setting("bank")
+    return [tuple(x) for x in saved] if saved else BANK
+
+
+def terms() -> list[str]:
+    return _setting("final_terms") or TERMS
+
+
+def notes() -> list[str]:
+    return _setting("proforma_notes") or NOTES
