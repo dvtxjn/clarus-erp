@@ -431,7 +431,7 @@ export interface DashboardSummary {
   clearance_exceptions: number;
   by_status: Record<ShipmentStatus, number>;
   by_port: Record<string, number>;
-  upcoming_etas: { id: number; job: string; mbl: string; consignee: string | null; eta: string | null; port: string | null }[];
+  upcoming_etas: { id: number; job: string; mbl: string; be_no: string | null; consignee: string | null; eta: string | null; port: string | null }[];
   live_containers: number;
   live_tonnes: number;
   containers_by_eta_month: MonthFigures[];

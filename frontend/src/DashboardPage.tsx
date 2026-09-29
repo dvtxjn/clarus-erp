@@ -171,7 +171,10 @@ export default function DashboardPage() {
                 {summary.upcoming_etas.map((s) => (
                   <li key={s.id}>
                     <span className="upcoming-main">
-                      <Link to={`/shipments/${s.id}`}>{s.job ? `Job ${s.job}` : s.mbl}</Link>
+                      <Link to={`/shipments/${s.id}`}>{s.job ? `Job ${s.job}` : "open"}</Link>{" "}
+                      <span className="tracker-subtitle">
+                        BL {s.mbl || "—"} · BE {s.be_no || "—"}
+                      </span>
                       <span className="tracker-subtitle">
                         {s.consignee ?? "—"} · {portLabel(s.port ?? "Unassigned")}
                       </span>

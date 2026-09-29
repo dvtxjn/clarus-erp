@@ -59,6 +59,9 @@ def invoice_state(inv: FinalInvoice, settled: dict, today: date) -> dict:
         "id": inv.id, "number": inv.number, "kind": inv.kind, "invoice_date": d["invoice_date"],
         "customer": d["customer"].get("name") or "", "gstin": d["customer"].get("gstin") or "",
         "shipment_id": inv.shipment_id, "job": inv.shipment.job if inv.shipment else None,
+        # BE and BL on every row — how the team finds a shipment (client, 2026-09-30)
+        "be_no": (inv.header or {}).get("be_no") or (inv.shipment.be_no if inv.shipment else None),
+        "mbl": inv.shipment.mbl if inv.shipment else None,
         "net_payable": str(net), "paid": str(s["paid"]), "tds": str(s["tds"]), "outstanding": str(outstanding),
         "pay_status": status if net > 0 else "not applicable", "age_days": days, "bucket": bucket(days),
     }

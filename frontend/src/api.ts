@@ -706,6 +706,8 @@ export interface OpenInvoice {
   gstin: string;
   shipment_id: number;
   job: string | null;
+  be_no: string | null;
+  mbl: string | null;
   net_payable: string;
   paid: string;
   tds: string;
