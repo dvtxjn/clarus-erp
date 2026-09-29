@@ -19,6 +19,13 @@ else:
     os.environ["DATABASE_URL"] = f"sqlite:///{_db.name}"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
 os.environ["JOBS_ENABLED"] = "0"  # background jobs are called directly in tests
+# Never touch the real Google Drive or real backups from tests (backend/.env may switch them on;
+# load_dotenv doesn't override values already set here). Tests plug in a fake Drive themselves.
+os.environ["STORAGE_BACKEND"] = "local"
+for _k in ("GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID", "DRIVE_INVOICES_FOLDER_ID",
+           "DRIVE_BACKUPS_FOLDER_ID", "DRIVE_SHIPMENTS_FOLDER_ID", "BACKUP_ENCRYPTION_KEY"):
+    os.environ[_k] = ""
+os.environ["BACKUP_DIR"] = tempfile.mkdtemp(prefix="erp-test-backups-")
 os.environ["DOCUMENT_STORAGE_ROOT"] = tempfile.mkdtemp(prefix="erp-test-docs-")
 
 import pytest  # noqa: E402

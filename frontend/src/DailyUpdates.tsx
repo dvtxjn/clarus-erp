@@ -278,6 +278,7 @@ const EMPTY: OrganizationInput = {
   email: null,
   phone: null,
   is_active: true,
+  line_in_cost_inclusion: true,
 };
 
 const FIELDS: { key: keyof OrganizationInput; label: string; placeholder?: string; wide?: boolean }[] = [
@@ -339,6 +340,14 @@ export function OrganizationForm({
           />
         </label>
       ))}
+      <label className="toggle-row wide" title="e.g. Harekrishna Rubber. Each shipment can still switch it on.">
+        <input
+          type="checkbox"
+          checked={!form.line_in_cost_inclusion}
+          onChange={(e) => setForm({ ...form, line_in_cost_inclusion: !e.target.checked })}
+        />
+        <span>Shipping line invoices NOT in cost inclusion (on shipments involving this party)</span>
+      </label>
       {error && <div className="invoice-error wide">{error}</div>}
       <div className="org-form-actions wide">
         <button type="submit" disabled={saving}>

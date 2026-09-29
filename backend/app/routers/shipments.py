@@ -19,7 +19,7 @@ from app.core.audit import record_change
 from app.core.status_rules import EVIDENCE_FIELDS, proven_status, status_after_evidence_change
 
 # shipment fields that draft proformas are built from
-PROFORMA_INPUTS = {"cfs_paid_by_us", "cfs_billed_as", "line_paid_by_us", "duty_amount", "igst_amount",
+PROFORMA_INPUTS = {"cfs_paid_by_us", "cfs_billed_as", "line_paid_by_us", "line_cost_inclusion", "duty_amount", "igst_amount",
                    "assessable_value", "port", "be_no", "cfs_amount_before_tax", "cfs_gst_amount",
                    "under_examination", "container"}
 

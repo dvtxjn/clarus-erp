@@ -563,3 +563,15 @@ The client will pick features they like from other software and feed them in. Re
 - **Harekrishna Rubber: shipping line invoices are NOT added to cost inclusion** — confirm: when HKR is the BE importer, the HSS seller, or on any shipment involving HKR? Build as a per-organisation setting.
 - One shipping line invoice was read wrongly → collect shipping line samples and improve reading.
 - **"HKR" = Harekrishna Rubber** (same party). Use the organisation list's Alias column so short names (HKR) match everywhere (licence / HSS rules, bill-to, tracker), instead of separate client codes — decide with client.
+
+---
+
+## ✅ Shipping line in cost inclusion: client default + shipment switch (2026-09-29)
+
+- Client: for **Harekrishna Rubber** shipping line invoices are **not** added to cost inclusion, but a shipment must be able to add it when needed.
+- `organizations.line_in_cost_inclusion` (default true) — checkbox "Shipping line invoices NOT in cost inclusion" in the organisation form. `shipments.line_cost_inclusion`: null = **Auto** (client's setting), `include`, `exclude` — "Shipping line in cost inclusion" select on the Overview under "Shipping line paid by us" (disabled when paid by us: that is always Reimbursement). Migration 0033.
+- `autofill.line_excluded_by()`: the shipment's switch wins; on Auto, any party on the shipment (BE importer, consignee, HSS seller or buyer) whose organisation is set to "not included" leaves it out; the proforma's "skipped" list says why. Changing the switch refreshes draft proformas.
+- Harekrishna Rubber Industries Pvt Ltd set: short names "HKR, Harekrishna" (the existing short-names field = aliases, so HKR matches everywhere; no client codes needed), not in cost inclusion → 11 shipments' drafts refreshed (jobs 129, 130, 134–138, 145, 151, 152, 181). "Any party" rule — narrow it (e.g. only as BE importer / HSS seller) if the client says so.
+- Tests: `test_line_cost_inclusion_client_default_and_shipment_switch`. 116 pass on Postgres.
+
+**Incident, same day:** after `STORAGE_BACKEND=drive` was set in backend/.env, two test runs read it and saved ~74 test files/folders and one test-database backup into the real Shared Drive (10:35–10:38). The app can't delete, so they were renamed `TEST – delete me – …` for the client to remove by hand. Fixed: `tests/conftest.py` now forces local storage, blanks every DRIVE_* / key setting and uses a temp BACKUP_DIR. Real data untouched.

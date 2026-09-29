@@ -78,6 +78,7 @@ export interface Shipment {
   cfs_paid_by_us: boolean;
   cfs_billed_as: "reimbursement" | "taxable"; // CFS paid by us: at actuals, or Billed by Clarus with our GST
   line_paid_by_us: boolean; // shipping line normally paid by the client -> Cost Inclusion
+  line_cost_inclusion: "include" | "exclude" | null; // null = auto (the client's setting)
   tds_deducted: boolean;
   tds_on_cfs: boolean;
   drive_folder_id: string | null;
@@ -430,6 +431,7 @@ export interface Organization {
   email: string | null;
   phone: string | null;
   is_active: boolean;
+  line_in_cost_inclusion: boolean; // false: shipping line invoices not in cost inclusion by default
   updated_at: string | null;
 }
 

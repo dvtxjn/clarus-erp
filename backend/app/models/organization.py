@@ -32,4 +32,7 @@ class OrganizationEntry(Base):
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    # False: on shipments involving this party, shipping line invoices are not added to the
+    # proforma's cost inclusion unless switched on for that shipment (client: Harekrishna Rubber)
+    line_in_cost_inclusion = Column(Boolean, default=True, nullable=False, server_default="1")
     updated_at = Column(DateTime(timezone=True), nullable=True, default=datetime.now, onupdate=datetime.now)

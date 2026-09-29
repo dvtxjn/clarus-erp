@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import ChargeCategory, ProformaStatus
 from app.extraction.cfs_totals import cost_inclusion, invoice_charges, line_invoices_counted
-from app.invoice.build import SECTION_TITLES, _norm, value_summary, be_importer_name, bl_consignee_organization, customs_duty, latest_challan, stamp_duty, weight_kgs
+from app.invoice.build import SECTION_TITLES, _norm, value_summary, be_importer_name, bl_consignee_organization, customs_duty, latest_challan, match_organization, stamp_duty, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.models.charge import ChargeMasterEntry
 from app.models.document import ShipmentDocument
@@ -46,6 +46,21 @@ def line_key(li: ProformaLineItem) -> str:
     """Identity of a derived line: shipping line lines are one per SAC."""
     code = li.charge.code if li.charge else "?"
     return f"{code}:{li.sac_code}" if code == LINE_CODE else code
+
+
+def line_excluded_by(db: Session, s: Shipment) -> Optional[str]:
+    """Why the shipping line stays out of the cost inclusion, or None if it goes in.
+    The shipment's own switch wins; on auto, any party on the shipment (BE importer,
+    consignee, HSS seller / buyer) whose organisation says "not in cost inclusion"."""
+    if s.line_cost_inclusion == "include":
+        return None
+    if s.line_cost_inclusion == "exclude":
+        return "switched off for this shipment"
+    for name in {be_importer_name(s), s.consignee, s.hss_seller, s.hss_buyer} - {None, ""}:
+        org = match_organization(db, name)
+        if org is not None and not org.line_in_cost_inclusion:
+            return f"{org.name}'s setting"
+    return None
 
 
 def shipping_line_groups(db: Session, s: Shipment) -> list[dict]:
@@ -305,7 +320,10 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
     # the client normally pays the line directly -> Cost Inclusion; paid by us -> Reimbursement
     line_cat = ChargeCategory.REIMBURSEMENT if s.line_paid_by_us else ChargeCategory.COST_INCLUSION
     groups = shipping_line_groups(db, s)
-    if groups:  # one total of the selected charges
+    excluded_by = None if s.line_paid_by_us else line_excluded_by(db, s)
+    if groups and excluded_by:
+        skipped.append(f"Shipping line: not in cost inclusion ({excluded_by}) — switch it on for this shipment to add it")
+    elif groups:  # one total of the selected charges
         carriers = sorted({c for g in groups for c in g["carriers"]})
         add(LINE_CODE, sum((g["amount"] for g in groups), ZERO), gst=sum((g["gst"] for g in groups), ZERO),
             description="Shipping Line" + (f" ({', '.join(carriers)})" if carriers else " (destination charges)"),

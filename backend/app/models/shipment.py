@@ -121,6 +121,9 @@ class Shipment(SoftDeleteMixin, Base):
     # Shipping line destination charges are normally paid by the client directly
     # (-> proforma "Cost Inclusion"); when we pay them they're a reimbursement.
     line_paid_by_us = Column(Boolean, default=False, nullable=False, server_default="0")
+    # Shipping line invoices in the proforma's cost inclusion: None = auto (follow the
+    # organisation's setting, e.g. Harekrishna Rubber: not included), "include" / "exclude" by hand
+    line_cost_inclusion = Column(String, nullable=True)
     # set when a tracker CSV import doesn't contain this shipment (flagged, never deleted)
     missing_from_sheet_at = Column(DateTime, nullable=True)
     # CFS paid by us goes on the proforma either as a "reimbursement" (at actuals,

@@ -47,6 +47,7 @@ class ShipmentBase(BaseModel):
     do: bool = False
     cfs_paid_by_us: bool = False
     line_paid_by_us: bool = False
+    line_cost_inclusion: Optional[Literal["include", "exclude"]] = None  # None = auto
     missing_from_sheet_at: Optional[datetime] = None
     cfs_billed_as: Literal["reimbursement", "taxable"] = "reimbursement"
     tds_deducted: bool = False
@@ -118,6 +119,7 @@ class ShipmentUpdate(BaseModel):
     do: Optional[bool] = None
     cfs_paid_by_us: Optional[bool] = None
     line_paid_by_us: Optional[bool] = None
+    line_cost_inclusion: Optional[Literal["include", "exclude"]] = None  # null = auto
     cfs_billed_as: Optional[Literal["reimbursement", "taxable"]] = None
     tds_deducted: Optional[bool] = None
     tds_on_cfs: Optional[bool] = None

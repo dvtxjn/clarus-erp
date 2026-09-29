@@ -65,6 +65,7 @@ class OrganizationBase(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     is_active: bool = True
+    line_in_cost_inclusion: bool = True  # False: shipping line not in cost inclusion by default
 
 
 class OrganizationOut(OrganizationBase):

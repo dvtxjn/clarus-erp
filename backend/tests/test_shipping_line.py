@@ -204,3 +204,33 @@ def test_restore_removed_shipping_line(client, admin_headers):
     assert p["suppressed"] is None and any(li["sac_code"] == "Liner Inv" for li in p["line_items"])
     # by charge code too; nothing to add -> 400
     assert client.post(f"/proformas/{pid}/restore", json={"key": "EC"}, headers=h).status_code == 400
+
+
+def test_line_cost_inclusion_client_default_and_shipment_switch(client, admin_headers):
+    """Client, 2026-09-29: for Harekrishna Rubber the shipping line invoice is not added to the
+    cost inclusion — but a switch on the shipment can still add it (and can leave it out anywhere)."""
+    h = admin_headers
+    client.post("/organizations", json={"name": "Harekrishna Rubber Test Pvt Ltd", "short_names": "HKRT",
+                                        "line_in_cost_inclusion": False}, headers=h)
+    sid = client.post("/shipments", json={"mbl": "274014260HKR", "consignee": "HKRT - Mahrishi"}, headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
+    _upload(client, h, sid, "shipping_line_invoice", MAERSK.replace("274014260", "274014260HKR").splitlines())
+
+    def line():
+        p = next(x for x in client.get(f"/shipments/{sid}/proformas", headers=h).json() if x["id"] == pid)
+        return next((li for li in p["line_items"] if li["description"].startswith("Shipping Line")), None)
+
+    assert line() is None  # HKR (the HSS seller here): not in cost inclusion by default
+    client.patch(f"/shipments/{sid}", json={"line_cost_inclusion": "include"}, headers=h)
+    assert line() and line()["category"] == "cost_inclusion"  # switched on for this shipment
+    client.patch(f"/shipments/{sid}", json={"line_cost_inclusion": None}, headers=h)
+    assert line() is None  # back to auto
+    # the switch can also leave it out on any other client's shipment
+    other = client.post("/shipments", json={"mbl": "274014260OTH", "consignee": "Divine"}, headers=h).json()["id"]
+    op = client.post(f"/shipments/{other}/proformas", headers=h).json()["id"]
+    _upload(client, h, other, "shipping_line_invoice", MAERSK.replace("274014260", "274014260OTH").splitlines())
+    has_line = lambda: any(li["description"].startswith("Shipping Line") for li in  # noqa: E731
+                           next(x for x in client.get(f"/shipments/{other}/proformas", headers=h).json() if x["id"] == op)["line_items"])
+    assert has_line()
+    client.patch(f"/shipments/{other}", json={"line_cost_inclusion": "exclude"}, headers=h)
+    assert not has_line()

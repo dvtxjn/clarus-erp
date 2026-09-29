@@ -223,6 +223,24 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             />
           </label>
         ))}
+        <label
+          className="toggle-row"
+          title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
+        >
+          <span>Shipping line in cost inclusion</span>
+          <select
+            value={s.line_cost_inclusion ?? "auto"}
+            disabled={s.line_paid_by_us}
+            onChange={async (e) => {
+              const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
+              onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
+            }}
+          >
+            <option value="auto">Auto (client's setting)</option>
+            <option value="include">Include</option>
+            <option value="exclude">Leave out</option>
+          </select>
+        </label>
       </section>
 
       <section className="detail-section">
