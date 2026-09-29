@@ -404,20 +404,20 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
 
 const gridTheme = themeQuartz.withParams({
   fontFamily: "inherit",
-  fontSize: 12,
-  headerFontSize: 11,
+  headerFontSize: 11.5,
   headerFontWeight: 600,
   rowHeight: 30,
   headerHeight: 34,
   spacing: 4,
   cellHorizontalPadding: 6,
-  // Clarus palette (see :root in index.css)
-  accentColor: "#C2611F",
-  foregroundColor: "#2A2420",
-  borderColor: "#E7E1DA",
-  headerBackgroundColor: "#F6F2EE",
-  rowHoverColor: "#FBF6F1",
-  selectedRowBackgroundColor: "rgba(210, 107, 33, 0.08)",
+  fontSize: 12.5,
+  // palette from :root in index.css (follows the chosen accent)
+  accentColor: "var(--color-accent)",
+  foregroundColor: "var(--color-text)",
+  borderColor: "var(--color-border)",
+  headerBackgroundColor: "var(--color-subtle)",
+  rowHoverColor: "var(--color-inv-sub)",
+  selectedRowBackgroundColor: "var(--color-accent-soft)",
 });
 
 // --- live presence: which cell each other person/tab is on (Google-Sheets style) ---
