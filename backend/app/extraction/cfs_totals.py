@@ -67,9 +67,28 @@ def invoices_counted(docs: Iterable[ShipmentDocument]) -> list[ShipmentDocument]
     return _unique(tax or docs)
 
 
+def _bl_key(v: Optional[str]) -> str:
+    import re
+
+    return re.sub(r"[^A-Z0-9]", "", (v or "").upper())
+
+
+def bl_mismatch(doc: ShipmentDocument, shipment: Optional[Shipment] = None) -> bool:
+    """The invoice's BL isn't the shipment's MBL or HBL (client, 2026-09-30: it must match).
+    Unknown BL on either side = not a mismatch."""
+    fields = (doc.extraction or {}).get("fields") or {}
+    bl = _bl_key(fields.get("bl_no"))
+    s = shipment or doc.shipment
+    ours = [k for k in (_bl_key(s.mbl), _bl_key(s.hbl)) if k] if s is not None else []
+    if not bl or not ours:
+        return False
+    return not any(bl == k or bl in k or k in bl for k in ours)
+
+
 def line_invoices_counted(docs: Iterable[ShipmentDocument]) -> list[ShipmentDocument]:
-    """Shipping line invoices that count: tax invoices, or proformas until one arrives (each once)."""
-    docs = [d for d in docs if d.document_type in LINE_DOC_TYPES]
+    """Shipping line invoices that count: tax invoices, or proformas until one arrives (each once).
+    An invoice whose BL doesn't match the shipment isn't counted until it does."""
+    docs = [d for d in docs if d.document_type in LINE_DOC_TYPES and not bl_mismatch(d)]
     tax = [d for d in docs if d.document_type == DocumentType.SHIPPING_LINE_INVOICE]
     return _unique(tax or docs)
 

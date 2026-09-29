@@ -342,6 +342,14 @@ export default function DocumentManagerPanel({
                                   No GST
                                 </span>
                               )}
+                              {d.extraction?.fields?.bl_mismatch === true && (
+                                <span
+                                  className="pdf-kind pdf-kind-scanned"
+                                  title={`BL on this invoice (${String(d.extraction?.fields?.bl_no ?? "")}) isn't this shipment's MBL / HBL — not counted in the totals until it matches`}
+                                >
+                                  BL ≠ shipment
+                                </span>
+                              )}
                               {d.extraction?.duplicate_of && (
                                 <span className="pdf-kind pdf-kind-partly" title="Same invoice number as another file here — its amounts are counted once">
                                   Duplicate
