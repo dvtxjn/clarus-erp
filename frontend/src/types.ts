@@ -116,6 +116,7 @@ export interface Shipment {
   examination_at: string | null;
   created_at: string;
   updated_at: string | null;
+  version: number; // bumped on every save (conflict protection, live updates)
 }
 
 export type DocumentType =

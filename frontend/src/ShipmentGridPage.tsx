@@ -5,6 +5,8 @@ import {
   AllCommunityModule,
   ModuleRegistry,
   themeQuartz,
+  type CellClassParams,
+  type CellEditingStoppedEvent,
   type CellKeyDownEvent,
   type CellValueChangedEvent,
   type ColDef,
@@ -27,11 +29,13 @@ import {
   renameClient,
   restoreBuiltinColumn,
   ShipmentConflictError,
+  getShipment,
   updateShipment,
 } from "./api";
 import { useAuth } from "./AuthContext";
 import TrackerImportPanel from "./TrackerImportPanel";
 import { useSaveShipment } from "./useSaveShipment";
+import { colorIndex, connectLive, PRESENCE_COLORS, sendPresence, TAB_ID } from "./live";
 import ColumnsPanel, { type PanelColumn } from "./ColumnsPanel";
 import { useConfirm } from "./ConfirmDialog";
 import { formatPort, usePorts } from "./ports";
@@ -414,7 +418,18 @@ const gridTheme = themeQuartz.withParams({
   selectedRowBackgroundColor: "rgba(210, 107, 33, 0.08)",
 });
 
+// --- live presence: which cell each other person/tab is on (Google-Sheets style) ---
+type Presence = { key: string; name: string; sid: number | null; f: string | null; edit: boolean; color: number; at: number };
+const presenceByCell = new Map<string, Presence>(); // "<shipment id>:<column id>" -> who is there
+const cellKey = (id: number | undefined, col: string) => `${id}:${col}`;
+const presenceAt = (p: CellClassParams<Shipment>) => presenceByCell.get(cellKey(p.data?.id, p.column.getColId()));
+const presenceRules: Record<string, (p: CellClassParams<Shipment>) => boolean> = Object.fromEntries(
+  PRESENCE_COLORS.map((_, i) => [`presence-c${i}`, (p: CellClassParams<Shipment>) => presenceAt(p)?.color === i]),
+);
+presenceRules["presence-edit"] = (p) => !!presenceAt(p)?.edit;
+
 const defaultColDef: ColDef<Shipment> = {
+  cellClassRules: presenceRules,
   editable: true,
   sortable: true,
   resizable: true,
@@ -498,6 +513,165 @@ export default function ShipmentGridPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh]);
+
+  // --- live updates: other people's edits appear within about a second ---
+  const [live, setLive] = useState(false);
+  const [people, setPeople] = useState<Presence[]>([]);
+  const peopleRef = useRef(new Map<string, Presence>()); // "<uid>:<tab>" -> where they are
+  const shipmentsRef = useRef<Shipment[] | null>(null);
+  useEffect(() => {
+    shipmentsRef.current = shipments;
+  }, [shipments]);
+  const pendingIds = useRef(new Set<number>());
+  const deferredIds = useRef(new Set<number>()); // changed while I'm typing in that row
+  const flushTimer = useRef<number | undefined>(undefined);
+
+  const nodesFor = (id: number) =>
+    sectionApis()
+      .map((api) => ({ api, node: api.getRowNode(String(id)) }))
+      .filter((x): x is { api: GridApi<Shipment>; node: NonNullable<typeof x.node> } => !!x.node);
+  const isEditingRow = (id: number) =>
+    sectionApis().some((api) =>
+      api.getEditingCells().some((c) => api.getDisplayedRowAtIndex(c.rowIndex)?.data?.id === id),
+    );
+
+  const applyRemote = useCallback(async (ids: number[]) => {
+    for (const id of ids) {
+      if (isEditingRow(id)) {
+        deferredIds.current.add(id); // applied when the edit ends; never yank a cell mid-typing
+        continue;
+      }
+      let row: Shipment;
+      try {
+        row = await getShipment(id);
+      } catch (err) {
+        const status = axios.isAxiosError(err) ? err.response?.status : null;
+        if (status === 404 || status === 403) setShipments((prev) => prev?.filter((s) => s.id !== id) ?? prev);
+        continue;
+      }
+      const old = shipmentsRef.current?.find((s) => s.id === id);
+      if (old && old.version >= row.version) continue;
+      const changed = old
+        ? (Object.keys(row) as (keyof Shipment)[]).filter((k) => JSON.stringify(row[k]) !== JSON.stringify(old[k]))
+        : [];
+      const changedCustom = old
+        ? Object.keys({ ...row.custom_fields, ...old.custom_fields }).filter(
+            (k) => row.custom_fields?.[k] !== old.custom_fields?.[k],
+          )
+        : [];
+      setShipments((prev) => {
+        if (!prev) return prev;
+        const i = prev.findIndex((s) => s.id === id);
+        if (i < 0) return [...prev, row];
+        if (prev[i].version >= row.version) return prev;
+        const next = [...prev];
+        next[i] = row;
+        return next;
+      });
+      window.setTimeout(() => {
+        for (const { api, node } of nodesFor(id)) {
+          const cols = [...changed, ...changedCustom].filter((k) => api.getColumn(String(k)));
+          if (cols.length) api.flashCells({ rowNodes: [node], columns: cols as string[] });
+        }
+      }, 60);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const refreshPresenceCells = (keys: Iterable<string>) => {
+    for (const k of keys) {
+      const [id, col] = [Number(k.slice(0, k.indexOf(":"))), k.slice(k.indexOf(":") + 1)];
+      for (const { api, node } of nodesFor(id)) api.refreshCells({ rowNodes: [node], columns: [col], force: true });
+    }
+  };
+  const rebuildPresence = () => {
+    const before = [...presenceByCell.keys()];
+    presenceByCell.clear();
+    for (const p of peopleRef.current.values()) if (p.sid != null && p.f) presenceByCell.set(cellKey(p.sid, p.f), p);
+    refreshPresenceCells(new Set([...before, ...presenceByCell.keys()]));
+    setPeople([...peopleRef.current.values()]);
+  };
+
+  useEffect(() => {
+    const stop = connectLive((ev) => {
+      if (ev.t === "resync") {
+        refresh();
+      } else if (ev.t === "s") {
+        if (ev.del) {
+          setShipments((prev) => prev?.filter((s) => s.id !== ev.id) ?? prev);
+          return;
+        }
+        const local = shipmentsRef.current?.find((s) => s.id === ev.id);
+        if (local && local.version >= ev.v) return; // my own save, already shown
+        pendingIds.current.add(ev.id);
+        window.clearTimeout(flushTimer.current);
+        flushTimer.current = window.setTimeout(() => {
+          const ids = [...pendingIds.current];
+          pendingIds.current.clear();
+          applyRemote(ids);
+        }, 120); // batch a burst of events (e.g. a CSV import) into one pass
+      } else if (ev.t === "p") {
+        if (ev.tab === TAB_ID) return;
+        const key = `${ev.uid}:${ev.tab ?? ""}`;
+        if (ev.sid == null) peopleRef.current.delete(key);
+        else
+          peopleRef.current.set(key, {
+            key, name: ev.name, sid: ev.sid, f: ev.f, edit: ev.edit, color: colorIndex(key), at: Date.now(),
+          });
+        rebuildPresence();
+      }
+    }, setLive);
+    // people who stop sending (closed laptop, lost network) fade out
+    const prune = window.setInterval(() => {
+      let gone = false;
+      for (const [k, p] of peopleRef.current) {
+        if (Date.now() - p.at > 25000) {
+          peopleRef.current.delete(k);
+          gone = true;
+        }
+      }
+      if (gone) rebuildPresence();
+    }, 5000);
+    return () => {
+      stop();
+      window.clearInterval(prune);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh, applyRemote]);
+
+  // --- my presence: tell others which cell I'm on (on every move + every 10 s) ---
+  const myCell = useRef<{ sid: number; f: string; edit: boolean } | null>(null);
+  const announce = useCallback((sid: number, f: string, edit: boolean) => {
+    const c = myCell.current;
+    if (c && c.sid === sid && c.f === f && c.edit === edit) return;
+    myCell.current = { sid, f, edit };
+    sendPresence(sid, f, edit);
+  }, []);
+  useEffect(() => {
+    const beat = window.setInterval(() => {
+      const c = myCell.current;
+      if (c && document.visibilityState === "visible") sendPresence(c.sid, c.f, c.edit);
+    }, 10000);
+    const onVisibility = () => {
+      const c = myCell.current;
+      if (document.visibilityState === "hidden") sendPresence(null, null);
+      else if (c) sendPresence(c.sid, c.f, c.edit);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(beat);
+      document.removeEventListener("visibilitychange", onVisibility);
+      sendPresence(null, null);
+    };
+  }, []);
+  const onEditingStopped = useCallback((e: CellEditingStoppedEvent<Shipment>) => {
+    if (e.data) announce(e.data.id, e.column.getColId(), false);
+    if (deferredIds.current.size) {
+      const ids = [...deferredIds.current];
+      deferredIds.current.clear();
+      window.setTimeout(() => applyRemote(ids), 300); // after my own save lands
+    }
+  }, [announce, applyRemote]);
 
   useEffect(() => {
     if (!message) return;
@@ -921,6 +1095,19 @@ export default function ShipmentGridPage() {
       </div>
 
       <div className="tracker-toolbar">
+        <div className="live-bar" title={live ? "Changes by others appear here as they happen" : "Reconnecting — changes will appear when it's back"}>
+          <span className={live ? "live-dot live-on" : "live-dot"} />
+          {live ? "Live" : "Reconnecting…"}
+          {people.map((p) => {
+            const row = p.sid != null ? shipments?.find((s) => s.id === p.sid) : undefined;
+            return (
+              <span key={p.key} className={`live-person presence-chip-c${p.color}`}
+                title={row ? `${p.edit ? "Editing" : "On"} ${p.f ?? ""} · ${row.job ? `job ${row.job}` : row.mbl}` : ""}>
+                {p.name}
+              </span>
+            );
+          })}
+        </div>
         {tab === "ongoing" && (
         <div className="view-switch" role="tablist" aria-label="Tracker view">
           {(Object.keys(VIEWS) as ViewMode[]).map((v) => (
@@ -1050,6 +1237,13 @@ export default function ShipmentGridPage() {
                   setVisibleCounts((prev) => (prev[client] === n ? prev : { ...prev, [client]: n }));
                 }}
                 onCellValueChanged={onCellValueChanged}
+                onCellFocused={(e) => {
+                  if (e.rowIndex == null || !e.column || typeof e.column === "string") return;
+                  const row = e.api.getDisplayedRowAtIndex(e.rowIndex)?.data;
+                  if (row) announce(row.id, e.column.getColId(), false);
+                }}
+                onCellEditingStarted={(e) => e.data && announce(e.data.id, e.column.getColId(), true)}
+                onCellEditingStopped={onEditingStopped}
                 enterNavigatesVertically
                 enterNavigatesVerticallyAfterEdit
                 stopEditingWhenCellsLoseFocus

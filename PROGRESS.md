@@ -21,6 +21,20 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ✅ Live tracker, Google-Sheets style (2026-09-29, branch `concurrency/phases-2-4-5-6`)
+
+Client: "ideally it should work exactly like google sheets". Replaces DEPLOYMENT_PLAN Phase 5's 8-second polling with push.
+
+- **Backend (`app/core/realtime.py`, `app/routers/realtime.py`):** a session `after_flush` hook turns every shipment change into `{t:"s", id, port, v, del, by}`. Postgres: `pg_notify('erp_changes')` inside the same transaction (sent only on commit, reaches every app instance); a LISTEN thread per instance feeds an in-process hub. SQLite: published after commit. `get_current_user` records the user on the session, so events say who changed it.
+  - `GET /realtime/stream` — server-sent events, auth by header (fetch stream; token never in a URL), short-lived DB session (a stream never holds a connection), 15 s pings, port-scoped users only get their ports, `{t:"resync"}` on listener reconnect / overflow.
+  - `POST /realtime/presence {shipment_id, field, editing, tab}` → `{t:"p", …}` broadcast.
+- **Frontend (`src/live.ts`, ShipmentGridPage):** one stream per tab, auto-reconnect (then full reload). A change from someone else → fetch that row (API keeps port scoping) → replace in place if its `version` is newer → flash the changed cells. A row I'm typing in is left alone until I finish, then updated. Deleted → row disappears. Presence: my cell is sent on every move/edit + every 10 s (and cleared when the tab hides/closes); others show as a coloured outline on their cell (tinted while editing) and a name chip in the "● Live" bar; people fade after 25 s of silence. The 5-minute full refresh stays as a fallback.
+- Conflicts: with live rows a clash needs two commits on the same cell within ~1 s; the Keep mine / Use theirs dialog stays for that case (switch to silent last-write-wins is one line if the client prefers pure Sheets behaviour).
+- Tests `tests/test_realtime.py` (commit broadcasts with author, rollback and 409 broadcast nothing, presence, stream auth, port filter). 101 pass on Postgres. Checked live with two tabs: an edit in A appeared in B without reload; B showed A's cursor outline + name.
+- Not live yet: shipment detail page / proforma panel (they refresh on open); the tracker is the shared sheet.
+
+---
+
 ## ✅ Launch Phases 2, 4 (reduced), 6 (reduced) — multi-person editing (2026-09-29, branch `concurrency/phases-2-4-5-6`)
 
 Client priority: several people editing at once must never lose each other's work.
@@ -450,3 +464,11 @@ Visit the printed localhost URL, log in with the admin credentials above.
 - Design language like **linear.app**: very clean, minimal, quiet typography, lots of restraint.
 - Maybe **change the orange** accent (open question — show options first).
 - Design-only work (frontend); not a backend change. Keep behind the launch work.
+
+---
+
+## 💡 Feature ideas from other software (client will send, 2026-09-29) — collect here, prioritise later
+
+The client will pick features they like from other software and feed them in. Record each one here with where it came from and why it's useful; don't build until prioritised.
+
+- (none yet)
