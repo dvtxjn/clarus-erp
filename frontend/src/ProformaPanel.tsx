@@ -1103,17 +1103,17 @@ function EditCell({
 }
 
 /**
- * The invoice as an A4 page in its own pane, like a document preview (client, 2026-09-30):
- * the page is laid out at A4 width (794 px at 96 dpi) and scaled to fit the screen height
- * ("Fit page"), or shown full size to edit ("100 %"). The pane takes the page's width;
- * the controls get the rest.
+ * The invoice as one A4 page in the right half, like a document preview (client, 2026-09-30).
+ * The page is always A4 (794 × 1123 px at 96 dpi): an invoice taller than that is shrunk to
+ * fit inside it, as the PDF is. "Fit page" scales the page to the pane; "100 %" shows it
+ * full size to edit.
  */
 const A4_W = 794;
 const A4_H = 1123;
 
 function InvoicePreview({ children }: { children: ReactNode }) {
   const pane = useRef<HTMLDivElement>(null);
-  const page = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"fit" | "full">(() => {
     try {
       return localStorage.getItem("clarus.invoiceZoom") === "full" ? "full" : "fit";
@@ -1121,23 +1121,27 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       return "fit";
     }
   });
-  const [zoom, setZoom] = useState(0.8);
+  const [pageScale, setPageScale] = useState(0.7);
+  const [inner, setInner] = useState(1); // content shrunk to fit one A4 page
   const [paneH, setPaneH] = useState(800);
 
   useLayoutEffect(() => {
     const el = pane.current;
-    const content = page.current;
-    if (!el || !content) return;
+    const c = content.current;
+    if (!el || !c) return;
     const measure = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
       const h = Math.max(480, window.innerHeight - top - 12);
       setPaneH(h);
-      const pageH = Math.max(A4_H, content.offsetHeight); // a long invoice: fit all of it
-      setZoom(mode === "fit" ? Math.min(1.25, (h - 40) / pageH) : 1);
+      const natural = c.scrollHeight; // at the content's own (unscaled) size
+      setInner(Math.min(1, (A4_H - 76) / Math.max(1, natural))); // page margins + a little air
+      const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 44) / A4_H);
+      setPageScale(mode === "fit" ? Math.max(0.3, fit) : 1);
     };
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(content);
+    ro.observe(c);
+    ro.observe(el);
     window.addEventListener("resize", measure);
     return () => {
       ro.disconnect();
@@ -1153,10 +1157,9 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       /* private window */
     }
   };
-  const w = Math.round(A4_W * zoom);
 
   return (
-    <div className="invoice-preview" ref={pane} style={{ height: paneH, width: mode === "fit" ? w + 34 : undefined }}>
+    <div className="invoice-preview" ref={pane} style={{ height: paneH }}>
       <div className="invoice-preview-zoom">
         <button type="button" className={mode === "fit" ? "on" : ""} onClick={() => pick("fit")}>
           Fit page
@@ -1165,9 +1168,17 @@ function InvoicePreview({ children }: { children: ReactNode }) {
           100 %
         </button>
       </div>
-      <div className="a4-frame" style={{ width: w, height: Math.round((page.current?.offsetHeight ?? A4_H) * zoom) }}>
-        <div className="a4-page" ref={page} style={{ transform: zoom !== 1 ? `scale(${zoom})` : undefined }}>
-          {children}
+      {/* the A4 sheet, scaled to the pane */}
+      <div className="a4-frame" style={{ width: A4_W * pageScale, height: A4_H * pageScale }}>
+        <div className="a4-page" style={{ transform: `scale(${pageScale})` }}>
+          {/* the invoice, shrunk to fit one page when it's longer */}
+          <div
+            ref={content}
+            className="a4-content"
+            style={inner < 1 ? { transform: `scale(${inner})`, width: `${100 / inner}%` } : undefined}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>

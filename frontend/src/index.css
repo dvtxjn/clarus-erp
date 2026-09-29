@@ -900,19 +900,17 @@ input { padding: 6px 9px; }
 .auth-forgot { margin-top: 10px; align-self: center; }
 .row-inactive td { color: var(--color-text-muted); }
 
-/* --- Proforma: split view — controls left, the invoice as an A4 page right (client, 2026-09-30) --- */
-.pf-split { display: grid; grid-template-columns: minmax(360px, 1fr) auto; gap: 16px; align-items: start; }
+/* --- Proforma: split down the centre — controls left, one A4 page right (client, 2026-09-30) --- */
+.pf-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .pf-left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .pf-right { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .invoice-preview {
   position: relative; overflow: auto; background: var(--color-hover); border: 1px solid var(--color-border);
-  border-radius: 8px; padding: 30px 16px 16px; max-width: calc(100vw - 480px);
+  border-radius: 8px; padding: 32px 12px 12px;
 }
-.a4-frame { margin: 0 auto; }
-.a4-page {
-  width: 794px; min-height: 1123px; transform-origin: top left; background: #fff; color: #1b1c1f;
-  box-shadow: 0 2px 10px rgba(16, 17, 20, .12); padding: 28px 30px; display: flex; flex-direction: column; gap: 10px;
-}
+.a4-frame { margin: 0 auto; overflow: hidden; box-shadow: 0 2px 12px rgba(16, 17, 20, .14); }
+.a4-page { width: 794px; height: 1123px; transform-origin: top left; background: #fff; color: #1b1c1f; padding: 26px 28px; overflow: hidden; }
+.a4-content { transform-origin: top left; display: flex; flex-direction: column; gap: 8px; }
 .a4-page .invoice-sheet { border: none; padding: 0; max-width: none; background: transparent; }
 .invoice-preview-zoom { position: absolute; top: 6px; right: 10px; display: flex; gap: 2px; }
 .invoice-preview-zoom button {
@@ -1186,7 +1184,8 @@ input { padding: 6px 9px; }
 .pf-left .version-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
 .pf-left .version-tabs .tab { margin: 0; padding: 4px 10px; border: 1px solid var(--color-border); border-radius: var(--radius); font-size: 12.5px; }
 .pf-left .version-tabs .tab.active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-text); }
-.pf-left .proforma-toolbar-actions, .pf-left .invoice-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pf-left .proforma-toolbar-actions, .pf-left .invoice-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pf-left .proforma-toolbar-actions > button, .pf-left .invoice-actions > button { width: 100%; }
 .pf-left .invoice-actions .field-note { flex-basis: 100%; font-size: 12px; }
 .pf-left .add-shipment-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, .7fr) minmax(0, 1.3fr); gap: 6px; }
 .pf-left .add-shipment-form > * { min-width: 0; width: 100%; }
@@ -1198,12 +1197,10 @@ input { padding: 6px 9px; }
   background: none; border: none; box-shadow: none; color: var(--color-text-muted); padding: 4px 10px; font-size: 12.5px; border-radius: var(--radius);
 }
 .pf-pane-tabs button.on { background: var(--color-surface); color: var(--color-text); box-shadow: 0 0 0 1px var(--color-border); }
-.pf-final-pane { width: clamp(560px, calc(100vw - 216px - 420px - 64px), 1000px); overflow-x: auto; }
-.sidebar-collapsed .pf-final-pane { width: clamp(560px, calc(100vw - 52px - 420px - 64px), 1000px); }
+.pf-final-pane { overflow-x: auto; }
 @media (max-width: 1300px) {
   .pf-split { grid-template-columns: 1fr; }
   .pf-right { position: static; }
-  .invoice-preview { max-width: none; width: auto !important; }
 }
 
 /* final invoices: the pair */

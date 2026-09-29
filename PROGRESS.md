@@ -677,3 +677,8 @@ The client will pick features they like from other software and feed them in. Re
 - Final invoices: always both kinds; a kind with no charges is issued as "BILL CANCELLED — NOT APPLICABLE" (bold row +
   diagonal stamp) so tax + reimbursement always share the number; `POST /proformas/{id}/final-invoices/issue` issues
   the pair together; `GET /proformas/{id}/final-invoices.pdf` = one PDF with both (each still on its own).
+
+- Proforma page: split down the centre — controls left (stacked, one button size), the invoice as **one A4 page** right.
+  **The page is LOCKED to A4 (aspect never changes)**; a longer invoice is shrunk to fit inside it, like the PDF.
+  Fit page (scaled to the pane) / 100 % (full size, scroll).
+- 📝 Later: make the proforma page work on phones (client, 2026-09-30) — same locked A4 page, controls above/below it.
