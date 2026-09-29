@@ -59,6 +59,7 @@ class ShipmentBase(BaseModel):
     drive_folder_link: Optional[str] = None
 
     remarks: Optional[str] = None
+    fta_info: Optional[str] = None
     is_stuck: bool = False
 
     port: Optional[str] = None
@@ -134,6 +135,7 @@ class ShipmentUpdate(BaseModel):
     drive_folder_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{10,200}$")
     drive_folder_link: Optional[str] = None
     remarks: Optional[str] = None
+    fta_info: Optional[str] = None
     is_stuck: Optional[bool] = None
     status: Optional[ShipmentStatus] = None
     port: Optional[str] = None

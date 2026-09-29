@@ -1108,3 +1108,21 @@ input { padding: 6px 9px; }
 .row-exception { --row-edge: var(--color-danger); }
 .section-glance { display: inline-flex; gap: 10px; margin-left: 14px; font-size: 12px; font-weight: 500; opacity: .85; }
 .glance-pending { color: #F3C58D; }
+
+/* MBL cell: small HBL / FTA buttons (click: see, copy, add, edit) */
+.mbl-cell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.mbl-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-field {
+  flex: none; font-size: 9px; font-weight: 700; letter-spacing: .04em; line-height: 1; padding: 2px 4px; border-radius: 3px;
+  background: transparent; color: var(--color-text-muted); border: 1px dashed var(--color-border); box-shadow: none;
+}
+.mini-field:hover { color: var(--color-text); border-color: var(--color-text-muted); background: transparent; }
+.mini-field-on { border-style: solid; border-color: var(--color-accent-border); background: var(--color-accent-soft); color: var(--color-accent-text); }
+.mini-popover {
+  position: fixed; z-index: 1000; width: 320px; background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: 8px; box-shadow: 0 12px 32px rgba(16, 17, 20, .16); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.mini-popover-head { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
+.mini-popover input, .mini-popover textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 8px; }
+.mini-popover-actions { display: flex; gap: 6px; }
+.mini-popover-actions button { padding: 4px 10px; font-size: 12.5px; }

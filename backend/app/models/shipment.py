@@ -144,6 +144,8 @@ class Shipment(SoftDeleteMixin, Base):
     # --- Remarks (spec §2.1/§2.3 — "Remark"/"Remarks" merged into one field,
     # doubles as the "why is this stuck" free-text field) ---
     remarks = Column(Text, nullable=True)
+    # FTA certificate no / notes — shown as a small "FTA" button on the MBL (client, 2026-09-29)
+    fta_info = Column(Text, nullable=True)
     is_stuck = Column(Boolean, default=False, nullable=False)
 
     # --- Status pipeline (spec §2.3) ---

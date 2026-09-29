@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -197,6 +198,7 @@ const FLAG_LABELS = Object.fromEntries([...FLAGS, ...CFS_TDS_FLAGS].map(([f, , t
 
 interface GridContext {
   toggleFlag: (s: Shipment, field: FlagField) => void;
+  saveText: (s: Shipment, field: MiniField, value: string | null, label: string) => Promise<void>;
 }
 
 function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & { flags: FlagList }) {
@@ -314,15 +316,24 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     },
     { ...text("job", "Job", 58), pinned: "left" },
     {
-      ...text("mbl", "MBL", 170),
+      ...text("mbl", "MBL", 190),
+      minWidth: 150, // the number + the HBL / FTA buttons
       pinned: "left",
-      cellRenderer: (p: ICellRendererParams<Shipment>) => (
-        <span>
-          {p.value}
-          {p.data?.missing_from_sheet_at && (
-            <span className="exception-badge" title="Not in the last tracker CSV import — check it (never deleted automatically)">
-              {" "}not in sheet
-            </span>
+      cellRenderer: (p: ICellRendererParams<Shipment, string, GridContext>) => (
+        <span className="mbl-cell">
+          <span className="mbl-text">
+            {p.value}
+            {p.data?.missing_from_sheet_at && (
+              <span className="exception-badge" title="Not in the last tracker CSV import — check it (never deleted automatically)">
+                {" "}not in sheet
+              </span>
+            )}
+          </span>
+          {p.data && (
+            <>
+              <MiniFieldButton row={p.data} field="hbl" label="HBL" ctx={p.context} />
+              <MiniFieldButton row={p.data} field="fta_info" label="FTA" ctx={p.context} />
+            </>
           )}
         </span>
       ),
@@ -836,6 +847,25 @@ export default function ShipmentGridPage() {
     saveColumnState();
   };
 
+  /** Excel-style autosize: each column as narrow as its longest value (or its title) allows. */
+  function fitToContent(ids: string[]) {
+    const header = headerRef.current?.api;
+    if (!header) return;
+    const need = new Map<string, number>();
+    const measure = (api: GridApi<Shipment>, skipHeader: boolean) => {
+      api.autoSizeColumns(ids, skipHeader);
+      for (const c of api.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, Math.max(need.get(c.colId) ?? 0, c.width ?? 0));
+    };
+    // the title's width first (the header grid just autosized to it), then every section's rows
+    for (const c of header.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, c.width ?? 0);
+    const apis = sectionApis();
+    apis.forEach((api) => measure(api, true));
+    const state = ids.map((colId) => ({ colId, width: need.get(colId) ?? 60 }));
+    header.applyColumnState({ state });
+    apis.forEach((api) => api.applyColumnState({ state }));
+    saveColumnState();
+  }
+
   function saveColumnState() {
     const state = headerRef.current?.api.getColumnState();
     try {
@@ -1016,7 +1046,20 @@ export default function ShipmentGridPage() {
       setMessage({ kind: "error", text: `Couldn't save — ${saveErrorText(err)}` });
     }
   }, [record, saveShipment]);
-  const gridContext = useMemo<GridContext>(() => ({ toggleFlag }), [toggleFlag]);
+  // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
+  const saveText = useCallback(async (row: Shipment, field: MiniField, value: string | null, label: string) => {
+    try {
+      const { shipment: saved, kept } = await saveShipment(row, { [field]: value } as Partial<Shipment>, label);
+      setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
+      if (kept === "theirs") return;
+      record({ id: row.id, field, customKey: null, oldValue: row[field], newValue: value, label });
+      setMessage({ kind: "ok", text: `Saved ${label}` });
+    } catch (err) {
+      setMessage({ kind: "error", text: `Couldn't save ${label} — ${saveErrorText(err)}` });
+      throw err;
+    }
+  }, [record, saveShipment]);
+  const gridContext = useMemo<GridContext>(() => ({ toggleFlag, saveText }), [toggleFlag, saveText]);
 
   // Ctrl/⌘+C copies the focused cell (as shown), unless you've selected text yourself.
   const copyCell = useCallback((e: CellKeyDownEvent<Shipment>) => {
@@ -1323,7 +1366,13 @@ export default function ShipmentGridPage() {
               onFilterChanged={onHeaderFilterChanged}
               onSortChanged={onHeaderSortChanged}
               onColumnMoved={saveColumnState}
-              onColumnResized={(e) => e.finished && saveColumnState()}
+              onColumnResized={(e) => {
+                if (!e.finished) return;
+                // Autosize (double-click a column edge, or the column menu) on the header grid
+                // only sees the header — size to the rows in every client section instead
+                if (e.source === "autosizeColumns" && e.columns?.length) fitToContent(e.columns.map((c) => c.getColId()));
+                else saveColumnState();
+              }}
               onColumnPinned={saveColumnState}
             />
           </div>
@@ -1374,6 +1423,7 @@ export default function ShipmentGridPage() {
                 }
                 quickFilterText={quickFilter}
                 onGridReady={(e) => syncSection(e.api)}
+                suppressColumnVirtualisation // autosize measures every column, not just the visible ones
                 onModelUpdated={(e) => {
                   const n = e.api.getDisplayedRowCount();
                   setVisibleCounts((prev) => (prev[client] === n ? prev : { ...prev, [client]: n }));
@@ -1615,5 +1665,120 @@ function SectionGlance({ rows }: { rows: Shipment[] }) {
       <span>{cntr} cntr</span>
       <span>{tonnes.toLocaleString("en-IN", { maximumFractionDigits: 1 })} t</span>
     </span>
+  );
+}
+
+type MiniField = "hbl" | "fta_info";
+
+/**
+ * Small "HBL" / "FTA" button on the MBL (client, 2026-09-29): click to see, copy, add or edit
+ * it without a column of its own. Filled = has a value.
+ */
+function MiniFieldButton({ row, field, label, ctx }: { row: Shipment; field: MiniField; label: string; ctx: GridContext }) {
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const value = row[field] ?? "";
+  return (
+    <>
+      <button
+        type="button"
+        className={`mini-field${value ? " mini-field-on" : ""}`}
+        title={value ? `${label}: ${value}` : `Add ${label}`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 340) });
+        }}
+      >
+        {label}
+      </button>
+      {at &&
+        createPortal(
+          <MiniFieldPopover
+            at={at}
+            label={label}
+            initial={value}
+            multiline={field === "fta_info"}
+            onClose={() => setAt(null)}
+            onSave={async (v) => {
+              await ctx.saveText(row, field, v.trim() || null, label);
+              setAt(null);
+            }}
+          />,
+          document.body,
+        )}
+    </>
+  );
+}
+
+function MiniFieldPopover({
+  at,
+  label,
+  initial,
+  multiline,
+  onClose,
+  onSave,
+}: {
+  at: { top: number; left: number };
+  label: string;
+  initial: string;
+  multiline: boolean;
+  onClose: () => void;
+  onSave: (v: string) => Promise<void>;
+}) {
+  const [v, setV] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && onClose();
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [onClose]);
+  const save = async () => {
+    if (v === initial) return onClose();
+    setBusy(true);
+    try {
+      await onSave(v);
+    } catch {
+      setBusy(false);
+    }
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (e.key === "Escape") onClose();
+    if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      save();
+    }
+  };
+  return (
+    <div className="mini-popover" ref={box} style={at} role="dialog" aria-label={label} onKeyDown={keys}>
+      <div className="mini-popover-head">{label}</div>
+      {multiline ? (
+        <textarea autoFocus rows={3} value={v} onChange={(e) => setV(e.target.value)} placeholder={`${label} no / notes`} />
+      ) : (
+        <input autoFocus value={v} onChange={(e) => setV(e.target.value)} placeholder={`${label} no`} />
+      )}
+      <div className="mini-popover-actions">
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={!v}
+          onClick={() => {
+            navigator.clipboard?.writeText(v).then(() => setCopied(true));
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+        <span style={{ flex: 1 }} />
+        <button type="button" className="btn-secondary" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="button" disabled={busy} onClick={save}>
+          Save
+        </button>
+      </div>
+    </div>
   );
 }

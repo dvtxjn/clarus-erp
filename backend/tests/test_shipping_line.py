@@ -234,3 +234,14 @@ def test_line_cost_inclusion_client_default_and_shipment_switch(client, admin_he
     assert has_line()
     client.patch(f"/shipments/{other}", json={"line_cost_inclusion": "exclude"}, headers=h)
     assert not has_line()
+
+
+def test_fta_number_after_the_mbl_is_split_off():
+    """Client, 2026-09-29: 'LPL1543012-UKIN-160926-E96101' — the MBL is LPL1543012, the rest is the FTA no."""
+    from app.tracker_import import split_fta
+
+    assert split_fta("LPL1543012-UKIN-160926-E96101") == ("LPL1543012", "UKIN-160926-E96101")
+    assert split_fta("HDMUBHMA79827900 -UKIN-100926-CEAACE") == ("HDMUBHMA79827900", "UKIN-100926-CEAACE")
+    assert split_fta("BHMA07216400- UKIN-170926-342EE1") == ("BHMA07216400", "UKIN-170926-342EE1")
+    assert split_fta("CSX26JEDNSA021814") == ("CSX26JEDNSA021814", None)
+    assert split_fta("UKIN-160926-E96101") == ("UKIN-160926-E96101", None)  # nothing before it: leave alone

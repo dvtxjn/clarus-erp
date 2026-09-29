@@ -89,6 +89,7 @@ export interface Shipment {
   cfs_tds_amount: string | null; // 2% of CFS basic, when we pay the CFS and cut TDS
   cfs_payment_after_tds: string | null; // basic + GST - TDS
   remarks: string | null;
+  fta_info: string | null; // FTA certificate no / notes (the small FTA button on the MBL)
   is_stuck: boolean;
   status: ShipmentStatus;
   port: string | null;
