@@ -461,7 +461,10 @@ const gridTheme = themeQuartz.withParams({
   fontSize: 12,
   // palette from :root in index.css (follows the chosen accent)
   accentColor: "var(--color-accent)",
+  backgroundColor: "var(--color-surface)", // follows the theme (light / dim / dark)
   foregroundColor: "var(--color-text)",
+  headerTextColor: "var(--color-text-muted)",
+  chromeBackgroundColor: "var(--color-subtle)",
   borderColor: "var(--color-border)",
   headerBackgroundColor: "var(--color-subtle)",
   rowHoverColor: "var(--color-inv-sub)",

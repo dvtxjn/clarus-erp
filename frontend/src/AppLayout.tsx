@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
-import { ACCENTS, savedAccent, setAccent, type AccentId } from "./accent";
+import { ACCENTS, THEMES, savedAccent, savedTheme, setAccent, setTheme, type AccentId, type ThemeId } from "./accent";
 import { SidebarSlotContext } from "./sidebarSlot";
 
 // 16px line icons (stroke follows the text colour)
@@ -32,6 +32,7 @@ function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICO
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const [accent, pickAccent] = useState<AccentId>(savedAccent);
+  const [theme, pickTheme] = useState<ThemeId>(savedTheme);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   // sidebar can shrink to icons (more room for the tracker); remembered per browser
   const [collapsed, setCollapsed] = useState(() => {
@@ -95,7 +96,24 @@ export default function AppLayout() {
         {/* page tools (see sidebarSlot.tsx) */}
         <div className="app-sidebar-slot" ref={setSlot} />
         <div className="app-sidebar-foot">
-          <div className="accent-picker" title="Accent colour (trial — pick one and we'll make it permanent)">
+          <div className="theme-switch" role="radiogroup" aria-label="Theme">
+            {THEMES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="radio"
+                aria-checked={theme === t.id}
+                className={theme === t.id ? "on" : ""}
+                onClick={() => {
+                  setTheme(t.id);
+                  pickTheme(t.id);
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="accent-picker" title="Accent colour">
             Accent
             {ACCENTS.map((a) => (
               <button

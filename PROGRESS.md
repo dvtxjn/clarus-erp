@@ -688,3 +688,6 @@ The client will pick features they like from other software and feed them in. Re
   applies to Clarus** (Rates → Invoicing, `app_settings`, 0038): when on, altering first asks whether the e-invoice is
   filed — filed (or IRN entered) = can't be altered. The DB lock stays; 0039 lets a deliberate, checked alteration
   through (`SET LOCAL clarus.invoice_alter`), never the number / series / status.
+- Themes (2026-09-30): calm light (sage-grey, sage-teal accent), Dim (semi-dark) and Dark — switch in the sidebar,
+  remembered per browser; status colours are theme tokens; the invoice page stays white paper; text keeps AA contrast.
+- 📝 The Maersk cost-inclusion rule (INR + not freight) is open to change — to discuss (client, 2026-09-30).
