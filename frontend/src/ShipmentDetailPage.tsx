@@ -150,7 +150,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         : "No";
 
   return (
-    // shipment & movement across the top; then status + remarks | customs duty | CFS | shipping line
+    // shipment & movement (+ remarks) across the top; then customs duty + status | CFS | shipping line
     <div className="detail-grid">
       {/* shipment + container & movement: one wide block across the top, fields in a grid */}
       <section className="detail-section detail-wide">
@@ -170,34 +170,18 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <Field label="Delivery" value={s.delivery_status} />
             <Field label="Shipping Line" value={s.shipping_line} />
         </div>
-        <HssEditor shipment={s} onChange={onChange} />
+        <div className="detail-wide-foot">
+          <HssEditor shipment={s} onChange={onChange} />
+          <div className="detail-remarks">
+            <span className="field-label">Remarks</span>
+            {s.remark || s.remarks ? (
+              <span>{[s.remark, s.remarks].filter(Boolean).join(" · ")}</span>
+            ) : (
+              <span className="field-empty">—</span>
+            )}
+          </div>
+        </div>
       </section>
-      <div className="detail-col">
-        <section className="detail-section">
-          <h3>Status</h3>
-          <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
-          <Field label="Examination" value={examination} hint="Read from the OOC copy" />
-          <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
-            <span>Under examination</span>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={!!s.under_examination}
-              disabled={saving === "under_examination"}
-              onChange={() => toggle("under_examination")}
-            />
-          </label>
-          <Field label="Cleared Date" value={fmtDate(s.cleared_date)} />
-        </section>
-
-        {(s.remark || s.remarks) && (
-          <section className="detail-section">
-            <h3>Remarks</h3>
-            {s.remark && <p>{s.remark}</p>}
-            {s.remarks && <p>{s.remarks}</p>}
-          </section>
-        )}
-      </div>
       <div className="detail-col">
         <section className="detail-section">
           <h3>Customs duty</h3>
@@ -214,6 +198,22 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               />
             </label>
           ))}
+        </section>
+        <section className="detail-section">
+          <h3>Status</h3>
+          <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
+          <Field label="Examination" value={examination} hint="Read from the OOC copy" />
+          <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
+            <span>Under examination</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={!!s.under_examination}
+              disabled={saving === "under_examination"}
+              onChange={() => toggle("under_examination")}
+            />
+          </label>
+          <Field label="Cleared Date" value={fmtDate(s.cleared_date)} />
         </section>
       </div>
       <div className="detail-col">
