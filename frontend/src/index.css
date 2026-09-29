@@ -1043,3 +1043,13 @@ input { padding: 6px 9px; }
 .pipeline-list a { display: flex; justify-content: space-between; padding: 3px 0; color: var(--color-text); text-decoration: none; font-size: 12.5px; }
 .pipeline-list a:hover { color: var(--color-accent-text); }
 @media (max-width: 1400px) { .dash-pair { grid-template-columns: 1fr; } }
+
+/* Rates: tabs, licences side by side */
+.rates-page h1 { margin: 0; }
+.rates-tabs { margin-top: 4px; }
+.rates-page .hss-rules { margin-top: 0; }
+.licence-grid { columns: 2; column-gap: 12px; }
+.licence-grid > .hss-rule { break-inside: avoid; margin-bottom: 12px; }
+.licence-grid .hss-rule-parties input:not([role="switch"]) { width: 190px; }
+@media (max-width: 1400px) { .licence-grid { columns: 1; } }
+.hss-rule-parties .toggle-row input[role="switch"] { align-self: flex-start; flex: none; }

@@ -12,6 +12,7 @@ import {
   updateCharge,
 } from "./api";
 import { usePorts } from "./ports";
+import { useSearchParams } from "react-router-dom";
 import { useConfirm } from "./ConfirmDialog";
 import { useAuth } from "./AuthContext";
 import type { ChargeCategory, ChargeMasterEntry, Licence, LicenceRate, PricingRule, PricingRuleLine } from "./types";
@@ -53,6 +54,9 @@ export default function RatesPage() {
   const [showRetired, setShowRetired] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  // one section at a time instead of one long page (design refresh, 2026-09-29)
+  const [params, setParams] = useSearchParams();
+  const tab = (["standard", "licences", "hss", "numbering"] as const).find((t) => t === params.get("tab")) ?? "standard";
 
   useEffect(() => {
     listAllCharges().then(setCharges);
@@ -73,9 +77,25 @@ export default function RatesPage() {
 
   return (
     <div className="rates-page">
+      <h1>Rates</h1>
+      <div className="detail-tabs rates-tabs">
+        {(
+          [
+            ["standard", "Standard rates"],
+            ["licences", "Licences"],
+            ["hss", "HSS rules"],
+            ["numbering", "Invoice numbering"],
+          ] as const
+        ).map(([id, label]) => (
+          <button key={id} className={tab === id ? "tab active" : "tab"} onClick={() => setParams(id === "standard" ? {} : { tab: id })}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {tab === "standard" && (
+      <>
       <div className="rates-head">
         <div>
-          <h1>Standard rates</h1>
           <p className="tracker-subtitle">
             The standard rate fills in when a charge is added to a proforma — it can still be changed on each proforma.
             Changing it here doesn't alter proformas already made.
@@ -202,9 +222,11 @@ export default function RatesPage() {
         </table>
       </div>
 
-      <InvoiceNumbering canEdit={canEdit} />
-      <Licences charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />
-      <HssRules charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />
+      </>
+      )}
+      {tab === "numbering" && <InvoiceNumbering canEdit={canEdit} />}
+      {tab === "licences" && <Licences charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />}
+      {tab === "hss" && <HssRules charges={charges.filter((c) => c.is_active)} canEdit={canEdit} />}
     </div>
   );
 }
@@ -605,6 +627,7 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
         )}
       </div>
       {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      <div className="licence-grid">
       {items.map((l, i) => (
         <div className={`hss-rule${l.is_active ? "" : " licence-closed"}`} key={l.id}>
           <div className="hss-rule-parties">
@@ -698,6 +721,7 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
           )}
         </div>
       ))}
+      </div>
     </section>
   );
 }
