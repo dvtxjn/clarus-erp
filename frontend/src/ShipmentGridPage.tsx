@@ -56,7 +56,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
  * an Enterprise (paid) feature.
  */
 
-const COLUMN_STATE_KEY = "tracker.columnState.v4";  // + "." + tab
+const COLUMN_STATE_KEY = "tracker.columnState.v5"; // v5: new column set / order (2026-09-29)  // + "." + tab
 const TAB_KEY = "tracker.tab";
 // Ongoing = no Cleared Date yet (live tracking). Cleared = has a Cleared Date;
 // removing the date sends the shipment back to Ongoing.
@@ -98,16 +98,16 @@ function loadView(): ViewMode {
 const COLUMN_VIEWS = {
   clearance: {
     label: "Clearance",
-    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "status", "cleared_date", "remarks"],
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "remarks", "cleared_date"],
   },
   movement: {
     label: "Movement",
     cols: ["job", "mbl", "eta", "inw", "consignee", "port", "igm", "container", "gross_wt", "container_status", "cfs", "poc",
-      "delivery_status", "shipping_line", "remark"],
+      "delivery_status", "remark"],
   },
   billing: {
     label: "Billing",
-    cols: ["job", "mbl", "consignee", "license", "be_no", "be_dt", "cleared_date", "checklist", "is_billed", "status"],
+    cols: ["job", "mbl", "consignee", "license", "be_no", "be_dt", "cleared_date", "checklist", "is_billed"],
   },
   grid: { label: "Full grid", cols: null },
 } as const;
@@ -391,7 +391,17 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     text("be_no", "BE No", 78),
     { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
     text("container", "Cntr", 52),
-    { ...text("gross_wt", "Wt", 88), headerTooltip: "Gross Weight" },
+    {
+      // weight is always MTS: the unit sits in the title, cells show the number
+      ...text("gross_wt", "Wt (MTS)", 76),
+      headerTooltip: "Gross Weight, MTS",
+      cellClass: "num-cell",
+      valueFormatter: (p) => (typeof p.value === "string" ? p.value.replace(/\s*MTS\s*$/i, "") : p.value),
+      valueParser: (p) => {
+        const v = String(p.newValue ?? "").trim();
+        return /^\d+(\.\d+)?$/.test(v) ? `${v} MTS` : v || null;
+      },
+    },
     text("remark", "Remark", 72),
     text("poc", "POC", 95),
     text("remarks", "Remarks", 150),
@@ -410,28 +420,6 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     },
     text("igm", "IGM", 72),
     { ...text("delivery_status", "Deliv", 76), headerTooltip: "Delivery" },
-    {
-      field: "status",
-      headerName: "Status",
-      width: 108,
-      headerTooltip:
-        "Updates itself from the evidence: IGM no → IGM Filed, BE no → BE Filed, duty amount → BE Assessed, Duty Paid → Duty Paid, OOC → OOC Done, Cleared Date → Cleared. You can still set it by hand.",
-      cellEditor: "agSelectCellEditor",
-      cellEditorParams: { values: Object.keys(SHIPMENT_STATUS_LABELS) },
-      valueFormatter: (p) => SHIPMENT_STATUS_LABELS[p.value as ShipmentStatus] ?? p.value,
-      filterValueGetter: (p) => (p.data ? SHIPMENT_STATUS_LABELS[p.data.status] : ""),
-      cellRenderer: (p: ICellRendererParams<Shipment>) =>
-        p.value ? (
-          <span className="status-cell">
-            <span className={`status-pill status-${p.value}`}>{SHIPMENT_STATUS_LABELS[p.value as ShipmentStatus]}</span>
-            {isException(p.data) && (
-              <span className="exception-badge" title="Has a Cleared Date but these aren't ticked yet">
-                Missing: {p.data!.missing_for_clearance.join(", ")}
-              </span>
-            )}
-          </span>
-        ) : null,
-    },
     dateCol("mbl_date", "MBL Dt"),
     dateCol("hbl_date", "HBL Dt"),
     text("gw", "GW", 80),
@@ -442,11 +430,15 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     text("voyage", "Voyage", 90),
     text("cont", "Cont", 80),
     { ...flag("is_billed", "Billed", 62), headerTooltip: "Tick when billed. Un-ticking (cancelling a bill) is admin-only." },
-    text("shipping_line", "Line", 78),
     ...trackerCols.filter((c) => c.is_custom).map(customColumn),
   ];
   const defs = all.filter((d) => !d.field || !removed.has(d.field as string));
-  if (tab === "ongoing") return defs;
+  if (tab === "ongoing") {
+    // Billed belongs to cleared shipments; Cleared date goes last (client, 2026-09-29)
+    const rest = defs.filter((d) => d.field !== "is_billed" && d.field !== "cleared_date");
+    const cleared = defs.find((d) => d.field === "cleared_date");
+    return cleared ? [...rest, cleared] : rest;
+  }
   // Cleared: sorted by clearance date, with Cleared Date + Billed? up front
   // for the "what did we clear / is it billed" review.
   const up = ["cleared_date", "is_billed"];
@@ -460,13 +452,13 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
 
 const gridTheme = themeQuartz.withParams({
   fontFamily: "inherit",
-  headerFontSize: 11.5,
+  headerFontSize: 11,
   headerFontWeight: 600,
-  rowHeight: 28,
-  headerHeight: 32,
+  rowHeight: 26,
+  headerHeight: 30,
   spacing: 4,
   cellHorizontalPadding: 6,
-  fontSize: 12.5,
+  fontSize: 12,
   // palette from :root in index.css (follows the chosen accent)
   accentColor: "var(--color-accent)",
   foregroundColor: "var(--color-text)",

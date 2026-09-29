@@ -627,3 +627,17 @@ The client will pick features they like from other software and feed them in. Re
 - Picker origins + API key restrictions include both addresses.
 - To do: delete `first-admin-password` secret · rotate `job-token` (was printed in the setup output) ·
   ₹3,000/month budget alert · soft launch alongside the sheet.
+
+## 🟡 Design refresh (2026-09-29, branch `design/refresh` — not deployed yet)
+- Shell: left sidebar (collapsible to icons), full-width pages, Inter, Linear-style neutrals, softer orange, accent trial dots.
+- Shipment page: BL + BE left / clearance chips right; Shipment & movement block (+ remarks) across the top; Customs duty + Status | CFS | Shipping line; invoices scroll inside their box; cost-inclusion charges in an overlay.
+- Documents: groups Basic / Customs / Line / CFS with small markers, two columns.
+- Proforma: options in the sidebar, invoice in a preview pane (Whole page / 100 %).
+- Dashboard: containers + gross weight (by ETA and by Cleared Date, per port), pies, containers/weight switch.
+- Rates: tabs; licences as rows that open.
+- Tracker: one line per row (cut with …, hover for full value — widths to tune), short dates (BE Dt with year, INW 19 Sep),
+  shorter headers, column views (Clearance / Movement / Billing / Full grid), side panel (peek), status edge colours,
+  client bar = containers + weight, HBL / FTA buttons on the MBL (FTA split from MBL: migration 0035 + CSV import),
+  calendar on date cells, "d" deadline on ETA (ETA − 4 days, migration 0036), Excel-style autosize,
+  removed from the grid: HBL, HSS, CFS/TDS, Status, Line, Billed (ongoing), Client (by-client view); Cleared last; Wt (MTS).
+- Next: column widths; Remark / POC / Remarks (client to decide); filter chips; group by; Recently deleted page; phone proforma.
