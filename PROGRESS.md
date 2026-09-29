@@ -641,3 +641,22 @@ The client will pick features they like from other software and feed them in. Re
   calendar on date cells, "d" deadline on ETA (ETA − 4 days, migration 0036), Excel-style autosize,
   removed from the grid: HBL, HSS, CFS/TDS, Status, Line, Billed (ongoing), Client (by-client view); Cleared last; Wt (MTS).
 - Next: column widths; Remark / POC / Remarks (client to decide); filter chips; group by; Recently deleted page; phone proforma.
+
+## 📝 Next session — client notes (2026-09-29, start here)
+1. **Documents table:** show only the type is marked (✓ + small kind badge); the file name moves to a hover view —
+   file names take unpredictable width, the table should be uniform.
+2. **Proforma & Billing — rework:**
+   - Moving options into the sidebar was not a good call: font / button sizes inconsistent. Undo it.
+   - Full-screen layout: split pane — data / options uniformly on the **left**, the invoice on the **right**.
+   - Section is too cluttered overall — simplify.
+   - The PDF download format is perfect; keep it.
+   - Move the "value of goods / GST input …" block up next to the assessable value on the invoice (it confuses people).
+   - Always pre-apply the suggested bill rate, AND adjust it by our rules when costs change (add / subtract) so the
+     value follows — the rules should be smart.
+   - If CFS is switched to taxable, it shows in the tax invoice as the final invoice.
+3. **Invoice numbering (Phase 3 revisited):** tax and reimbursement invoices always share the same number. Open
+   question: a shipment with no reimbursement breaks the RI chain — options given in chat (log a "not issued" entry
+   in the RI register vs separate series with cross-reference); confirm with the CA.
+4. **(P5) Delhi / non-sea-port shipments:** INW = sea-port inward; there's also an arrival date at FPOD, from which
+   the free days start. The tracker's Day count is wrong for these (free days haven't started). Needs an FPOD arrival
+   date and Day counted from it.
