@@ -224,8 +224,16 @@ def _value_grid(inv) -> Table:
     v = inv["value"]
     vals = [num(x) for x in (v["value_of_goods"], v["gst_input"], v["value_per_kg"], v["bill_rate"],
                              v["gst_output"], v["gst_difference"])]
-    return _grid(["Value of Goods", "GST Input", "Value / Kg", "Bill Rate (per kg)", "GST Output", "GST Difference"],
+    from app.invoice.build import VALUE_NOTE, value_label
+
+    grid = _grid([value_label(v), "GST Input", "Value / Kg", "Bill Rate (per kg)", "GST Output", "GST Difference"],
                  vals, [WIDTH / 6] * 6, TA_RIGHT)
+    note = Table([[_p(VALUE_NOTE, 6.8, color=MUTED)]], colWidths=[WIDTH])
+    note.setStyle(_style(("TOPPADDING", (0, 0), (-1, -1), 1), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)))
+    t = Table([[grid], [note]], colWidths=[WIDTH])
+    t.setStyle(_style(("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                      ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)))
+    return t
 
 
 def _footer(inv) -> Table:

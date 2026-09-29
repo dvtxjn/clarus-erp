@@ -223,6 +223,15 @@ def suggest_bill_rate(value_per_kg: Optional[Decimal], gst_input: Decimal, weigh
     return (steps * BILL_RATE_STEP).quantize(Decimal("0.01"))
 
 
+SHIPPING_LINE_CODE = "DO"  # charge master "Shipping Line Charges"
+VALUE_NOTE = "Value calculated in the proforma is tentative, not as per the final bill, and can vary slightly."
+
+
+def value_label(v: dict) -> str:
+    """'Value of Goods (w shipping)' / '(w/o shipping)' — whether the shipping line is in it (client, 2026-09-30)."""
+    return f"Value of Goods ({'w' if v.get('with_shipping') else 'w/o'} shipping)"
+
+
 def value_summary(proforma: Proforma) -> dict[str, Optional[Decimal]]:
     """Template row 37-38: value of goods, GST input, value/kg, bill rate,
     GST output, GST difference (the GST Difference line itself is left out)."""
@@ -235,6 +244,7 @@ def value_summary(proforma: Proforma) -> dict[str, Optional[Decimal]]:
     output = (GST_OUTPUT_RATE * rate * wt).quantize(Decimal("0.01")) if rate is not None and wt else None
     return {
         "value_of_goods": value,
+        "with_shipping": any(li.charge is not None and li.charge.code == SHIPPING_LINE_CODE for li in lines),
         "gst_input": gst_input,
         "value_per_kg": (value / wt).quantize(Decimal("0.01")) if wt else None,
         "suggested_bill_rate": suggest_bill_rate(value / wt if wt else None, gst_input, wt),
@@ -386,7 +396,9 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
             "challan_uploaded_at": challan.uploaded_at.isoformat() if challan else None,
             "challan_today": bool(challan and challan.uploaded_at.date() == date.today()),
         } if duty else None,
-        "value": {k: _money(v) for k, v in value.items()},
+        "value": {**{k: (v if isinstance(v, bool) else _money(v)) for k, v in value.items()},
+                  "label": value_label(value), "note": VALUE_NOTE,
+                  "bill_rate_manual": bool(proforma.bill_rate_manual)},
         "grand_total": _money(round_off(grand)[0]),
         "round_off": _money(round_off(grand)[1]),  # + / − paise to the rupee
         "grand_total_label": grand_total_label,

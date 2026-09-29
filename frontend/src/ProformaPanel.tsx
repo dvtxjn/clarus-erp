@@ -19,7 +19,6 @@ import {
 import { useSaveShipment } from "./useSaveShipment";
 import { OrganizationForm } from "./DailyUpdates";
 import FinalInvoicesPanel from "./FinalInvoicesPanel";
-import { SidebarPanel } from "./sidebarSlot";
 import { useConfirm } from "./ConfirmDialog";
 import type { Proforma, ChargeMasterEntry, Shipment, ChargeCategory, InvoiceView, Organization } from "./types";
 
@@ -86,7 +85,7 @@ export default function ProformaPanel({
 
   if (loading) return <div className="tracker-empty">Loading…</div>;
 
-  // versions, actions and notes — shown in the sidebar (sidebarSlot.tsx)
+  // versions, the bill-to and notes — top of the left column
   const side = (
     <>
       <div className="proforma-toolbar">
@@ -199,15 +198,19 @@ export default function ProformaPanel({
   return (
     <div className="proforma-panel">
       {!active ? (
-        <>
-        <SidebarPanel title="Proforma">{side}</SidebarPanel>
-        <div className="tracker-empty">
-          No proforma yet — {shipment.is_hss ? "create the seller and/or buyer invoice." : "create the first version."}
+        <div className="pf-split">
+          <aside className="pf-left">{side}</aside>
+          <section className="pf-right">
+            <div className="tracker-empty">
+              No proforma yet — {shipment.is_hss ? "create the seller and/or buyer invoice." : "create the first version."}
+            </div>
+            <FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />
+          </section>
         </div>
-        </>
       ) : (
         <ProformaVersion
           side={side}
+          finals={<FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />}
           proforma={active}
           charges={charges}
           containerCount={containerCount(shipment)}
@@ -220,8 +223,6 @@ export default function ProformaPanel({
           }}
         />
       )}
-
-      <FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />
     </div>
   );
 }
@@ -341,6 +342,7 @@ function errorText(e: unknown): string {
 
 function ProformaVersion({
   side,
+  finals,
   proforma,
   charges,
   containerCount,
@@ -351,6 +353,7 @@ function ProformaVersion({
   onChange,
 }: {
   side: ReactNode;
+  finals: ReactNode;
   proforma: Proforma;
   charges: ChargeMasterEntry[];
   containerCount: number | null;
@@ -369,6 +372,7 @@ function ProformaVersion({
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
   const confirm = useConfirm();
   const draft = proforma.status === "draft";
+  const [pane, setPane] = useState<"proforma" | "final">("proforma");
 
   // The invoice layout is rebuilt server-side after every change
   useEffect(() => {
@@ -484,9 +488,10 @@ function ProformaVersion({
     run(() => updateProformaLineItem(proforma.id, lineId, changes));
 
   return (
-    <div className="proforma-version">
-      {/* options in the sidebar; the invoice in a preview pane that fits the screen */}
-      <SidebarPanel title="Proforma">
+    // split pane (client, 2026-09-30): everything you do on the left, one uniform column;
+    // the invoice on the right — or the final invoices made from it
+    <div className="proforma-version pf-split">
+      <aside className="pf-left">
         {side}
           <div className="invoice-actions">
             {draft && (
@@ -634,7 +639,25 @@ function ProformaVersion({
             </form>
           )}
 
-      </SidebarPanel>
+        <div className="pf-finals-link">
+          <span>Final invoices (tax + reimbursement)</span>
+          <button type="button" className="btn-secondary" onClick={() => setPane("final")}>
+            Open →
+          </button>
+        </div>
+      </aside>
+      <section className="pf-right">
+        <div className="pf-pane-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={pane === "proforma"} className={pane === "proforma" ? "on" : ""} onClick={() => setPane("proforma")}>
+            Proforma
+          </button>
+          <button type="button" role="tab" aria-selected={pane === "final"} className={pane === "final" ? "on" : ""} onClick={() => setPane("final")}>
+            Final invoices
+          </button>
+        </div>
+        {pane === "final" ? (
+          <div className="pf-final-pane">{finals}</div>
+        ) : (
       <InvoicePreview>
           {invoice && <DutyNotice invoice={invoice} />}
 
@@ -650,6 +673,8 @@ function ProformaVersion({
             />
           )}
       </InvoicePreview>
+        )}
+      </section>
     </div>
   );
 }
@@ -827,6 +852,59 @@ function InvoiceSheet({
         <KV k="Examination" v={ref.exam_applicable} />
       </div>
 
+      {/* value of goods / GST beside the assessable value (client, 2026-09-30) */}
+      <div className="tracker-grid-wrap">
+        <table className="inv-table inv-value">
+          <thead>
+            <tr>
+              <th className="num">{inv.value.label}</th>
+              <th className="num">GST input</th>
+              <th className="num">Value / kg</th>
+              <th className="num">Bill rate (₹/kg)</th>
+              <th className="num">GST output (18%)</th>
+              <th className="num">GST difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="num">{inr(inv.value.value_of_goods)}</td>
+              <td className="num">{inr(inv.value.gst_input)}</td>
+              <td className="num">{inr(inv.value.value_per_kg) || "—"}</td>
+              <EditCell
+                editable={editable}
+                numeric
+                allowEmpty
+                raw={inv.value.bill_rate ?? ""}
+                display={inv.value.bill_rate ? inr(inv.value.bill_rate) : editable ? "enter…" : "—"}
+                className="num"
+                title="HSS bill rate per kg — set by the rules; type one to fix it by hand, clear it to go back to automatic."
+                onSave={(v) => onSaveProforma({ bill_rate: v === "" ? null : Number(v) })}
+              />
+              <td className="num">{inr(inv.value.gst_output) || "—"}</td>
+              <td className="num">{inr(inv.value.gst_difference) || "—"}</td>
+            </tr>
+          </tbody>
+        </table>
+        {inv.value.bill_rate && (
+          <div className="bill-rate-suggest">
+            {inv.value.bill_rate_manual ? (
+              <>
+                Bill rate typed by hand — kept unless the costs pass it.{" "}
+                {editable && (
+                  <button type="button" className="link-button" onClick={() => onSaveProforma({ bill_rate: null }).catch(() => {})}>
+                    Back to automatic (₹{inr(inv.value.suggested_bill_rate)}/kg)
+                  </button>
+                )}
+              </>
+            ) : (
+              <>Bill rate by the rules: value/kg + at least 10 paise, GST difference positive, next 25 paise — follows the costs.</>
+            )}
+          </div>
+        )}
+        <div className="inv-value-note">{inv.value.note}</div>
+      </div>
+
+
       <div className="tracker-grid-wrap">
         <table className="inv-table">
           <thead>
@@ -911,57 +989,6 @@ function InvoiceSheet({
             </tr>
           </tbody>
         </table>
-      </div>
-
-      <div className="tracker-grid-wrap">
-        <table className="inv-table inv-value">
-          <thead>
-            <tr>
-              <th className="num">Value of goods</th>
-              <th className="num">GST input</th>
-              <th className="num">Value / kg</th>
-              <th className="num">Bill rate (₹/kg)</th>
-              <th className="num">GST output (18%)</th>
-              <th className="num">GST difference</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td className="num">{inr(inv.value.value_of_goods)}</td>
-              <td className="num">{inr(inv.value.gst_input)}</td>
-              <td className="num">{inr(inv.value.value_per_kg) || "—"}</td>
-              <EditCell
-                editable={editable}
-                numeric
-                allowEmpty
-                raw={inv.value.bill_rate ?? ""}
-                display={inv.value.bill_rate ? inr(inv.value.bill_rate) : editable ? "enter…" : "—"}
-                className="num"
-                title="HSS bill rate per kg — adds the GST Difference line. Clear it to remove the line."
-                onSave={(v) => onSaveProforma({ bill_rate: v === "" ? null : Number(v) })}
-              />
-              <td className="num">{inr(inv.value.gst_output) || "—"}</td>
-              <td className="num">{inr(inv.value.gst_difference) || "—"}</td>
-            </tr>
-          </tbody>
-        </table>
-        {editable && inv.value.suggested_bill_rate && inv.value.suggested_bill_rate !== inv.value.bill_rate && (
-          <div className="bill-rate-suggest">
-            Suggested bill rate <strong>₹{inr(inv.value.suggested_bill_rate)}/kg</strong> (value/kg ₹
-            {inr(inv.value.value_per_kg)} + at least 10 paise, GST difference positive, rounded up to 25 paise)
-            <button
-              type="button"
-              className="link-button"
-              onClick={() => onSaveProforma({ bill_rate: Number(inv.value.suggested_bill_rate) }).catch(() => {})}
-            >
-              Use
-            </button>
-          </div>
-        )}
-        <div className="inv-value-note">
-          Value = assessable value + every basic amount (incl. cost inclusion). GST difference = 18% × bill rate × weight − GST input
-          (never below 0); it's added to Reimbursement as its own line.
-        </div>
       </div>
 
       <div className="inv-footer">
@@ -1076,30 +1103,37 @@ function EditCell({
 }
 
 /**
- * The invoice in a pane that fills the rest of the screen and scrolls on its own, like a
- * file preview (client, 2026-09-29). "Whole page" shrinks it to fit; "100 %" is for editing.
+ * The invoice as an A4 page in its own pane, like a document preview (client, 2026-09-30):
+ * the page is laid out at A4 width (794 px at 96 dpi) and scaled to fit the screen height
+ * ("Fit page"), or shown full size to edit ("100 %"). The pane takes the page's width;
+ * the controls get the rest.
  */
+const A4_W = 794;
+const A4_H = 1123;
+
 function InvoicePreview({ children }: { children: ReactNode }) {
   const pane = useRef<HTMLDivElement>(null);
-  const inner = useRef<HTMLDivElement>(null);
+  const page = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<"fit" | "full">(() => {
     try {
-      return localStorage.getItem("clarus.invoiceZoom") === "fit" ? "fit" : "full";
+      return localStorage.getItem("clarus.invoiceZoom") === "full" ? "full" : "fit";
     } catch {
-      return "full";
+      return "fit";
     }
   });
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(0.8);
+  const [paneH, setPaneH] = useState(800);
 
   useLayoutEffect(() => {
     const el = pane.current;
-    const content = inner.current;
+    const content = page.current;
     if (!el || !content) return;
     const measure = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
-      el.style.height = `${Math.max(420, window.innerHeight - top - 12)}px`;
-      const natural = content.offsetHeight; // layout size — the scale transform doesn't change it
-      setZoom(mode === "fit" ? Math.max(0.45, Math.min(1, (el.clientHeight - 28) / natural)) : 1);
+      const h = Math.max(480, window.innerHeight - top - 12);
+      setPaneH(h);
+      const pageH = Math.max(A4_H, content.offsetHeight); // a long invoice: fit all of it
+      setZoom(mode === "fit" ? Math.min(1.25, (h - 40) / pageH) : 1);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -1119,19 +1153,20 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       /* private window */
     }
   };
+  const w = Math.round(A4_W * zoom);
 
   return (
-    <div className="invoice-preview" ref={pane}>
+    <div className="invoice-preview" ref={pane} style={{ height: paneH, width: mode === "fit" ? w + 34 : undefined }}>
       <div className="invoice-preview-zoom">
         <button type="button" className={mode === "fit" ? "on" : ""} onClick={() => pick("fit")}>
-          Whole page
+          Fit page
         </button>
         <button type="button" className={mode === "full" ? "on" : ""} onClick={() => pick("full")}>
           100 %
         </button>
       </div>
-      <div style={{ height: zoom < 1 ? (inner.current?.offsetHeight ?? 0) * zoom : undefined }}>
-        <div className="invoice-preview-inner" ref={inner} style={zoom < 1 ? { transform: `scale(${zoom})` } : undefined}>
+      <div className="a4-frame" style={{ width: w, height: Math.round((page.current?.offsetHeight ?? A4_H) * zoom) }}>
+        <div className="a4-page" ref={page} style={{ transform: zoom !== 1 ? `scale(${zoom})` : undefined }}>
           {children}
         </div>
       </div>

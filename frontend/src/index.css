@@ -900,16 +900,24 @@ input { padding: 6px 9px; }
 .auth-forgot { margin-top: 10px; align-self: center; }
 .row-inactive td { color: var(--color-text-muted); }
 
-/* --- Proforma: invoice in a preview pane (options live in the sidebar) --- */
+/* --- Proforma: split view — controls left, the invoice as an A4 page right (client, 2026-09-30) --- */
+.pf-split { display: grid; grid-template-columns: minmax(360px, 1fr) auto; gap: 16px; align-items: start; }
+.pf-left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.pf-right { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .invoice-preview {
   position: relative; overflow: auto; background: var(--color-hover); border: 1px solid var(--color-border);
-  border-radius: 8px; padding: 12px;
+  border-radius: 8px; padding: 30px 16px 16px; max-width: calc(100vw - 480px);
 }
-.invoice-preview-inner { display: flex; flex-direction: column; gap: 10px; max-width: 1000px; margin: 0 auto; transform-origin: top center; }
-.invoice-preview-zoom { position: sticky; top: 0; z-index: 3; display: flex; justify-content: flex-end; gap: 2px; height: 0; }
+.a4-frame { margin: 0 auto; }
+.a4-page {
+  width: 794px; min-height: 1123px; transform-origin: top left; background: #fff; color: #1b1c1f;
+  box-shadow: 0 2px 10px rgba(16, 17, 20, .12); padding: 28px 30px; display: flex; flex-direction: column; gap: 10px;
+}
+.a4-page .invoice-sheet { border: none; padding: 0; max-width: none; background: transparent; }
+.invoice-preview-zoom { position: absolute; top: 6px; right: 10px; display: flex; gap: 2px; }
 .invoice-preview-zoom button {
   background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border);
-  padding: 2px 8px; font-size: 11.5px; box-shadow: var(--shadow-sm); height: 24px;
+  padding: 1px 8px; font-size: 11.5px; box-shadow: none; height: 22px;
 }
 .invoice-preview-zoom button.on { color: var(--color-text); border-color: var(--color-text-muted); }
 
@@ -1165,3 +1173,32 @@ input { padding: 6px 9px; }
 .doc-table .doc-file-line { white-space: nowrap; overflow-wrap: normal; }
 .doc-file-chip { display: inline-block; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 3px; background: var(--color-subtle); border: 1px solid var(--color-border); cursor: help; }
 .doc-table td:last-child .link-btn { text-decoration: none; font-size: 13px; padding: 0 3px; }
+
+/* left column: one card per block, one button size (uniform — client, 2026-09-30) */
+.pf-left > * { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; padding: 10px 12px; margin: 0; }
+.pf-left > p.tracker-subtitle { background: none; border: none; padding: 0 2px; }
+.pf-left button:not(.tab):not(.link-button):not(.link-btn):not(.mini-field) {
+  font-size: 12.5px; font-weight: 500; padding: 0 12px; height: 30px; line-height: 28px; border-radius: var(--radius);
+}
+.pf-left .proforma-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.pf-left .version-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.pf-left .version-tabs .tab { margin: 0; padding: 4px 10px; border: 1px solid var(--color-border); border-radius: var(--radius); font-size: 12.5px; }
+.pf-left .version-tabs .tab.active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-text); }
+.pf-left .proforma-toolbar-actions, .pf-left .invoice-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pf-left .invoice-actions .field-note { flex-basis: 100%; font-size: 12px; }
+.pf-left .add-shipment-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, .7fr) minmax(0, 1.3fr); gap: 6px; }
+.pf-left .add-shipment-form > * { min-width: 0; width: 100%; }
+.pf-left .add-shipment-form > .field-note { grid-column: 1 / -1; }
+.pf-left .add-shipment-form > button { grid-column: span 2; }
+.pf-finals-link { display: flex; justify-content: space-between; align-items: center; font-weight: 500; }
+.pf-pane-tabs { display: flex; gap: 2px; }
+.pf-pane-tabs button {
+  background: none; border: none; box-shadow: none; color: var(--color-text-muted); padding: 4px 10px; font-size: 12.5px; border-radius: var(--radius);
+}
+.pf-pane-tabs button.on { background: var(--color-surface); color: var(--color-text); box-shadow: 0 0 0 1px var(--color-border); }
+.pf-final-pane { width: min(1000px, calc(100vw - 520px)); }
+@media (max-width: 1300px) {
+  .pf-split { grid-template-columns: 1fr; }
+  .pf-right { position: static; }
+  .invoice-preview { max-width: none; width: auto !important; }
+}

@@ -43,8 +43,10 @@ VALUE_HEADS = ("Value of Goods", "GST Input", "Value / Kg", "Bill Rate (per kg)"
 
 def _value_block(ws, r: int, v: dict) -> int:
     """Template row 37-38: value of goods / GST input / value per kg / bill rate / GST output / difference."""
+    from app.invoice.build import VALUE_NOTE, value_label
+
     vals = [v["value_of_goods"], v["gst_input"], v["value_per_kg"], v["bill_rate"], v["gst_output"], v["gst_difference"]]
-    for col, (h, val) in enumerate(zip(VALUE_HEADS, vals), start=1):
+    for col, (h, val) in enumerate(zip((value_label(v), *VALUE_HEADS[1:]), vals), start=1):
         hc = ws.cell(r, col, h)
         hc.font = Font(name="Arial", size=8.5, bold=True, color=DARK)
         hc.fill = PatternFill("solid", fgColor=HEADER)
@@ -55,7 +57,10 @@ def _value_block(ws, r: int, v: dict) -> int:
         vc.alignment = Alignment(horizontal="right")
         vc.border = BOX
         vc.number_format = RUPEE if val is not None else "@"
-    return r + 3
+    ws.merge_cells(start_row=r + 2, start_column=1, end_row=r + 2, end_column=COLS)
+    note = ws.cell(r + 2, 1, VALUE_NOTE)
+    note.font = Font(name="Arial", size=8, italic=True, color=GREY)
+    return r + 4
 
 
 _LOGO_PNG: bytes | None = None

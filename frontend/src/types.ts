@@ -396,6 +396,10 @@ export interface InvoiceView {
     bill_rate: string | null;
     gst_output: string | null;
     gst_difference: string | null;
+    with_shipping: boolean; // shipping line charges are in the value of goods
+    label: string; // "Value of Goods (w shipping)" / "(w/o shipping)"
+    note: string; // "Value calculated in the proforma is tentative …"
+    bill_rate_manual: boolean; // typed by hand (else it follows the rules)
   };
   notes: string[];
   bank: [string, string][];
