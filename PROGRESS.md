@@ -1,5 +1,7 @@
 # Build Progress Log
 
+> **Code repository:** private GitHub repo `github.com/dvtxjn/clarus-erp` (branch `main`), pushed from this Mac with a repo-only deploy key (`~/.ssh/id_ed25519_clarus_erp`, set via `git config core.sshCommand` in this repo). Commit + push after every piece of work. Never in git (see `.gitignore`): `.env` files, `.local-credentials`, the database, `backend/storage/` (uploaded documents), `reference/` (client files). Data backups are separate — see DEPLOYMENT_PLAN.md phases 7-8.
+
 > Read this first if you're picking this project up in a new session (Cursor,
 > a fresh Claude conversation, or a human dev). It says exactly what's built,
 > what's tested, and what's next — so you can continue without re-deriving
