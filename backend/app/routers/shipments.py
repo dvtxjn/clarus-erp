@@ -179,7 +179,8 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
         "live_containers": sum(_containers(s) for s in live),
         "live_tonnes": round(sum(_tonnes(s) for s in live), 3),
         "upcoming_etas": [
-            {"id": s.id, "job": s.job, "mbl": s.mbl, "consignee": s.consignee, "eta": s.eta, "port": s.port} for s in upcoming
+            {"id": s.id, "job": s.job, "mbl": s.mbl, "be_no": s.be_no, "consignee": s.consignee, "eta": s.eta, "port": s.port}
+            for s in upcoming
         ],
     }
 

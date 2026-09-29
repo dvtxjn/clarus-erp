@@ -194,7 +194,7 @@ def export_register(fy: Optional[str] = None, month: Optional[str] = None, kind:
     wb = Workbook()
     ws = wb.active
     ws.title = "Invoices"
-    heads = ["Number", "Type", "Status", "Date", "Client", "GSTIN", "Job", "MBL", "BE No", "Taxable", "Non-GST", "GST",
+    heads = ["Number", "Type", "Status", "Date", "Client", "GSTIN", "Job", "BL No", "BE No", "Taxable", "Non-GST", "GST",
              "Net payable", "IRN"]
     ws.append(heads)
     for c in ws[1]:

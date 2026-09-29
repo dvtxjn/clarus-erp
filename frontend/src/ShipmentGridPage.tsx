@@ -56,7 +56,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
  * an Enterprise (paid) feature.
  */
 
-const COLUMN_STATE_KEY = "tracker.columnState.v5"; // v5: new column set / order (2026-09-29)  // + "." + tab
+const COLUMN_STATE_KEY = "tracker.columnState.v6"; // v6: widths fitted to the data (2026-09-30)  // + "." + tab
 const TAB_KEY = "tracker.tab";
 // Ongoing = no Cleared Date yet (live tracking). Cleared = has a Cleared Date;
 // removing the date sends the shipment back to Ongoing.
@@ -80,13 +80,14 @@ function monthLabel(ym: string): string {
 const NO_CLIENT = "(No client)";
 const VIEW_KEY = "tracker.view";
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
-const VIEWS = { client: "By client", all: "All shipments" } as const;
+// Group by (client, 2026-09-30): client (one table each), port, stage, ETA week, or none
+const VIEWS = { client: "Client", port: "Port", stage: "Stage", eta: "ETA week", all: "None" } as const;
 type ViewMode = keyof typeof VIEWS;
 
 function loadView(): ViewMode {
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    return v === "all" || v === "client" ? v : "client";
+    return v && v in VIEWS ? (v as ViewMode) : "client";
   } catch {
     return "client";
   }
@@ -113,6 +114,51 @@ const COLUMN_VIEWS = {
 } as const;
 type ColumnView = keyof typeof COLUMN_VIEWS | "custom";
 const COLVIEW_KEY = "tracker.columnView"; // + "." + tab
+
+/** Quick filter chips on the ongoing tracker (client, 2026-09-30). */
+const DAY = 86_400_000;
+const daysFromToday = (iso: string | null | undefined): number | null =>
+  iso ? Math.round((new Date(`${iso}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / DAY) : null;
+const QUICK_CHIPS: Record<string, { label: string; hint: string; test: (s: Shipment) => boolean }> = {
+  deadline: {
+    label: "Deadline ≤ 3 days",
+    hint: "ETA marked 'd': the move-to-CFS deadline (ETA − 4 days) is within 3 days or has passed",
+    test: (s) => {
+      const d = daysFromToday(s.eta);
+      return !!s.eta_is_deadline && d != null && d - 4 <= 3;
+    },
+  },
+  week: {
+    label: "ETA this week",
+    hint: "ETA today or in the next 7 days",
+    test: (s) => {
+      const d = daysFromToday(s.eta);
+      return d != null && d >= 0 && d <= 7;
+    },
+  },
+  nobe: {
+    label: "Arrived, BE not filed",
+    hint: "ETA has passed and there's no BE number yet",
+    test: (s) => {
+      const d = daysFromToday(s.eta);
+      return d != null && d <= 0 && !s.be_no;
+    },
+  },
+  exceptions: {
+    label: "Exceptions",
+    hint: "Cleared Date entered but a check is still missing",
+    test: (s) => !!s.cleared_date && !s.is_fully_cleared,
+  },
+};
+const ETA_WEEKS = ["Arrived", "This week", "Next week", "Later", "No ETA"];
+function etaWeek(eta: string | null): string {
+  const d = daysFromToday(eta);
+  if (d == null) return "No ETA";
+  if (d < 0) return "Arrived";
+  if (d <= 7) return "This week";
+  if (d <= 14) return "Next week";
+  return "Later";
+}
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -320,9 +366,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
           </Link>
         ) : null,
     },
-    { ...text("job", "Job", 58), pinned: "left" },
+    { ...text("job", "Job", 56), pinned: "left" },
     {
-      ...text("mbl", "MBL", 190),
+      ...text("mbl", "MBL", 212),
       minWidth: 150, // the number + the HBL / FTA buttons
       pinned: "left",
       cellRenderer: (p: ICellRendererParams<Shipment, string, GridContext>) => (
@@ -344,7 +390,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         </span>
       ),
     },
-    { ...text("be_description", "Desc", 200), headerTooltip: "BE Description" },
+    { ...text("be_description", "Desc", 220), headerTooltip: "BE Description" },
     {
       ...dateCol("eta", "ETA", 118),
       minWidth: 112, // "d" + date + deadline
@@ -372,25 +418,25 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
           </span>
         ) : null,
     },
-    { ...text("license", "Lic", 80), headerTooltip: "License" },
+    { ...text("license", "Lic", 84), headerTooltip: "License" },
     // grouped by client, each section's bar already names it
-    ...(byClient ? [] : [text("client", "Client", 105)]),
-    text("consignee", "Consignee", 130),
+    ...(byClient ? [] : [text("client", "Client", 124)]),
+    text("consignee", "Consignee", 168),
     {
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
       headerName: "POD",
-      width: 132,
+      width: 156, // "INMUN1 · Nhava Sheva"
       cellEditor: "agSelectCellEditor",
       cellEditorParams: { values: ["", ...ports.map((p) => p.code)] },
       valueFormatter: (p) => formatPort(p.value, ports),
       filterValueGetter: (p) => formatPort(p.data?.port, ports),
     },
-    { ...text("container_status", "Cntr St", 72), headerTooltip: "Container Status" },
-    text("cfs", "CFS", 90),
-    text("be_no", "BE No", 78),
+    { ...text("container_status", "Cntr St", 78), headerTooltip: "Container Status" },
+    text("cfs", "CFS", 96),
+    text("be_no", "BE No", 82),
     { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
-    text("container", "Cntr", 52),
+    text("container", "Cntr", 58),
     {
       // weight is always MTS: the unit sits in the title, cells show the number
       ...text("gross_wt", "Wt (MTS)", 76),
@@ -402,8 +448,8 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         return /^\d+(\.\d+)?$/.test(v) ? `${v} MTS` : v || null;
       },
     },
-    text("remark", "Remark", 72),
-    text("poc", "POC", 95),
+    text("remark", "Remark", 76),
+    text("poc", "POC", 100),
     text("remarks", "Remarks", 150),
     { ...dateCol("cleared_date", "Cleared"), headerTooltip: "Cleared Date" },
     {
@@ -418,8 +464,8 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       cellRenderer: ChecklistCell,
       cellRendererParams: { flags: FLAGS },
     },
-    text("igm", "IGM", 72),
-    { ...text("delivery_status", "Deliv", 76), headerTooltip: "Delivery" },
+    text("igm", "IGM", 78),
+    { ...text("delivery_status", "Deliv", 86), headerTooltip: "Delivery" },
     dateCol("mbl_date", "MBL Dt"),
     dateCol("hbl_date", "HBL Dt"),
     text("gw", "GW", 80),
@@ -519,6 +565,16 @@ export default function ShipmentGridPage() {
   const [quickFilter, setQuickFilter] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [view, setView] = useState<ViewMode>(loadView);
+  // filter chips above the table (client, 2026-09-30): ports (any of) + quick checks (all of)
+  const [chips, setChips] = useState<Set<string>>(new Set());
+  const [showColFilters, setShowColFilters] = useState(false);
+  const toggleChip = (c: string) =>
+    setChips((prev) => {
+      const next = new Set(prev);
+      if (next.has(c)) next.delete(c);
+      else next.add(c);
+      return next;
+    });
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>(() => loadTab(searchParams.get("tab")));
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
@@ -786,7 +842,15 @@ export default function ShipmentGridPage() {
   // Ongoing vs Cleared is decided only by the Cleared Date (billing doesn't hide a shipment)
   // Cleared = Cleared Date + all five checks. A Cleared Date with anything
   // missing is an exception and stays here in Ongoing (highlighted) for manual action.
-  const ongoing = useMemo(() => (shipments ?? []).filter((s) => !s.is_fully_cleared), [shipments]);
+  const allOngoing = useMemo(() => (shipments ?? []).filter((s) => !s.is_fully_cleared), [shipments]);
+  const ongoing = useMemo(() => {
+    const ports = [...chips].filter((c) => c.startsWith("port:")).map((c) => c.slice(5));
+    const quick = [...chips].filter((c) => !c.startsWith("port:"));
+    return allOngoing.filter((s) => {
+      if (ports.length && !ports.includes(s.port ?? "")) return false;
+      return quick.every((q) => QUICK_CHIPS[q]?.test(s));
+    });
+  }, [allOngoing, chips]);
   const cleared = useMemo(() => (shipments ?? []).filter((s) => s.is_fully_cleared), [shipments]);
 
   function changeView(v: ViewMode) {
@@ -813,17 +877,30 @@ export default function ShipmentGridPage() {
       }
       return [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([ym, rows]) => [monthLabel(ym), rows]);
     }
-    if (view === "all") return [[VIEWS.all, ongoing]];
-    const byClient = new Map<string, Shipment[]>();
+    if (view === "all") return [["All shipments", ongoing]];
+    const keyOf = (s: Shipment): string => {
+      if (view === "port") return s.port ? formatPort(s.port, ports) || s.port : "No port";
+      if (view === "stage") return SHIPMENT_STATUS_LABELS[s.status];
+      if (view === "eta") return etaWeek(s.eta);
+      return s.client?.trim() || NO_CLIENT;
+    };
+    const by = new Map<string, Shipment[]>();
     for (const s of ongoing) {
-      const key = s.client?.trim() || NO_CLIENT;
-      if (!byClient.has(key)) byClient.set(key, []);
-      byClient.get(key)!.push(s);
+      const key = keyOf(s);
+      if (!by.has(key)) by.set(key, []);
+      by.get(key)!.push(s);
     }
-    return [...byClient.entries()].sort(([a], [b]) =>
-      a === NO_CLIENT ? 1 : b === NO_CLIENT ? -1 : a.localeCompare(b, undefined, { sensitivity: "base" }),
+    const order = (k: string): number =>
+      view === "stage"
+        ? Object.values(SHIPMENT_STATUS_LABELS).indexOf(k)
+        : view === "eta"
+          ? ETA_WEEKS.indexOf(k)
+          : 0;
+    return [...by.entries()].sort(([a], [b]) =>
+      order(a) - order(b) ||
+      (a === NO_CLIENT || a === "No port" ? 1 : b === NO_CLIENT || b === "No port" ? -1 : a.localeCompare(b, undefined, { sensitivity: "base" })),
     );
-  }, [tab, view, ongoing, cleared]);
+  }, [tab, view, ongoing, cleared, ports]);
 
   useEffect(() => {
     const live = new Set(groups.map(([k]) => k));
@@ -1211,6 +1288,8 @@ export default function ShipmentGridPage() {
     }
   }
 
+  const headerColDef = useMemo(() => ({ ...defaultColDef, floatingFilter: showColFilters }), [showColFilters]);
+  const portsPresent = useMemo(() => [...new Set(allOngoing.map((s) => s.port).filter((p): p is string => !!p))].sort(), [allOngoing]);
   const alignedWithSections = () => [...sectionRefs.current.values()].filter((r) => r.current);
   const shownGroups = groups.filter(([client]) => visibleCounts[client] !== 0);
 
@@ -1222,9 +1301,9 @@ export default function ShipmentGridPage() {
           <p className="tracker-subtitle">
             {tab === "cleared"
               ? "Fully cleared shipments (Cleared Date + Duty, CFS Inv, Line, OOC, DO), by month, earliest clearance first."
-              : view === "client"
-                ? "One table per client, earliest ETA first."
-                : "All ongoing shipments, earliest ETA first."}{" "}
+              : view === "all"
+                ? "All ongoing shipments, earliest ETA first."
+                : `One table per ${VIEWS[view].toLowerCase()}, earliest ETA first.`}{" "}
             Double-click any cell to edit — changes save automatically.
             Ctrl/⌘+Z undoes.
             {statusFilter && (
@@ -1270,19 +1349,16 @@ export default function ShipmentGridPage() {
           })}
         </div>
         {tab === "ongoing" && (
-        <div className="view-switch" role="tablist" aria-label="Tracker view">
-          {(Object.keys(VIEWS) as ViewMode[]).map((v) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={view === v}
-              className={view === v ? "view-switch-btn active" : "view-switch-btn"}
-              onClick={() => changeView(v)}
-            >
-              {VIEWS[v]}
-            </button>
-          ))}
-        </div>
+          <label className="group-by">
+            <span>Group by</span>
+            <select value={view} onChange={(e) => changeView(e.target.value as ViewMode)}>
+              {(Object.keys(VIEWS) as ViewMode[]).map((v) => (
+                <option key={v} value={v}>
+                  {VIEWS[v]}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         <div className="view-switch" role="tablist" aria-label="Columns shown">
           {(Object.keys(COLUMN_VIEWS) as (keyof typeof COLUMN_VIEWS)[]).map((v) => (
@@ -1298,6 +1374,13 @@ export default function ShipmentGridPage() {
             </button>
           ))}
         </div>
+        <button
+          className={`btn-secondary${showColFilters ? " is-on" : ""}`}
+          onClick={() => setShowColFilters((x) => !x)}
+          title="A filter box under every column heading"
+        >
+          Column filters
+        </button>
         <div className="tracker-search">
           <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
         </div>
@@ -1363,13 +1446,34 @@ export default function ShipmentGridPage() {
         <div className="tracker-empty">Loading…</div>
       ) : (
         <SettledStack key={`${tab}.${view}`}>
+          {tab === "ongoing" && (
+            <div className="filter-chips" role="group" aria-label="Filters">
+              {portsPresent.map((p) => (
+                <button key={p} type="button" className={chips.has(`port:${p}`) ? "chip on" : "chip"} onClick={() => toggleChip(`port:${p}`)}>
+                  {formatPort(p, ports) || p}
+                </button>
+              ))}
+              <span className="chip-sep" />
+              {Object.entries(QUICK_CHIPS).map(([k, c]) => (
+                <button key={k} type="button" className={chips.has(k) ? "chip on" : "chip"} onClick={() => toggleChip(k)} title={c.hint}>
+                  {c.label}
+                  <span className="chip-count">{allOngoing.filter(c.test).length}</span>
+                </button>
+              ))}
+              {chips.size > 0 && (
+                <button type="button" className="link-btn" onClick={() => setChips(new Set())}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          )}
           <div className="client-grid-header">
             <AgGridReact<Shipment>
               ref={headerRef}
               theme={gridTheme}
               rowData={[]}
               columnDefs={columnDefs}
-              defaultColDef={defaultColDef}
+              defaultColDef={headerColDef}
               domLayout="autoHeight"
               tooltipShowDelay={350}
               suppressNoRowsOverlay

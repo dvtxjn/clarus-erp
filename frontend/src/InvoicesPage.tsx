@@ -167,7 +167,8 @@ function FinalRegister() {
               <th>Date</th>
               <th>Client</th>
               <th>Job</th>
-              <th>BE</th>
+              <th>BL No</th>
+              <th>BE No</th>
               <th className="num">Taxable</th>
               <th className="num">Non-GST</th>
               <th className="num">GST</th>
@@ -179,14 +180,14 @@ function FinalRegister() {
           <tbody>
             {rows === null && (
               <tr>
-                <td colSpan={13} className="tracker-empty">
+                <td colSpan={14} className="tracker-empty">
                   Loading…
                 </td>
               </tr>
             )}
             {rows?.length === 0 && (
               <tr>
-                <td colSpan={13} className="tracker-empty">
+                <td colSpan={14} className="tracker-empty">
                   No invoices match.
                 </td>
               </tr>
@@ -205,9 +206,10 @@ function FinalRegister() {
                 <td>{date(r.invoice_date)}</td>
                 <td title={r.gstin}>{r.customer}</td>
                 <td>
-                  <Link to={`/shipments/${r.shipment_id}`}>{r.job ? `Job ${r.job}` : r.mbl}</Link>
+                  <Link to={`/shipments/${r.shipment_id}`}>{r.job ? `Job ${r.job}` : "open"}</Link>
                 </td>
-                <td>{r.be_no ?? "—"}</td>
+                <td className="inv-no">{r.mbl ?? "—"}</td>
+                <td className="inv-no">{r.be_no ?? "—"}</td>
                 {r.not_applicable ? (
                   <td colSpan={4} className="num final-na">
                     Not applicable
@@ -234,7 +236,7 @@ function FinalRegister() {
           {all.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={7}>
+                <td colSpan={8}>
                   <strong>{totals.count} invoices</strong>
                 </td>
                 <td className="num">{inr(totals.taxable)}</td>
@@ -332,11 +334,12 @@ function ProformaRegister() {
                   onChange={() => setPicked(picked.size === all.length ? new Set() : new Set(all.map((r) => r.id)))}
                 />
               </th>
-              <th>Shipment</th>
+              <th>Job</th>
+              <th>BL No</th>
+              <th>BE No</th>
               <th>Version</th>
               <th>Date</th>
               <th>Bill to</th>
-              <th>BE</th>
               <th className="num">Grand total</th>
               <th>Status</th>
             </tr>
@@ -344,14 +347,14 @@ function ProformaRegister() {
           <tbody>
             {rows === null && (
               <tr>
-                <td colSpan={8} className="tracker-empty">
+                <td colSpan={9} className="tracker-empty">
                   Loading…
                 </td>
               </tr>
             )}
             {rows?.length === 0 && (
               <tr>
-                <td colSpan={8} className="tracker-empty">
+                <td colSpan={9} className="tracker-empty">
                   No proformas match.
                 </td>
               </tr>
@@ -374,14 +377,15 @@ function ProformaRegister() {
                   />
                 </td>
                 <td>
-                  <Link to={`/shipments/${r.shipment_id}`}>{r.job ? `Job ${r.job}` : r.mbl}</Link>
+                  <Link to={`/shipments/${r.shipment_id}`}>{r.job ? `Job ${r.job}` : "open"}</Link>
                 </td>
+                <td className="inv-no">{r.mbl ?? "—"}</td>
+                <td className="inv-no">{r.be_no ?? "—"}</td>
                 <td>
                   {r.role && <span className={`party-badge party-${r.role}`}>{r.role}</span>} {r.name || `v${r.version}`}
                 </td>
                 <td>{date(r.date)}</td>
                 <td>{r.bill_to ?? "—"}</td>
-                <td>{r.be_no ?? "—"}</td>
                 <td className="num">
                   <strong>{inr(r.grand_total)}</strong>
                 </td>
@@ -394,7 +398,7 @@ function ProformaRegister() {
           {all.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={6}>
+                <td colSpan={7}>
                   <strong>{all.length} proformas</strong>
                 </td>
                 <td className="num">

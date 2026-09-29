@@ -132,15 +132,17 @@ def statement(client: str, db: Session = Depends(get_db)):
     head = [_p(co["name"], 14, True, colors.HexColor("#D26B21")), _p(co["address"], 7.5), _p(co["tax_line"], 7.5),
             Spacer(1, 8), _p("STATEMENT OF ACCOUNT", 12, True), _p(f"{c['party']}   {c['gstin']}", 9, True),
             _p(f"As of {date.today():%d %b %Y}", 8), Spacer(1, 8)]
-    data = [[_p(h, 7.5, True) for h in ("Invoice", "Date", "Job", "Net payable", "Received", "TDS", "Outstanding", "Days")]]
+    data = [[_p(h, 7.5, True) for h in ("Invoice", "Date", "BE No", "BL No", "Net payable", "Received", "TDS",
+                                           "Outstanding", "Days")]]
     for i in c["invoices"]:
-        data.append([_p(i["number"] or "", 7.5), _p(i["invoice_date"] or "", 7.5), _p(i["job"] or "", 7.5),
+        data.append([_p(i["number"] or "", 7.5), _p(i["invoice_date"] or "", 7.5), _p(i["be_no"] or "", 7.5),
+                     _p(i["mbl"] or "", 7),
                      _p(inr(i["net_payable"]), 7.5), _p(inr(i["paid"]), 7.5), _p(inr(i["tds"]), 7.5),
                      _p(inr(i["outstanding"]), 7.5, True), _p(str(i["age_days"]), 7.5)])
-    data.append([_p("Total outstanding", 8, True), "", "", "", "", "", _p(inr(c["outstanding"]), 8.5, True), ""])
-    t = Table(data, colWidths=[WIDTH * f for f in (0.18, 0.12, 0.08, 0.14, 0.13, 0.1, 0.15, 0.1)], repeatRows=1)
+    data.append([_p("Total outstanding", 8, True), "", "", "", "", "", "", _p(inr(c["outstanding"]), 8.5, True), ""])
+    t = Table(data, colWidths=[WIDTH * f for f in (0.15, 0.1, 0.09, 0.15, 0.12, 0.11, 0.08, 0.13, 0.07)], repeatRows=1)
     t.setStyle(_style(("BACKGROUND", (0, 0), (-1, 0), HEAD_C), ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#DDD")),
-                      ("SPAN", (0, -1), (5, -1)), ("LINEABOVE", (0, -1), (-1, -1), 1, BAR_C)))
+                      ("SPAN", (0, -1), (6, -1)), ("LINEABOVE", (0, -1), (-1, -1), 1, BAR_C)))
     ageing = [[_p(k + " days", 7.5, True) for k in c["buckets"]], [_p(inr(v), 8) for v in c["buckets"].values()]]
     at = Table(ageing, colWidths=[WIDTH / 4] * 4)
     at.setStyle(_style(("BACKGROUND", (0, 0), (-1, 0), HEAD_C), ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#DDD"))))

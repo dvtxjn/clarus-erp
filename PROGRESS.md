@@ -728,3 +728,11 @@ The client will pick features they like from other software and feed them in. Re
   different stages, HSS, deadlines, Delhi ICD) — scripts/seed_sandbox.py; refuses unless SANDBOX=1 AND the database
   is named *sandbox*. Set up / update: `bash deploy/gcp/sandbox.sh` (`--reset` puts the sample data back).
 - Fix: client sections with few shipments no longer leave an empty block (AG Grid's 150 px minimum).
+- ✅ Tracker polish (2026-09-30): Group by (Client / Port / Stage / ETA week / None); filter chips above the table —
+  ports + "Deadline ≤ 3 days", "ETA this week", "Arrived, BE not filed", "Exceptions" (with counts); column filter row
+  behind a "Column filters" button; default widths fitted to the real data (layout key v6 — saved layouts reset once).
+- ✅ Every shipment-related table shows BE and BL (invoicing, proformas, outstanding, payments, statement, register,
+  dashboard) — standing rule.
+- NEXT (in order): P1 alerts ("d" deadlines, free days incl. Delhi FPOD, missing documents), P1 phone proforma, P5 FPOD
+  day count. Later: receipt agent. Skipped for now: Tally (with the accountant), reports, change history. P6: smaller
+  items + housekeeping.
