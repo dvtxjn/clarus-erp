@@ -1,6 +1,6 @@
 .env
 .venv/
 erp_dev.db
-storage/
+/storage/
 .local-credentials
 __pycache__/
