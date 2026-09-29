@@ -515,3 +515,32 @@ Visit the printed localhost URL, log in with the admin credentials above.
 The client will pick features they like from other software and feed them in. Record each one here with where it came from and why it's useful; don't build until prioritised.
 
 - (none yet)
+
+---
+
+## 📋 Where we are / what's left (2026-09-29, end of session)
+
+**Branches:** `main` has everything up to the live tracker. `storage/phase-7` (pushed) has Drive storage, pick-from-folder, auto folder finding, Commercial Invoice, digital/scanned, background adding, duplicate invoices, BE heading fix — **merge into main after the client checks folder finding**.
+
+**Waiting on the client**
+1. Try **Link Drive folders** (tracker) and **Find in Drive** / **Pick files from this folder** (Documents tab) with Google sign-in; report linked / to-check counts.
+2. Google service account (for server-side Drive saving + backups): Shared Drive or existing drive? key JSON file → `backend/secrets/`, share the drive/folder with it as **Contributor** (never Content manager), folder IDs → `backend/.env`, run `scripts/check_drive.py`.
+3. Scanned documents: client working on a fix (OCR). 5 of 15 current documents are scanned.
+4. Receipt samples (shipping line / CFS), redacted real PDFs (H8), Dynadot/Render accounts (H1, H2), backup encryption key.
+
+**Next to build (launch path)**
+- Phase 7 finish: switch `STORAGE_BACKEND=drive` once the key exists; a one-time upload of existing local documents; server uploads should go into the shipment's linked staff folder (not a separate ERP tree) — confirm with client.
+- Phase 8 backups: encrypted 12-hourly `pg_dump` to Drive `Backups` (no pruning — never delete), manifest, restore script + drill, red banner when stale.
+- Phase 9 production readiness: CORS lock-down, secure settings check, login rate limit, `AUTO_MIGRATE=0` + `pre_migration_backup.sh` on deploy, uvicorn `--timeout-graceful-shutdown 3`.
+- Phase 10 deploy on Render + domain + soft launch (Google Sheet stays reference, then cut-over).
+- Phase 3 (deferred): safe invoice numbering — before the app issues real invoice numbers (LiveImpex for now).
+
+**Improvements noted (not started)**
+- Google Sheets mirror of the tracker (client wanted the tracker also saved in Sheets).
+- ERP-created shipment Drive folders (later; staff create them for now).
+- Live updates on the shipment detail page / proforma panel (tracker is live already); proforma line version + 409.
+- Server-side document queue (survives closing the tab); OCR for scanned PDFs.
+- Invoices section + numbering (September through LiveImpex).
+- Design refresh: left sidebar, full 1920×1080 use, Linear-like minimal look, maybe a new accent colour.
+- Feature ideas from other software (client will send).
+- Test/cleanup: SQLite still works as a fallback; `docs/TWO_BROWSER_TEST.md` for manual multi-user checks.
