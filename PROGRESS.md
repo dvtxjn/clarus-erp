@@ -616,3 +616,14 @@ The client will pick features they like from other software and feed them in. Re
 - **Data move:** Cloud Run Job `erp-import` (`scripts/import_from_drive.sh`) restores the newest Drive backup into the empty Cloud SQL database (`restore.py --from-drive latest`; tested on this Mac — every table matched). Take a fresh backup on the Mac (`scripts/backup.py`) right before running setup. `create_admin.py DISABLE_DEFAULT_USERS=1` switches off admin@example.com / importmanager@example.com (not deleted).
 - Image now has `postgresql-client-18` (same major as Cloud SQL 18 and Postgres.app 18). `render.yaml` removed.
 - **Waiting on the client:** billing account (India, Business, GSTIN) linked to `clarus-erp`; then run setup in Cloud Shell; then the DNS record at the domain provider; then add `https://erp.claruslogistics.in` to the OAuth client's JavaScript origins and the API key's websites.
+
+## ✅ Live on Google Cloud (2026-09-29)
+- App: https://clarus-erp-46om5fompq-as.a.run.app → https://erp.claruslogistics.in (domain verified in Search Console,
+  CNAME `erp` → ghs.googlehosted.com at Dynadot; Google issues the certificate automatically).
+- Data copied from the newest encrypted Drive backup; divit@ is admin; test logins switched off; impdoc@ added.
+- Fixes found on the way: `backend/.gitignore` `storage/` hid `app/storage/` from git (now `/storage/`);
+  base image pinned to `python:3.11-slim-bookworm` (pg client 18 repo); `--no-invoker-iam-check` because the
+  Workspace org policy blocks `allUsers`.
+- Picker origins + API key restrictions include both addresses.
+- To do: delete `first-admin-password` secret · rotate `job-token` (was printed in the setup output) ·
+  ₹3,000/month budget alert · soft launch alongside the sheet.
