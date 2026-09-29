@@ -20,7 +20,7 @@ OPTIONAL = ("INSURANCE", "HBL_COPY", "HSS_AGREEMENT", "STAMP_DUTY", "FTA_CERTIFI
 
 def upgrade() -> None:
     op.get_bind().execute(
-        sa.text("UPDATE required_documents SET optional=1 WHERE document_type IN :types").bindparams(
+        sa.text("UPDATE required_documents SET optional=TRUE WHERE document_type IN :types").bindparams(
             sa.bindparam("types", expanding=True)),
         {"types": list(OPTIONAL)},
     )
@@ -28,7 +28,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.get_bind().execute(
-        sa.text("UPDATE required_documents SET optional=0 WHERE document_type IN :types").bindparams(
+        sa.text("UPDATE required_documents SET optional=FALSE WHERE document_type IN :types").bindparams(
             sa.bindparam("types", expanding=True)),
         {"types": list(OPTIONAL)},
     )

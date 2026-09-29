@@ -34,7 +34,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     for role, lines in MAHRISHI.items():
         conn.execute(sa.text("INSERT INTO pricing_rules (name, importer_name, bill_to_role, lines, is_active) "
-                             "VALUES (:n, 'MAHRISHI RECYCLERS', :r, :l, 1)"),
+                             "VALUES (:n, 'MAHRISHI RECYCLERS', :r, :l, TRUE)"),
                      {"n": f"Mahrishi HSS — {role} copy", "r": role, "l": json.dumps(lines)})
 
 

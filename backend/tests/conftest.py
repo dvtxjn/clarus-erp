@@ -3,8 +3,20 @@ import os
 import tempfile
 
 # Isolated DB per test run — must be set before app modules are imported.
-_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-os.environ["DATABASE_URL"] = f"sqlite:///{_db.name}"
+# TEST_DATABASE_URL=postgresql://... runs the suite on Postgres (the database is
+# wiped first, so never point it at real data); otherwise a throwaway SQLite file.
+_pg = os.environ.get("TEST_DATABASE_URL")
+if _pg:
+    if "test" not in _pg.rsplit("/", 1)[-1]:
+        raise RuntimeError("TEST_DATABASE_URL must name a database with 'test' in it")
+    import sqlalchemy as _sa
+
+    with _sa.create_engine(_pg).begin() as _c:
+        _c.execute(_sa.text("DROP SCHEMA public CASCADE; CREATE SCHEMA public"))
+    os.environ["DATABASE_URL"] = _pg
+else:
+    _db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    os.environ["DATABASE_URL"] = f"sqlite:///{_db.name}"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
 os.environ["DOCUMENT_STORAGE_ROOT"] = tempfile.mkdtemp(prefix="erp-test-docs-")
 

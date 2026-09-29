@@ -1,0 +1,17 @@
+# Local Postgres for development (Phase 0). Data lives in the named volume,
+# so `docker compose down` keeps it; only `down -v` erases it.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp-local-only
+      POSTGRES_DB: erp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - erp_pgdata:/var/lib/postgresql/data
+
+volumes:
+  erp_pgdata:

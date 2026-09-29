@@ -27,7 +27,7 @@ def upgrade() -> None:
             conn.execute(sa.text("INSERT INTO audit_log_entries (table_name, record_id, field_name, old_value, new_value) "
                                  "VALUES ('shipments', :i, 'mbl/hbl split', :o, :n)"),
                          {"i": sid, "o": mbl, "n": f"{parts[0]} | {'/'.join(parts[1:])}"})
-    conn.execute(sa.text("UPDATE tracker_columns SET is_removed=0 WHERE key='hbl'"))
+    conn.execute(sa.text("UPDATE tracker_columns SET is_removed=FALSE WHERE key='hbl'"))
 
 
 def downgrade() -> None:

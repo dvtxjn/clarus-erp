@@ -52,7 +52,7 @@ def upgrade() -> None:
             continue
         conn.execute(sa.text(
             "INSERT INTO charge_master_entries (name, code, sac_code, gst_rate, calculation_basis, category, "
-            "default_rate, is_active) VALUES (:n, :c, '996713', :g, :b, 'REIMBURSEMENT', :r, 1)"),
+            "default_rate, is_active) VALUES (:n, :c, '996713', :g, :b, 'REIMBURSEMENT', :r, TRUE)"),
             {"n": name, "c": code, "g": gst, "b": basis, "r": rate})
 
 

@@ -25,7 +25,7 @@ def upgrade() -> None:
             if not conn.execute(sa.text("SELECT 1 FROM required_documents WHERE hs_code_id=:h AND document_type=:t"),
                                 {"h": hs_id, "t": t}).first():
                 conn.execute(sa.text("INSERT INTO required_documents (hs_code_id, document_type, optional) "
-                                     "VALUES (:h, :t, 1)"), {"h": hs_id, "t": t})
+                                     "VALUES (:h, :t, TRUE)"), {"h": hs_id, "t": t})
 
 
 def downgrade() -> None:

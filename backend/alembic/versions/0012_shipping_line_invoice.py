@@ -27,7 +27,7 @@ def upgrade() -> None:
             {"h": hs_id}).first()
         if not exists:
             conn.execute(sa.text("INSERT INTO required_documents (hs_code_id, document_type, optional) "
-                                 "VALUES (:h, 'SHIPPING_LINE_INVOICE', 0)"), {"h": hs_id})
+                                 "VALUES (:h, 'SHIPPING_LINE_INVOICE', FALSE)"), {"h": hs_id})
 
 
 def downgrade() -> None:

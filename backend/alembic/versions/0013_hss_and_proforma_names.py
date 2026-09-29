@@ -28,7 +28,7 @@ def upgrade() -> None:
     for sid, consignee in conn.execute(sa.text("SELECT id, consignee FROM shipments WHERE consignee LIKE '%-%'")).fetchall():
         seller, buyer = (p.strip() for p in consignee.split("-", 1))
         if seller and buyer:
-            conn.execute(sa.text("UPDATE shipments SET is_hss=1, hss_seller=:s, hss_buyer=:b WHERE id=:i"),
+            conn.execute(sa.text("UPDATE shipments SET is_hss=TRUE, hss_seller=:s, hss_buyer=:b WHERE id=:i"),
                          {"s": seller, "b": buyer, "i": sid})
     # existing proformas are addressed to the consignee
     conn.execute(sa.text("UPDATE proformas SET bill_to = (SELECT consignee FROM shipments WHERE shipments.id = proformas.shipment_id)"))

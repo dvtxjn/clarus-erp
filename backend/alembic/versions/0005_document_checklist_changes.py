@@ -29,12 +29,12 @@ def upgrade() -> None:
     for (hs_id,) in conn.execute(sa.text(
             "SELECT DISTINCT hs_code_id FROM required_documents WHERE document_type IN ('FORM_6','FORM_9')")).fetchall():
         conn.execute(sa.text("DELETE FROM required_documents WHERE hs_code_id=:h AND document_type IN ('FORM_6','FORM_9')"), {"h": hs_id})
-        conn.execute(sa.text("INSERT INTO required_documents (hs_code_id, document_type, optional) VALUES (:h, 'FORM_6_9', 0)"), {"h": hs_id})
+        conn.execute(sa.text("INSERT INTO required_documents (hs_code_id, document_type, optional) VALUES (:h, 'FORM_6_9', FALSE)"), {"h": hs_id})
     for (hs_id,) in conn.execute(sa.text(
             "SELECT DISTINCT hs_code_id FROM required_documents WHERE document_type = 'HSS_STAMP_DUTY'")).fetchall():
         conn.execute(sa.text("UPDATE required_documents SET document_type='HSS_AGREEMENT' WHERE hs_code_id=:h AND document_type='HSS_STAMP_DUTY'"), {"h": hs_id})
-        conn.execute(sa.text("INSERT INTO required_documents (hs_code_id, document_type, optional) VALUES (:h, 'STAMP_DUTY', 0)"), {"h": hs_id})
-    conn.execute(sa.text("UPDATE required_documents SET optional=1 WHERE document_type='EMPTY_LETTER'"))
+        conn.execute(sa.text("INSERT INTO required_documents (hs_code_id, document_type, optional) VALUES (:h, 'STAMP_DUTY', FALSE)"), {"h": hs_id})
+    conn.execute(sa.text("UPDATE required_documents SET optional=TRUE WHERE document_type='EMPTY_LETTER'"))
 
 
 def downgrade() -> None:
