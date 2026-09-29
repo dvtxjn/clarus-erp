@@ -10,6 +10,8 @@ Rules
   - App-only data is never touched (documents, proformas, invoices, challans, HSS
     parties set by hand, paid-by-us switches, amounts).
   - Shipments not in the CSV are flagged (Shipment.missing_from_sheet_at), never deleted.
+  - A row matching a shipment deleted in the app is skipped (not re-created): the admin
+    restores it from Recently deleted if the delete was a mistake.
   - Matching: MBL, then HBL, then BE No, then Job No; the last two are marked
     "check" in the preview. An "MBL/HBL" cell is split at the "/" (or an HBL column is used).
   - Status follows the evidence rules (status_rules); "billed?" Yes bills the shipment,
@@ -123,7 +125,7 @@ def _has_doc(s: Shipment, *types: DocumentType) -> bool:
 
 def plan(db: Session, rows: list[dict]) -> dict:
     """What an import would do — nothing is written."""
-    ships = db.query(Shipment).all()
+    ships = db.query(Shipment).execution_options(include_deleted=True).all()
     by_mbl, by_hbl, by_be, by_job = {}, {}, {}, {}
     for s in ships:
         m, h = split_mbl(s.mbl)
@@ -136,7 +138,7 @@ def plan(db: Session, rows: list[dict]) -> dict:
         if s.job:
             by_job.setdefault(_key(s.job), []).append(s)
 
-    new, updated, unchanged, seen = [], [], 0, set()
+    new, updated, unchanged, seen, deleted = [], [], 0, set(), []
     for r in rows:
         s, how = None, None
         for how_, table, k in (("MBL", by_mbl, _key(r["mbl"])), ("HBL", by_hbl, _key(r.get("hbl"))),
@@ -155,6 +157,9 @@ def plan(db: Session, rows: list[dict]) -> dict:
                         "consignee": r.get("consignee")})
             continue
         seen.add(s.id)
+        if s.is_deleted:
+            deleted.append(f"Row {r['_row']}: {s.mbl or s.job} was deleted in the app — restore it to update it")
+            continue
         has_be = _has_doc(s, DocumentType.ASSESSED_BILL_OF_ENTRY, DocumentType.OOC_BILL_OF_ENTRY)
         has_ooc = _has_doc(s, DocumentType.OOC_BILL_OF_ENTRY)
         changes, kept = [], []
@@ -178,8 +183,9 @@ def plan(db: Session, rows: list[dict]) -> dict:
         else:
             unchanged += 1
     missing = [{"shipment_id": s.id, "job": s.job, "mbl": s.mbl, "consignee": s.consignee}
-               for s in ships if s.id not in seen]
-    return {"rows": len(rows), "new": new, "updated": updated, "unchanged": unchanged, "missing": missing}
+               for s in ships if s.id not in seen and not s.is_deleted]
+    return {"rows": len(rows), "new": new, "updated": updated, "unchanged": unchanged, "missing": missing,
+            "deleted": deleted}
 
 
 def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:

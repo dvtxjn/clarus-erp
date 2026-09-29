@@ -9,6 +9,7 @@ from typing import Optional
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.core.database import Base
+from app.models.soft_delete import SoftDeleteMixin
 from app.core.enums import ShipmentStatus
 
 
@@ -36,7 +37,7 @@ def split_hss(consignee):
 CFS_TDS_RATE = Decimal("0.02")
 
 
-class Shipment(Base):
+class Shipment(SoftDeleteMixin, Base):
     """
     Core shipment record. Field list is the confirmed 26-field set from
     spec §2.1/§2.2, plus a few structural additions called out explicitly

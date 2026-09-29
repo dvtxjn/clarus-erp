@@ -1,9 +1,11 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.migrate import run_migrations
 from app import models  # noqa: F401 — populates Base.metadata
-from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import
+from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted
 
 app = FastAPI(title="Customs Clearance ERP API", version="0.1.0")
 
@@ -26,11 +28,15 @@ app.include_router(tracker_columns.router)
 app.include_router(challans.router)
 app.include_router(final_invoices.router)
 app.include_router(tracker_import.router)
+app.include_router(deleted.router)
 
 
 @app.on_event("startup")
 def on_startup():
-    run_migrations()
+    # Production sets AUTO_MIGRATE=0 and runs scripts/pre_migration_backup.sh instead,
+    # so the database is dumped before every schema change.
+    if os.getenv("AUTO_MIGRATE", "1") != "0":
+        run_migrations()
 
 
 @app.get("/health")

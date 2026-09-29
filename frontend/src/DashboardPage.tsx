@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDashboardSummary } from "./api";
 import DailyUpdates from "./DailyUpdates";
+import { useAuth } from "./AuthContext";
 import { formatPort, usePorts } from "./ports";
 import { SHIPMENT_STATUS_LABELS, type DashboardSummary, type ShipmentStatus } from "./types";
 
@@ -19,6 +20,7 @@ const PIPELINE_ORDER: ShipmentStatus[] = [
 
 export default function DashboardPage() {
   const ports = usePorts();
+  const isAdmin = useAuth().user?.role === "admin";
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,7 +37,7 @@ export default function DashboardPage() {
     <div className="dashboard-page">
       <h1>Tracker Dashboard</h1>
 
-      <DailyUpdates />
+      {isAdmin && <DailyUpdates /> /* challans + organisations feed invoicing: admin-only */}
 
       <div className="stat-row">
         <div className="stat-card">

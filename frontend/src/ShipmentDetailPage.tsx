@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "./AuthContext";
 import { useParams, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion, updateShipment } from "./api";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
@@ -31,6 +32,7 @@ export default function ShipmentDetailPage() {
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
+  const isAdmin = useAuth().user?.role === "admin"; // invoicing is admin-only
 
   const reload = useCallback(() => getShipment(shipmentId).then(setShipment), [shipmentId]);
 
@@ -89,14 +91,16 @@ export default function ShipmentDetailPage() {
         <button className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
           Documents
         </button>
-        <button className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
-          Proforma &amp; Billing
-        </button>
+        {isAdmin && (
+          <button className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
+            Proforma &amp; Billing
+          </button>
+        )}
       </div>
 
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} />}
-      {tab === "proforma" && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
+      {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
     </div>
   );
 }

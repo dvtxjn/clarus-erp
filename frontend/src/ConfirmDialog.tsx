@@ -12,6 +12,9 @@ interface ConfirmOptions {
   message: string;
   confirmLabel?: string;
   danger?: boolean;
+  /** Show a text box (e.g. "Reason"); its value is passed to onInput when confirmed. */
+  inputLabel?: string;
+  onInput?: (value: string) => void;
 }
 
 type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
@@ -20,13 +23,19 @@ const ConfirmContext = createContext<ConfirmFn | null>(null);
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null);
   const confirmBtn = useRef<HTMLButtonElement>(null);
+  const [text, setText] = useState("");
 
   const confirm = useCallback<ConfirmFn>(
-    (opts) => new Promise<boolean>((resolve) => setPending({ ...opts, resolve })),
+    (opts) =>
+      new Promise<boolean>((resolve) => {
+        setText("");
+        setPending({ ...opts, resolve });
+      }),
     [],
   );
 
   function close(ok: boolean) {
+    if (ok) pending?.onInput?.(text.trim());
     pending?.resolve(ok);
     setPending(null);
   }
@@ -57,6 +66,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           >
             <h2 id="confirm-title">{pending.title ?? "Are you sure?"}</h2>
             <p id="confirm-message">{pending.message}</p>
+            {pending.inputLabel && (
+              <label className="confirm-input">
+                {pending.inputLabel}
+                <input value={text} onChange={(e) => setText(e.target.value)} />
+              </label>
+            )}
             <div className="confirm-actions">
               <button type="button" className="btn-secondary" onClick={() => close(false)}>
                 Cancel

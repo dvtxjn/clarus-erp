@@ -3,7 +3,7 @@ draft (every change audit-logged — this is what goes to the authorities), then
 (numbered + locked). See app/invoice/final.py."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
 from urllib.parse import quote
@@ -19,9 +19,11 @@ from app.invoice.final import TAX_TYPES, compute, create_from_proforma, issue
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
 from app.models.proforma import Proforma
+from app.models.soft_delete import soft_delete
 from app.models.user import User
 
-router = APIRouter(tags=["final invoices"])
+# Every route here is invoicing: admin-only, including reads (see require_billing_access)
+router = APIRouter(tags=["final invoices"], dependencies=[Depends(require_billing_access)])
 
 
 class FinalLine(BaseModel):
@@ -46,6 +48,10 @@ class FinalInvoiceUpdate(BaseModel):
     irn: Optional[str] = Field(default=None, max_length=100)
     ack_no: Optional[str] = Field(default=None, max_length=50)
     ack_date: Optional[str] = Field(default=None, max_length=30)
+
+
+class CancelIn(BaseModel):
+    reason: Optional[str] = None
 
 
 class CounterIn(BaseModel):
@@ -73,8 +79,9 @@ def create_final_invoices(proforma_id: int, db: Session = Depends(get_db),
     if issued:
         raise HTTPException(status_code=400, detail="Final invoices from this proforma are already issued — "
                                                     "cancel them first, or make a new proforma version.")
-    for old in db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id, FinalInvoice.status == "draft"):
-        db.delete(old)
+    for old in db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id, FinalInvoice.status == "draft").all():
+        record_change(db, "final_invoices", old.id, "deleted", old.kind, "replaced by a new draft", user.id)
+        soft_delete(db, old, user.id)
     created = create_from_proforma(db, proforma, user.id)
     if not created:
         raise HTTPException(status_code=400, detail="Nothing to invoice: no Billed by Clarus or paid-by-us charges on this proforma.")
@@ -155,12 +162,16 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
 
 
 @router.post("/final-invoices/{invoice_id}/cancel")
-def cancel_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+def cancel_final_invoice(invoice_id: int, payload: Optional[CancelIn] = None, db: Session = Depends(get_db),
+                         user: User = Depends(require_admin)):
     """Admin: cancel an issued invoice. It's kept, and its number is never reused."""
     inv = _get(db, invoice_id)
     if inv.status != "issued":
         raise HTTPException(status_code=400, detail="Only an issued invoice can be cancelled")
     inv.status = "cancelled"
+    inv.cancelled_at = datetime.now()
+    inv.cancelled_by_id = user.id
+    inv.cancel_reason = ((payload.reason if payload else None) or "").strip() or None
     record_change(db, "final_invoices", inv.id, "cancelled", inv.number, None, user.id)
     db.commit()
     return compute(inv)
@@ -172,7 +183,7 @@ def delete_final_draft(invoice_id: int, db: Session = Depends(get_db), user: Use
     if inv.status != "draft":
         raise HTTPException(status_code=400, detail="Only drafts can be deleted — cancel an issued invoice instead")
     record_change(db, "final_invoices", inv.id, "deleted", inv.kind, None, user.id)
-    db.delete(inv)
+    soft_delete(db, inv, user.id)  # never removed from the database (a trigger refuses DELETE)
     db.commit()
 
 

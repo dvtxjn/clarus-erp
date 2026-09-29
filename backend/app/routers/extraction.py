@@ -20,7 +20,8 @@ from app.schemas.extraction import (
     BatchScanOut, ChallanOut, OrganizationBase, OrganizationOut, OrgImportOut,
 )
 
-router = APIRouter(tags=["extraction"])
+# Every route here is invoicing: admin-only, including reads (see require_billing_access)
+router = APIRouter(tags=["extraction"], dependencies=[Depends(require_billing_access)])
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 

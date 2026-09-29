@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+from app.models.soft_delete import SoftDeleteMixin
 from app.core.enums import DocumentType
 
 
@@ -39,7 +40,7 @@ class RequiredDocument(Base):
     hs_code = relationship("HSCode", back_populates="required_documents")
 
 
-class ShipmentDocument(Base):
+class ShipmentDocument(SoftDeleteMixin, Base):
     """
     A single uploaded PDF, tagged with a document type, auto-renamed per
     the naming syntax in spec §3.2, and (where a mapping exists — see

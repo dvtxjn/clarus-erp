@@ -93,7 +93,7 @@ export default function DocumentManagerPanel({
   async function handleRemove(doc: ShipmentDocument) {
     const ok = await confirm({
       title: "Remove document?",
-      message: `Remove ${doc.generated_filename} from this shipment? The file is kept aside, not destroyed.`,
+      message: `Remove ${doc.generated_filename} from this shipment? It moves to Recently deleted — the admin can restore it.`,
       confirmLabel: "Remove",
       danger: true,
     });

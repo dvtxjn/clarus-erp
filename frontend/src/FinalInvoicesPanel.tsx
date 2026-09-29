@@ -165,13 +165,21 @@ function FinalInvoiceEditor({
     const texts = {
       issue: ["Issue this invoice?", "It gets the next invoice number and is locked — only IRN / ACK can be added after this.", "Issue"],
       cancel: ["Cancel this invoice?", "It stays on record as cancelled and its number is not reused.", "Cancel invoice"],
-      delete: ["Delete this draft?", "The draft and its changes are removed.", "Delete draft"],
+      delete: ["Delete this draft?", "The draft is moved to Recently deleted (the admin can restore it).", "Delete draft"],
     }[kind];
-    if (!(await confirm({ title: texts[0], message: texts[1], confirmLabel: texts[2], danger: kind !== "issue" }))) return;
+    let reason = "";
+    const ok = await confirm({
+      title: texts[0],
+      message: texts[1],
+      confirmLabel: texts[2],
+      danger: kind !== "issue",
+      ...(kind === "cancel" ? { inputLabel: "Reason (kept with the invoice)", onInput: (v: string) => (reason = v) } : {}),
+    });
+    if (!ok) return;
     try {
       if (dirty && kind === "issue") await save();
       if (kind === "issue") onChange(await issueFinalInvoice(inv.id));
-      if (kind === "cancel") onChange(await cancelFinalInvoice(inv.id));
+      if (kind === "cancel") onChange(await cancelFinalInvoice(inv.id, reason));
       if (kind === "delete") {
         await deleteFinalInvoice(inv.id);
         onDeleted();

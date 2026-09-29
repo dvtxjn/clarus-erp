@@ -9,6 +9,7 @@ from app.core.enums import ShipmentStatus, UserRole
 from app.invoice.autofill import refresh_draft_proformas
 from app.models.audit import AuditLogEntry
 from app.models.shipment import Shipment
+from app.models.soft_delete import soft_delete
 from app.models.tracker_column import TrackerColumn
 from app.models.user import User
 from app.schemas.shipment import ClientRename, ClientRenameOut, ValueRename, ShipmentCreate, ShipmentUpdate, ShipmentOut
@@ -216,13 +217,12 @@ def update_shipment(
 
 @router.delete("/{shipment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shipment(shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
-    """
-    Spec §2.4: non-admins can't delete directly — this endpoint is admin-only.
-    A "request deletion" approval-flow endpoint for non-admins is a TODO,
-    see PROGRESS.md — not yet built.
-    """
+    """Admin only. Soft delete: the shipment (with its documents, proformas and
+    invoices) disappears everywhere but stays in the database; the admin can restore
+    it from Recently deleted."""
     shipment = _get_shipment_or_404(db, shipment_id)
-    db.delete(shipment)
+    record_change(db, "shipments", shipment.id, "deleted", shipment.mbl, None, current_user.id)
+    soft_delete(db, shipment, current_user.id)
     db.commit()
 
 

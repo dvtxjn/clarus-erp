@@ -543,6 +543,7 @@ input {
 .confirm-backdrop { position: fixed; inset: 0; background: rgba(42, 36, 32, .35); display: grid; place-items: center; z-index: 100; padding: 16px; }
 .confirm-dialog { background: var(--color-surface); border-radius: 12px; padding: 20px 22px; width: min(420px, 100%); box-shadow: 0 20px 50px rgba(0, 0, 0, .2); }
 .confirm-dialog h2 { margin: 0 0 8px; font-size: 16px; }
+.confirm-input { display: flex; flex-direction: column; gap: 4px; font-size: 13px; margin: -6px 0 16px; }
 .confirm-dialog p { margin: 0 0 18px; font-size: 14px; color: var(--color-text-muted); line-height: 1.45; }
 .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .btn-danger { background: var(--color-danger); border-color: var(--color-danger); color: #fff; }

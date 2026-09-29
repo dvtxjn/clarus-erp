@@ -72,7 +72,7 @@ export default function ProformaPanel({
     if (!active || active.status !== "draft") return;
     const ok = await confirm({
       title: "Delete draft?",
-      message: `Delete draft "${active.name || `v${active.version_number}`}"${active.line_items.length ? ` and its ${active.line_items.length} line item(s)` : ""}? This can't be undone.`,
+      message: `Delete draft "${active.name || `v${active.version_number}`}"${active.line_items.length ? ` and its ${active.line_items.length} line item(s)` : ""}? It moves to Recently deleted — the admin can restore it.`,
       confirmLabel: "Delete draft",
       danger: true,
     });

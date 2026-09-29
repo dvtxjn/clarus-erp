@@ -27,7 +27,8 @@ from app.models.organization import OrganizationEntry
 from app.models.shipment import Shipment
 from app.models.user import User
 
-router = APIRouter(tags=["duty challans"])
+# Every route here is invoicing: admin-only, including reads (see require_billing_access)
+router = APIRouter(tags=["duty challans"], dependencies=[Depends(require_billing_access)])
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 

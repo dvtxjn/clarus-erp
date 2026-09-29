@@ -38,7 +38,7 @@ Skipped for launch: Phase 5 (hide Ctrl+Z undo instead), weekly/monthly backup ti
 | # | Phase | Status |
 |---|---|---|
 | 0 | Postgres locally + move existing data | [x] 2026-09-29 |
-| 1 | Data-safety rules (soft delete, locked invoices, permanent audit) | [ ] |
+| 1 | Data-safety rules (soft delete, locked invoices, permanent audit) | [x] Fast Track scope, 2026-09-29 |
 | 2 | Conflict protection on tracker edits | [ ] |
 | 3 | Safe invoice numbering + one-shot actions | [ ] |
 | 4 | Locking for uploads, autofill, challans, CSV import, proformas | [ ] |

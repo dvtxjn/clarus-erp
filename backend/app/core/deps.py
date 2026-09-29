@@ -35,9 +35,11 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
 
 
 def require_billing_access(current_user: User = Depends(get_current_user)) -> User:
-    """Spec §2.4: Proforma & Billing module access is permission-gated per user."""
-    if current_user.role != UserRole.ADMIN and not current_user.can_access_billing:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Billing module access required")
+    """Invoicing (proformas, final invoices, rates, licences, HSS rules, duty challans,
+    the organisation list) is admin-only — not even viewable by anyone else (client,
+    2026-09-29). The per-user can_access_billing flag no longer grants anything."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invoicing is admin-only")
     return current_user
 
 

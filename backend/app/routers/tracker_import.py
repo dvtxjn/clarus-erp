@@ -29,7 +29,8 @@ async def _rows(file: UploadFile):
 async def preview(file: UploadFile = File(...), db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     """What the import would do — nothing is saved."""
     rows, unknown, skipped = await _rows(file)
-    return {**plan(db, rows), "unknown_columns": unknown, "skipped": skipped}
+    p = plan(db, rows)
+    return {**p, "unknown_columns": unknown, "skipped": skipped + p.pop("deleted")}
 
 
 @router.post("/apply")
@@ -42,4 +43,4 @@ async def apply_import(file: UploadFile = File(...), db: Session = Depends(get_d
                   f"{file.filename}: {len(result['new'])} new, {len(result['updated'])} updated, "
                   f"{len(result['missing'])} flagged missing", admin.id)
     db.commit()
-    return {**result, "unknown_columns": unknown, "skipped": skipped}
+    return {**result, "unknown_columns": unknown, "skipped": skipped + result.pop("deleted")}

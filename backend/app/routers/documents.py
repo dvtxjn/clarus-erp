@@ -18,6 +18,7 @@ from decimal import Decimal
 from app.core.enums import DocumentType
 from app.models.shipment import Shipment
 from app.models.document import ShipmentDocument
+from app.models.soft_delete import soft_delete
 from app.models.user import User
 from app.schemas.document import ShipmentDocumentOut, DocumentChecklistItem, InvoiceAmountsIn, CostInclusionIn
 from app.invoice.autofill import refresh_draft_proformas
@@ -138,10 +139,11 @@ def reread_document(shipment_id: int, document_id: int, db: Session = Depends(ge
 @router.delete("/{document_id}", status_code=204)
 def remove_document(shipment_id: int, document_id: int, db: Session = Depends(get_db),
                     current_user: User = Depends(require_admin)):
-    """Take a document off the shipment (admin only — spec §2.4). The file isn't
-    destroyed: it's moved to <storage>/_removed/<shipment id>/ and the removal is
-    recorded in the change history. Shipment fields it filled in stay as they are.
-    A copy saved in Google Drive is not touched."""
+    """Take a document off the shipment (admin only — spec §2.4). Soft delete: the
+    record stays (restorable from Recently deleted) and the file is moved to
+    <storage>/_removed/<shipment id>/ so a new upload can't overwrite it. Recorded in
+    the change history. Shipment fields it filled in stay as they are. A copy saved in
+    Google Drive is not touched."""
     shipment = _get_shipment(db, shipment_id, current_user)
     doc = db.query(ShipmentDocument).filter(ShipmentDocument.id == document_id,
                                             ShipmentDocument.shipment_id == shipment.id).first()
@@ -153,10 +155,11 @@ def remove_document(shipment_id: int, document_id: int, db: Session = Depends(ge
         removed_dir.mkdir(parents=True, exist_ok=True)
         dest = removed_dir / f"{doc.id} - {src.name}"
         shutil.move(str(src), dest)
+        doc.file_path = str(dest)
     record_change(db, "shipment_documents", doc.id, "removed",
                   f"{doc.document_type.value}: {doc.generated_filename}", None, current_user.id)
     was_invoice = doc.document_type in INVOICE_DOC_TYPES
-    db.delete(doc)
+    soft_delete(db, doc, current_user.id)
     if was_invoice:  # CFS / shipping line totals are sums of the remaining invoices
         recompute_invoice_totals(db, shipment, current_user.id)
     refresh_draft_proformas(db, shipment)

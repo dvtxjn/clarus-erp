@@ -4,9 +4,10 @@ from sqlalchemy import JSON, Column, Date, DateTime, ForeignKey, Integer, Numeri
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.models.soft_delete import SoftDeleteMixin
 
 
-class FinalInvoice(Base):
+class FinalInvoice(SoftDeleteMixin, Base):
     """
     The invoice that goes to the client and the authorities, made from a proforma
     (client, 2026-09-28). Two kinds, numbered as a pair in one series per financial year:
@@ -40,6 +41,9 @@ class FinalInvoice(Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.now)
     issued_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancelled_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    cancel_reason = Column(String, nullable=True)
 
     shipment = relationship("Shipment")
 

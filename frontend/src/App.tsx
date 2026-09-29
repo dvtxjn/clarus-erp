@@ -8,11 +8,19 @@ import DashboardPage from "./DashboardPage";
 import ShipmentGridPage from "./ShipmentGridPage";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import RatesPage from "./RatesPage";
+import DeletedPage from "./DeletedPage";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="tracker-empty">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** Invoicing and Recently deleted are admin-only (the API refuses everyone else too). */
+function AdminRoute({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  if (user?.role !== "admin") return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -33,7 +41,8 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/shipments" element={<ShipmentGridPage />} />
             <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
-            <Route path="/rates" element={<RatesPage />} />
+            <Route path="/rates" element={<AdminRoute><RatesPage /></AdminRoute>} />
+            <Route path="/deleted" element={<AdminRoute><DeletedPage /></AdminRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

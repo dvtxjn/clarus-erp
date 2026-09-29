@@ -21,6 +21,22 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ✅ Launch Phase 1 (Fast Track) — data-safety rules (2026-09-29, branch `safety/phase-1`)
+
+- **Invoicing is admin-only, including viewing** (client, 2026-09-29: "nobody else can even access view"). `require_billing_access` now means role = admin; the per-user `can_access_billing` flag grants nothing. Applied at router level to `proforma`, `final_invoices`, `challans`, `extraction` (orgs) — every route, reads included. Frontend hides Rates, Recently deleted, the Proforma & Billing tab and the Daily updates (challans / organisations) cards for non-admins; `/rates` and `/deleted` redirect them.
+- **Soft delete** (`app/models/soft_delete.py`): `deleted_at` / `deleted_by_id` on shipments, shipment_documents, proformas, final_invoices. A session-wide `do_orm_execute` filter hides deleted rows from every ORM query, relationship load and `db.get`; `.execution_options(include_deleted=True)` to see them. `soft_delete(db, obj, user)` flushes and expires the session (already-loaded collections held the row).
+  - Delete shipment / Remove document / Delete draft proforma / Delete draft final invoice (and drafts replaced on re-create) all soft-delete + audit. Removed files still move to `storage/_removed/<shipment>/` and `file_path` follows them.
+  - Proforma version numbers count deleted drafts (never reused).
+  - Tracker CSV import: a row matching a deleted shipment is skipped with a note (not re-created, not flagged missing).
+- **Recently deleted** (admin): `GET /deleted`, `POST /deleted/{kind}/{id}/restore` + page `/deleted`. A document/proforma/invoice of a deleted shipment needs the shipment restored first; a draft invoice can't come back if its proforma already has a draft/issued one of that kind. Restoring an invoice document recalculates CFS / line totals and refreshes drafts.
+- **Issued invoices locked in the database** (migration 0026): Postgres trigger `final_invoice_guard` / SQLite triggers. DELETE always refused (drafts too — they soft-delete). Issued: only `irn`, `ack_no`, `ack_date` change, plus issued → cancelled. Cancelled: frozen. Cancel records `cancelled_at`, `cancelled_by_id`, `cancel_reason` (reason box in the cancel dialog).
+- **`backend/scripts/pre_migration_backup.sh`**: `pg_dump` → check non-empty + `pg_restore --list` → `alembic upgrade head`; stops on any failure. `AUTO_MIGRATE=0` turns off migrate-on-startup (production must set it). `backups/` is gitignored.
+- **Audit log:** nothing purges it (Fast Track: keep every row). Not built yet (Later): `keep_forever` + purge job, APScheduler, soft delete for other tables.
+- Note: 0026 reached the local `erp_db` via the dev server's auto-reload before a dump was taken (additive only; dump taken right after in `backend/backups/manual/`). Lesson: write migrations to the scratchpad, stop or dump, then move them in.
+- Tests: `tests/test_data_safety.py` (8). 86/86 pass on SQLite and Postgres.
+
+---
+
 ## ✅ Launch Phase 0 — Postgres locally + data moved (2026-09-29, branch `infra/postgres`)
 
 - **Local Postgres:** Postgres.app (v18) on this Mac. Role `erp`, databases `erp_db` (the app) and `erp_test` (wiped by every test run). `backend/.env` now points `DATABASE_URL` at `erp_db`; `erp_dev.db` (SQLite) is kept untouched as a fallback. `docker-compose.yml` (Postgres 16) is there for machines with Docker.

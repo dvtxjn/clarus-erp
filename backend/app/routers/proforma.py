@@ -19,6 +19,7 @@ from app.models.organization import OrganizationEntry
 from app.models.licence import Licence
 from app.models.pricing_rule import PricingRule
 from app.models.proforma import Proforma, ProformaLineItem
+from app.models.soft_delete import soft_delete
 from app.models.shipment import Shipment
 from app.models.user import User
 from app.schemas.proforma import (
@@ -39,7 +40,8 @@ from app.schemas.proforma import (
     RestoreIn,
 )
 
-router = APIRouter(tags=["proforma"])
+# Every route here is invoicing: admin-only, including reads (see require_billing_access)
+router = APIRouter(tags=["proforma"], dependencies=[Depends(require_billing_access)])
 
 
 @router.get("/charge-master", response_model=list[ChargeMasterOut])
@@ -223,8 +225,9 @@ def create_proforma(
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
 
-    last = (
-        db.query(Proforma).filter(Proforma.shipment_id == shipment_id).order_by(Proforma.version_number.desc()).first()
+    last = (  # deleted drafts count too: a version number is never reused
+        db.query(Proforma).filter(Proforma.shipment_id == shipment_id).order_by(Proforma.version_number.desc())
+        .execution_options(include_deleted=True).first()
     )
     next_version = (last.version_number + 1) if last else 1
 
@@ -474,7 +477,7 @@ def delete_draft_proforma(
 ):
     """Delete a DRAFT proforma version (e.g. one started by mistake). Sent /
     superseded versions are the record of what went to the client, so they
-    can't be deleted. Recorded in the change history."""
+    can't be deleted. Soft delete (restorable by the admin); recorded in the change history."""
     proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
@@ -482,7 +485,7 @@ def delete_draft_proforma(
         raise HTTPException(status_code=400, detail="Only draft versions can be deleted — sent ones are kept as history.")
     record_change(db, "proformas", proforma.id, "deleted",
                   f"v{proforma.version_number} draft, {len(proforma.line_items)} line item(s)", None, current_user.id)
-    db.delete(proforma)
+    soft_delete(db, proforma, current_user.id)
     db.commit()
 
 

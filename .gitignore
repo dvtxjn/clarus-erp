@@ -21,3 +21,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 .claude/
+
+# database dumps (pre-migration and backups) — never in git
+backups/

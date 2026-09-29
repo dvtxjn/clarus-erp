@@ -19,10 +19,16 @@ export default function AppLayout() {
             <NavLink to="/shipments" className={({ isActive }) => (isActive ? "active" : "")}>
               Shipments
             </NavLink>
-            {user?.can_access_billing && (
-              <NavLink to="/rates" className={({ isActive }) => (isActive ? "active" : "")}>
-                Rates
-              </NavLink>
+            {/* Invoicing is admin-only (client, 2026-09-29) */}
+            {user?.role === "admin" && (
+              <>
+                <NavLink to="/rates" className={({ isActive }) => (isActive ? "active" : "")}>
+                  Rates
+                </NavLink>
+                <NavLink to="/deleted" className={({ isActive }) => (isActive ? "active" : "")}>
+                  Recently deleted
+                </NavLink>
+              </>
             )}
           </nav>
         </div>

@@ -6,10 +6,11 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.core.database import Base
+from app.models.soft_delete import SoftDeleteMixin
 from app.core.enums import ChargeCategory, ProformaStatus
 
 
-class Proforma(Base):
+class Proforma(SoftDeleteMixin, Base):
     """
     Spec §5.2: every revision is a NEW record against the same shipment —
     full version history retained, never overwritten. Spec §5.1's

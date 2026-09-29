@@ -147,8 +147,8 @@ export async function issueFinalInvoice(id: number): Promise<FinalInvoice> {
   return data;
 }
 
-export async function cancelFinalInvoice(id: number): Promise<FinalInvoice> {
-  const { data } = await client.post(`/final-invoices/${id}/cancel`);
+export async function cancelFinalInvoice(id: number, reason?: string): Promise<FinalInvoice> {
+  const { data } = await client.post(`/final-invoices/${id}/cancel`, { reason: reason || null });
   return data;
 }
 
@@ -474,4 +474,25 @@ export async function importOrganizations(file: File): Promise<{ created: number
   form.append("file", file);
   const { data } = await client.post("/organizations/import", form);
   return data;
+}
+
+// --- Recently deleted (admin) ---
+export interface DeletedItem {
+  kind: "shipment" | "document" | "proforma" | "final_invoice";
+  id: number;
+  label: string;
+  shipment_id: number | null;
+  shipment: string | null;
+  shipment_deleted: boolean;
+  deleted_at: string;
+  deleted_by: string | null;
+}
+
+export async function listDeleted(): Promise<DeletedItem[]> {
+  const { data } = await client.get("/deleted");
+  return data;
+}
+
+export async function restoreDeleted(kind: DeletedItem["kind"], id: number): Promise<void> {
+  await client.post(`/deleted/${kind}/${id}/restore`);
 }
