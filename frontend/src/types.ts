@@ -180,6 +180,39 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   other: "Other",
 };
 
+/**
+ * Documents grouped the way the team thinks of them (client, 2026-09-29), each with a small
+ * marker: basic shipping docs, customs, shipping line, CFS.
+ */
+export const DOCUMENT_GROUPS: { id: string; label: string; marker: string; types: DocumentType[] }[] = [
+  {
+    id: "basic",
+    label: "Basic documents",
+    marker: "BASIC",
+    types: ["bl_copy", "hbl_copy", "commercial_invoice", "packing_list", "certificate_of_origin",
+      "fta_certificate_of_origin", "form_6_9", "form_6", "form_9", "insurance", "hss_agreement"],
+  },
+  {
+    id: "customs",
+    label: "Customs",
+    marker: "CUSTOMS",
+    types: ["assessed_bill_of_entry", "ooc_bill_of_entry", "gatepass_bill_of_entry", "stamp_duty", "hss_stamp_duty"],
+  },
+  {
+    id: "line",
+    label: "Shipping line",
+    marker: "LINE",
+    types: ["shipping_line_proforma", "shipping_line_invoice", "shipping_line_receipt", "do_letter", "empty_letter",
+      "do_empty_letter"],
+  },
+  { id: "cfs", label: "CFS / yard", marker: "CFS", types: ["cfs_proforma_invoice", "cfs_tax_invoice", "cfs_receipt"] },
+  { id: "other", label: "Other", marker: "OTHER", types: ["other"] },
+];
+
+export function documentGroup(t: DocumentType) {
+  return DOCUMENT_GROUPS.find((g) => g.types.includes(t)) ?? DOCUMENT_GROUPS[DOCUMENT_GROUPS.length - 1];
+}
+
 /** Old types kept only so earlier uploads still display — not offered for new uploads. */
 export const LEGACY_DOCUMENT_TYPES: DocumentType[] = ["hss_stamp_duty", "form_6", "form_9"];
 

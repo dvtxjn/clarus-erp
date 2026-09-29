@@ -25,6 +25,8 @@ import { useUploadQueue } from "./uploadQueue";
 import {
   DOCUMENT_TYPE_LABELS,
   LEGACY_DOCUMENT_TYPES,
+  DOCUMENT_GROUPS,
+  documentGroup,
   type DocumentChecklistItem,
   type DocumentType,
   type Shipment,
@@ -216,10 +218,14 @@ export default function DocumentManagerPanel({
 
       <form className="add-shipment-form" onSubmit={handleUpload}>
         <select value={docType} onChange={(e) => setDocType(e.target.value as DocumentType)}>
-          {UPLOAD_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {DOCUMENT_TYPE_LABELS[t]}
-            </option>
+          {DOCUMENT_GROUPS.map((g) => (
+            <optgroup key={g.id} label={g.label}>
+              {g.types.filter((t) => UPLOAD_TYPES.includes(t)).map((t) => (
+                <option key={t} value={t}>
+                  {DOCUMENT_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <input
@@ -272,12 +278,29 @@ export default function DocumentManagerPanel({
               </tr>
             </thead>
             <tbody>
-              {checklist.map((row) => {
+              {DOCUMENT_GROUPS.flatMap((g) => {
+                const rows = checklist
+                  .filter((r) => documentGroup(r.document_type).id === g.id)
+                  .sort((a, b) => g.types.indexOf(a.document_type) - g.types.indexOf(b.document_type));
+                if (rows.length === 0) return [];
+                const done = rows.filter((r) => r.uploaded).length;
+                return [
+                  <tr key={`group-${g.id}`} className="doc-group-row">
+                    <td colSpan={5}>
+                      <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {g.label}
+                      <span className="doc-group-count">
+                        {done} of {rows.length}
+                      </span>
+                    </td>
+                  </tr>,
+                  ...rows.map((row) => {
                 const missing = !row.uploaded;
                 const coveredByCombined = row.document && row.document.document_type !== row.document_type;
                 return (
                   <tr key={row.document_type} className={row.required && !row.optional && missing ? "row-stuck" : ""}>
-                    <td>{DOCUMENT_TYPE_LABELS[row.document_type]}</td>
+                    <td>
+                      <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {DOCUMENT_TYPE_LABELS[row.document_type]}
+                    </td>
                     <td>{!row.required ? "No" : row.optional ? "Optional" : "Yes"}</td>
                     <td>
                       <span className={`status-pill ${row.uploaded ? "status-cleared" : ""}`}>
@@ -360,6 +383,8 @@ export default function DocumentManagerPanel({
                     </td>
                   </tr>
                 );
+                  }),
+                ];
               })}
             </tbody>
           </table>
@@ -622,11 +647,15 @@ function AssignDriveFiles({
                     onChange={(e) => setTypes((t) => ({ ...t, [f.id]: e.target.value as DocumentType | "" }))}
                   >
                     <option value="">Skip</option>
-                    {UPLOAD_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {DOCUMENT_TYPE_LABELS[t]}
-                        {missing.includes(t) ? " (needed)" : ""}
-                      </option>
+                    {DOCUMENT_GROUPS.map((g) => (
+                      <optgroup key={g.id} label={g.label}>
+                        {g.types.filter((t) => UPLOAD_TYPES.includes(t)).map((t) => (
+                          <option key={t} value={t}>
+                            {DOCUMENT_TYPE_LABELS[t]}
+                            {missing.includes(t) ? " (needed)" : ""}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </td>

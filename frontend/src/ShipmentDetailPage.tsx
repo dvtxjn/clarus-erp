@@ -143,7 +143,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         : "No";
 
   return (
-    // three columns, each stacked: status + remarks | duty & CFS | shipment + container
+    // four columns: status + remarks | duty + shipment | CFS + container | shipping line
     <div className="detail-grid">
       <div className="detail-col">
         <section className="detail-section">
@@ -181,9 +181,47 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       </div>
       <div className="detail-col">
         <section className="detail-section">
-          <h3>Duty &amp; CFS amounts</h3>
+          <h3>Customs duty</h3>
           <BeAmounts shipment={s} onChange={onChange} />
-          <div className="field-divider" />
+          {toggles.filter(([f]) => f === "tds_deducted").map(([field, label]) => (
+            <label className="toggle-row" key={field}>
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!!s[field]}
+                disabled={saving === field}
+                onChange={() => toggle(field)}
+              />
+            </label>
+          ))}
+        </section>
+        <section className="detail-section">
+          <h3>Shipment</h3>
+          <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
+          <Field label="ETA" value={fmtDate(s.eta)} />
+          <Field label="INW" value={s.inw} />
+          <Field label="Day" value={s.days} />
+          <Field label="IGM" value={s.igm} />
+          <Field label="License" value={s.license} />
+          <HssEditor shipment={s} onChange={onChange} />
+        </section>
+      </div>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>CFS</h3>
+          {toggles.filter(([f]) => f === "cfs_paid_by_us" || f === "tds_on_cfs").map(([field, label]) => (
+            <label className="toggle-row" key={field}>
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!!s[field]}
+                disabled={saving === field}
+                onChange={() => toggle(field)}
+              />
+            </label>
+          ))}
           <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
           {s.cfs_paid_by_us ? (
             <>
@@ -214,15 +252,22 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           ) : (
             <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
           )}
-          <div className="field-divider" />
-          <InvoiceGroup group="line" shipment={s} onChange={onChange} />
-          <p className="field-note">
-            {s.line_paid_by_us
-              ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
-              : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
-          </p>
-          <div className="field-divider" />
-          {toggles.map(([field, label]) => (
+        </section>
+        <section className="detail-section">
+          <h3>Container &amp; Movement</h3>
+          <Field label="Containers" value={s.container} />
+          <Field label="Gross Wt" value={s.gross_wt} />
+          <Field label="Container Status" value={s.container_status} />
+          <Field label="CFS" value={s.cfs} />
+          <Field label="POC" value={s.poc} />
+          <Field label="Delivery" value={s.delivery_status} />
+          <Field label="Shipping Line" value={s.shipping_line} />
+        </section>
+      </div>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>Shipping line</h3>
+          {toggles.filter(([f]) => f === "line_paid_by_us").map(([field, label]) => (
             <label className="toggle-row" key={field}>
               <span>{label}</span>
               <input
@@ -234,6 +279,12 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               />
             </label>
           ))}
+          <InvoiceGroup group="line" shipment={s} onChange={onChange} />
+          <p className="field-note">
+            {s.line_paid_by_us
+              ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
+              : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
+          </p>
           <label
             className="toggle-row"
             title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
@@ -253,31 +304,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             </select>
           </label>
         </section>
-
-      </div>
-      <div className="detail-col">
-        <section className="detail-section">
-          <h3>Shipment</h3>
-          <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
-          <Field label="ETA" value={fmtDate(s.eta)} />
-          <Field label="INW" value={s.inw} />
-          <Field label="Day" value={s.days} />
-          <Field label="IGM" value={s.igm} />
-          <Field label="License" value={s.license} />
-          <HssEditor shipment={s} onChange={onChange} />
-        </section>
-
-        <section className="detail-section">
-          <h3>Container &amp; Movement</h3>
-          <Field label="Containers" value={s.container} />
-          <Field label="Gross Wt" value={s.gross_wt} />
-          <Field label="Container Status" value={s.container_status} />
-          <Field label="CFS" value={s.cfs} />
-          <Field label="POC" value={s.poc} />
-          <Field label="Delivery" value={s.delivery_status} />
-          <Field label="Shipping Line" value={s.shipping_line} />
-        </section>
-
       </div>
     </div>
   );
