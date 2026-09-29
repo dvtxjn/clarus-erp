@@ -1096,3 +1096,15 @@ input { padding: 6px 9px; }
 .detail-peek .detail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .detail-peek .detail-grid > .detail-col:last-child { grid-column: 1 / -1; }
 @media (max-width: 900px) { .peek-panel { width: 100vw; } }
+
+/* tracker rows: coloured left edge by stage */
+.client-grid-stack .ag-row .ag-cell:first-child { box-shadow: inset 3px 0 0 var(--row-edge, transparent); }
+.row-st-to_be_filed { --row-edge: #C9C9C4; }
+.row-st-igm_filed, .row-st-be_filed { --row-edge: #9DB4DA; }
+.row-st-be_assessed, .row-st-duty_paid { --row-edge: #D9B36A; }
+.row-st-under_ooc, .row-st-ooc_done { --row-edge: #7FBF9C; }
+.row-st-cleared { --row-edge: #3F8F5A; }
+.row-st-billed { --row-edge: #6B6F76; }
+.row-exception { --row-edge: var(--color-danger); }
+.section-glance { display: inline-flex; gap: 10px; margin-left: 14px; font-size: 12px; font-weight: 500; opacity: .85; }
+.glance-pending { color: #F3C58D; }

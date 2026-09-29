@@ -1344,6 +1344,7 @@ export default function ShipmentGridPage() {
                   shipments
                   {tab === "cleared" && ` · ${rows.filter((r) => r.is_billed).length} billed`}
                 </span>
+                <SectionGlance rows={rows} />
               </h2>
               <AgGridReact<Shipment>
                 ref={refFor(client)}
@@ -1363,7 +1364,10 @@ export default function ShipmentGridPage() {
                   )
                 }
                 getRowId={(p) => String(p.data.id)}
-                getRowClass={(p: RowClassParams<Shipment>) => (isException(p.data) ? "row-exception" : undefined)}
+                getRowClass={(p: RowClassParams<Shipment>) =>
+                  // coloured left edge by status: scan the stage without reading (client, 2026-09-29)
+                  [isException(p.data) ? "row-exception" : "", p.data ? `row-st-${p.data.status}` : ""].join(" ")
+                }
                 quickFilterText={quickFilter}
                 onGridReady={(e) => syncSection(e.api)}
                 onModelUpdated={(e) => {
@@ -1595,5 +1599,30 @@ function AddShipmentForm({
       </button>
       {error && <div className="auth-error">{error}</div>}
     </form>
+  );
+}
+
+/** Client section at a glance: containers, weight, and what's pending (client, 2026-09-29). */
+function SectionGlance({ rows }: { rows: Shipment[] }) {
+  const cntr = rows.reduce((n, r) => n + (parseInt(r.container ?? "", 10) || 0), 0);
+  const tonnes = rows.reduce((n, r) => n + (parseFloat((r.gross_wt ?? "").replace(/,/g, "")) || 0), 0);
+  const pending = (f: keyof Shipment) => rows.filter((r) => !r[f]).length;
+  const bits: [string, number][] = [
+    ["duty", pending("duty_paid")],
+    ["OOC", pending("ooc")],
+    ["DO", pending("do")],
+  ];
+  return (
+    <span className="section-glance">
+      <span>{cntr} cntr</span>
+      <span>{tonnes.toLocaleString("en-IN", { maximumFractionDigits: 1 })} t</span>
+      {bits
+        .filter(([, n]) => n > 0)
+        .map(([label, n]) => (
+          <span key={label} className="glance-pending">
+            {n} pending {label}
+          </span>
+        ))}
+    </span>
   );
 }
