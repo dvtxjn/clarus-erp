@@ -426,3 +426,12 @@ npm install
 npm run dev
 ```
 Visit the printed localhost URL, log in with the admin credentials above.
+
+---
+
+## 🎨 Design backlog — do LAST, after the launch phases (client note, 2026-09-29; no action yet)
+
+- Layout feels too vertical. Wanted: a **left sidebar** for navigation and **full 1920×1080 use** (wide, dense screens) so less scrolling is needed.
+- Design language like **linear.app**: very clean, minimal, quiet typography, lots of restraint.
+- Maybe **change the orange** accent (open question — show options first).
+- Design-only work (frontend); not a backend change. Keep behind the launch work.

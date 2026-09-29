@@ -80,7 +80,7 @@ def rename_custom_column(key: str, payload: ColumnRename, db: Session = Depends(
 def delete_custom_column(key: str, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     """Deletes a custom column AND every value stored in it."""
     col = _custom_or_404(db, key)
-    for s in db.query(Shipment).all():
+    for s in db.query(Shipment).order_by(Shipment.id).with_for_update().populate_existing():  # id order
         if s.custom_fields and key in s.custom_fields:
             s.custom_fields = {k: v for k, v in s.custom_fields.items() if k != key}
     db.delete(col)

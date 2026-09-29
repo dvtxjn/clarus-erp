@@ -162,6 +162,10 @@ class Shipment(SoftDeleteMixin, Base):
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    # Bumped by SQLAlchemy on every write; a write based on a stale copy fails
+    # (StaleDataError -> 409) instead of silently overwriting (launch Phase 2).
+    version = Column(Integer, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": version}
 
     documents = relationship("ShipmentDocument", back_populates="shipment", cascade="all, delete-orphan")
     proformas = relationship("Proforma", back_populates="shipment", cascade="all, delete-orphan")

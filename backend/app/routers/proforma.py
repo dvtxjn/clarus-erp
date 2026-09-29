@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin, require_billing_access
+from app.core.locking import locked_proforma, locked_shipment
 from app.core.enums import ChargeCalculationBasis, ChargeCategory, ProformaStatus
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
 from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, build_invoice, invoice_filename, weight_kgs
@@ -221,7 +222,7 @@ def create_proforma(
     HSS shipments: say whose copy it is (seller / buyer) — each gets its own invoice,
     both billed to the BE importer (the buyer)."""
     payload = payload or ProformaCreate()
-    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+    shipment = locked_shipment(db, shipment_id)
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
 
@@ -273,7 +274,7 @@ def add_line_item(
     """Spec §5.3: any combination of charges from the charge master, not a
     fixed set of columns — GST/SAC are copied from the charge master at
     time of use so a later edit to the master doesn't rewrite past bills."""
-    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    proforma = locked_proforma(db, proforma_id)
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
     charge = db.query(ChargeMasterEntry).filter(ChargeMasterEntry.id == payload.charge_master_id).first()
@@ -325,7 +326,8 @@ def update_line_item(
     current_user: User = Depends(require_billing_access),
 ):
     """Edit any cell of a draft proforma line (description, rate, qty, GST, section)."""
-    li = db.query(ProformaLineItem).filter(ProformaLineItem.id == line_item_id,
+    locked_proforma(db, proforma_id)
+    li = db.query(ProformaLineItem).populate_existing().filter(ProformaLineItem.id == line_item_id,
                                           ProformaLineItem.proforma_id == proforma_id).first()
     if not li:
         raise HTTPException(status_code=404, detail="Line item not found")
@@ -353,7 +355,7 @@ def fill_from_shipment(proforma_id: int, db: Session = Depends(get_db),
     """Add every line the shipment knows (Agency, Examination, Customs Duty, Stamp
     Duty, CFS, Royalty for HSS, shipping line per SAC) and refresh the
     document-derived ones; lines edited by hand are left alone. See autofill.py."""
-    proforma = _get_proforma(db, proforma_id)
+    proforma = locked_proforma(db, proforma_id)
     _require_draft(proforma)
     added, updated, skipped = sync_proforma(db, proforma, full=True)
     db.commit()
@@ -366,7 +368,7 @@ def restore_derived_line(proforma_id: int, payload: RestoreIn, db: Session = Dep
                          current_user: User = Depends(require_billing_access)):
     """Bring back a removed document-derived line (Shipping Line, Customs Duty,
     Stamp Duty, CFS, Examination) with the figure from the documents."""
-    proforma = _get_proforma(db, proforma_id)
+    proforma = locked_proforma(db, proforma_id)
     _require_draft(proforma)
     if not restore_line(db, proforma, payload.key):
         db.rollback()
@@ -419,7 +421,7 @@ def remove_line_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_billing_access),
 ):
-    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    proforma = locked_proforma(db, proforma_id)
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
     line_item = db.query(ProformaLineItem).filter(
@@ -448,7 +450,7 @@ def update_proforma_status(
     """Spec §5.2: DRAFT -> SENT; creating a later version supersedes earlier
     ones (left as an explicit follow-up call rather than implied here, same
     pattern as the shipment bill/unbill endpoints)."""
-    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    proforma = locked_proforma(db, proforma_id)
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
     changes = payload.model_dump(exclude_unset=True)
@@ -478,7 +480,7 @@ def delete_draft_proforma(
     """Delete a DRAFT proforma version (e.g. one started by mistake). Sent /
     superseded versions are the record of what went to the client, so they
     can't be deleted. Soft delete (restorable by the admin); recorded in the change history."""
-    proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
+    proforma = locked_proforma(db, proforma_id)
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
     if proforma.status != ProformaStatus.DRAFT:

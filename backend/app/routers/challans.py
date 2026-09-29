@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
+from app.core.locking import lock_shipments
 from app.extraction.excel_imports import load_challan_rows
 from app.core.enums import DocumentType
 from app.models.challan import DutyChallan
@@ -109,8 +110,8 @@ def _match(db: Session, be_nos: list[str]) -> tuple[list[ChallanMatch], list[str
 def _refresh(db: Session, matched: list[ChallanMatch]) -> None:
     """New interest -> Customs Duty (and Nhava Sheva Stamp Duty) on draft proformas."""
     from app.invoice.autofill import refresh_draft_proformas
-    for m in matched:
-        refresh_draft_proformas(db, db.get(Shipment, m.shipment_id))
+    for shipment in lock_shipments(db, (m.shipment_id for m in matched)):  # id order: no deadlocks
+        refresh_draft_proformas(db, shipment)
 
 
 @router.post("/duty-challans/upload", response_model=ChallanUploadOut)

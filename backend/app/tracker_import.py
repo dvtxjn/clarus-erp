@@ -26,6 +26,7 @@ import re
 from datetime import date, datetime
 from typing import Any, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_change
@@ -123,9 +124,15 @@ def _has_doc(s: Shipment, *types: DocumentType) -> bool:
     return any(d.document_type in types for d in s.documents)
 
 
-def plan(db: Session, rows: list[dict]) -> dict:
-    """What an import would do — nothing is written."""
-    ships = db.query(Shipment).execution_options(include_deleted=True).all()
+def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
+    """What an import would do — nothing is written. lock=True (apply): one import at a
+    time, and every shipment row locked in id order while the import writes."""
+    q = db.query(Shipment).execution_options(include_deleted=True)
+    if lock:
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtext('tracker-import'))"))
+        q = q.order_by(Shipment.id).with_for_update().populate_existing()
+    ships = q.all()
     by_mbl, by_hbl, by_be, by_job = {}, {}, {}, {}
     for s in ships:
         m, h = split_mbl(s.mbl)
@@ -189,8 +196,8 @@ def plan(db: Session, rows: list[dict]) -> dict:
 
 
 def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:
-    """Write the import (same plan as the preview). Caller commits."""
-    p = plan(db, rows)
+    """Write the import (same plan as the preview, re-made under the locks). Caller commits."""
+    p = plan(db, rows, lock=True)
     by_row = {r["_row"]: r for r in rows}
     hs = db.query(HSCode).filter(HSCode.code == TYRE_HS_CODE).first()
     now = datetime.now()

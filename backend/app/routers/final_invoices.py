@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
+from app.core.locking import locked_proforma
 from app.invoice.final import TAX_TYPES, compute, create_from_proforma, issue
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
@@ -71,9 +72,7 @@ def create_final_invoices(proforma_id: int, db: Session = Depends(get_db),
                           user: User = Depends(require_billing_access)):
     """Draft Tax Invoice (Billed by Clarus lines) + Reimbursement Invoice (charges paid
     by us). Existing DRAFTS from this proforma are replaced; issued ones are kept."""
-    proforma = db.get(Proforma, proforma_id)
-    if not proforma:
-        raise HTTPException(status_code=404, detail="Proforma not found")
+    proforma = locked_proforma(db, proforma_id)  # shipment, then proforma: never two pairs at once
     issued = db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id,
                                            FinalInvoice.status == "issued").count()
     if issued:

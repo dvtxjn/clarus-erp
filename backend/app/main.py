@@ -1,6 +1,8 @@
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm.exc import StaleDataError
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.migrate import run_migrations
@@ -29,6 +31,13 @@ app.include_router(challans.router)
 app.include_router(final_invoices.router)
 app.include_router(tracker_import.router)
 app.include_router(deleted.router)
+
+
+@app.exception_handler(StaleDataError)
+def stale_write(_request: Request, _exc: StaleDataError):
+    """A write based on an out-of-date copy of a shipment (someone saved in between)."""
+    return JSONResponse(status_code=409, content={
+        "detail": "Someone else saved this shipment at the same moment — reload and try again."})
 
 
 @app.on_event("startup")

@@ -70,8 +70,15 @@ class ShipmentCreate(ShipmentBase):
 
 
 class ShipmentUpdate(BaseModel):
-    """All fields optional — partial updates (PATCH semantics)."""
+    """All fields optional — partial updates (PATCH semantics).
+
+    `base`: the values the user saw for the fields being changed (custom columns under
+    base["custom_fields"][key]). If someone else changed one of those fields since, the
+    PATCH changes nothing and answers 409 with the conflicts. Without `base` the old
+    last-write-wins behaviour applies (scripts, older clients)."""
     model_config = ConfigDict(extra="forbid")
+
+    base: Optional[dict[str, Any]] = None
 
     job: Optional[str] = None
     mbl: Optional[str] = None
@@ -164,6 +171,7 @@ class ShipmentOut(ShipmentBase):
     cfs_payment_after_tds: Optional[Decimal] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    version: int = 1  # bumped on every write (conflict protection)
 
 
 class ClientRename(BaseModel):

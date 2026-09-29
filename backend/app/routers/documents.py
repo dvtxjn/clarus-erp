@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.audit import record_change
 from app.core.deps import get_current_user, get_user_allowed_ports, require_admin
+from app.core.locking import locked_shipment_or_404
 from app.integrations import google_drive
 from decimal import Decimal
 
@@ -126,7 +127,8 @@ def reread_document(shipment_id: int, document_id: int, db: Session = Depends(ge
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    fields = extract_document_fields(doc.document_type, doc.file_path)
+    fields = extract_document_fields(doc.document_type, doc.file_path)  # slow part, before the lock
+    shipment = locked_shipment_or_404(db, shipment_id)
     doc.tracker_sync_applied = False
     result = apply_tracker_sync(db, shipment, doc, current_user.id, fields)
     doc.extraction = {"fields": fields, **result}
@@ -144,7 +146,8 @@ def remove_document(shipment_id: int, document_id: int, db: Session = Depends(ge
     <storage>/_removed/<shipment id>/ so a new upload can't overwrite it. Recorded in
     the change history. Shipment fields it filled in stay as they are. A copy saved in
     Google Drive is not touched."""
-    shipment = _get_shipment(db, shipment_id, current_user)
+    _get_shipment(db, shipment_id, current_user)
+    shipment = locked_shipment_or_404(db, shipment_id)
     doc = db.query(ShipmentDocument).filter(ShipmentDocument.id == document_id,
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
@@ -172,7 +175,8 @@ def correct_invoice_amounts(shipment_id: int, document_id: int, payload: Invoice
     """Fix a misread CFS / shipping line invoice. Total = before-tax + GST; the
     shipment's totals (and CFS payment after TDS) are recalculated. Hand-corrected figures are
     kept even if the document is re-read later."""
-    shipment = _get_shipment(db, shipment_id, current_user)
+    _get_shipment(db, shipment_id, current_user)
+    shipment = locked_shipment_or_404(db, shipment_id)
     doc = db.query(ShipmentDocument).filter(ShipmentDocument.id == document_id,
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
@@ -198,7 +202,8 @@ def set_cost_inclusion(shipment_id: int, document_id: int, payload: CostInclusio
                        db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Which part of a shipping line invoice is the proforma's cost inclusion:
     tick charge lines in/out, type the figure by hand, or reset to the rule."""
-    shipment = _get_shipment(db, shipment_id, current_user)
+    _get_shipment(db, shipment_id, current_user)
+    shipment = locked_shipment_or_404(db, shipment_id)
     doc = db.query(ShipmentDocument).filter(ShipmentDocument.id == document_id,
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
@@ -278,7 +283,11 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
 
     with dest_path.open("wb") as out_file:
         write(out_file)
+    # Read the PDF (BE / OOC / CFS invoice fields) before locking — it's the slow part
+    fields = extract_document_fields(document_type, str(dest_path))
 
+    # One short locked transaction: fresh shipment row, "fill blanks only" is judged on it
+    shipment = locked_shipment_or_404(db, shipment.id)
     doc = ShipmentDocument(
         shipment_id=shipment.id,
         document_type=document_type,
@@ -292,8 +301,6 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
     db.add(doc)
     db.flush()  # get doc.id without committing yet
 
-    # Read the PDF (BE / OOC / CFS invoice fields) and update the shipment from it
-    fields = extract_document_fields(document_type, str(dest_path))
     refiled = None
     if document_type == DocumentType.ASSESSED_BILL_OF_ENTRY and fields.get("is_ooc_copy"):
         # It's actually the OOC copy: file it as one (type + file name)

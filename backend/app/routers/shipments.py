@@ -1,9 +1,11 @@
 from datetime import date
-from typing import Optional
+from decimal import Decimal, InvalidOperation
+from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.locking import locked_shipment_or_404
 from app.core.deps import get_current_user, require_admin, require_billing_access, get_user_allowed_ports
 from app.core.enums import ShipmentStatus, UserRole
 from app.invoice.autofill import refresh_draft_proformas
@@ -131,6 +133,7 @@ def rename_value(payload: ValueRename, db: Session = Depends(get_db), current_us
     allowed_ports = get_user_allowed_ports(current_user)
     if allowed_ports is not None:
         q = q.filter(Shipment.port.in_(allowed_ports))
+    q = q.order_by(Shipment.id).with_for_update().populate_existing()  # lock in id order
     rows = [s for s in q if getattr(s, field).strip() == old]
     for s in rows:
         if getattr(s, field) != new:
@@ -181,8 +184,17 @@ def update_shipment(
 ):
     shipment = _get_shipment_or_404(db, shipment_id)
     _check_port_access(shipment, current_user)
+    shipment = locked_shipment_or_404(db, shipment_id)  # the rest is one short locked transaction
 
     changes = payload.model_dump(exclude_unset=True)
+    base = changes.pop("base", None)
+    if base:
+        conflicts = _conflicts(db, shipment, changes, base)
+        if conflicts:
+            raise HTTPException(status_code=409, detail={
+                "message": "Someone else changed this since you loaded it.",
+                "conflicts": conflicts, "version": shipment.version,
+                "shipment": ShipmentOut.model_validate(shipment).model_dump(mode="json")})
     custom = changes.pop("custom_fields", None)
     if changes.get("cfs_paid_by_us") and not shipment.cfs_paid_by_us and "tds_on_cfs" not in changes:
         changes["tds_on_cfs"] = True  # we normally cut 2% TDS when we pay the CFS
@@ -220,7 +232,7 @@ def delete_shipment(shipment_id: int, db: Session = Depends(get_db), current_use
     """Admin only. Soft delete: the shipment (with its documents, proformas and
     invoices) disappears everywhere but stays in the database; the admin can restore
     it from Recently deleted."""
-    shipment = _get_shipment_or_404(db, shipment_id)
+    shipment = locked_shipment_or_404(db, shipment_id)
     record_change(db, "shipments", shipment.id, "deleted", shipment.mbl, None, current_user.id)
     soft_delete(db, shipment, current_user.id)
     db.commit()
@@ -239,6 +251,7 @@ def mark_shipment_billed(shipment_id: int, db: Session = Depends(get_db),
 
     shipment = _get_shipment_or_404(db, shipment_id)
     _check_port_access(shipment, current_user)
+    shipment = locked_shipment_or_404(db, shipment_id)
     if shipment.is_billed:
         return shipment
     changes = {"is_billed": True, "is_archived": True, "billed_at": datetime.now(timezone.utc),
@@ -256,7 +269,7 @@ def unbill_shipment(shipment_id: int, db: Session = Depends(get_db), current_use
     """Spec §5.5: reversible — pull a billed shipment back if the bill is
     cancelled. Admin-only. The status goes back to what it was just before it
     was billed (from the change history)."""
-    shipment = _get_shipment_or_404(db, shipment_id)
+    shipment = locked_shipment_or_404(db, shipment_id)
     if not shipment.is_billed:
         return shipment
     previous = (
@@ -313,6 +326,44 @@ def _apply_custom_fields(db: Session, shipment: Shipment, values: dict, user_id:
             else:
                 merged[key] = new_value
     shipment.custom_fields = merged  # reassign so SQLAlchemy sees the JSON change
+
+
+def _same(a: Any, b: Any) -> bool:
+    """Equal as the user sees them: blank == None, 12.5 == "12.50"."""
+    a = None if a in (None, "") else a
+    b = None if b in (None, "") else b
+    if a == b:
+        return True
+    if a is None or b is None or isinstance(a, bool) or isinstance(b, bool):
+        return False
+    try:
+        return Decimal(str(a)) == Decimal(str(b))
+    except (InvalidOperation, ValueError):
+        return str(a).strip() == str(b).strip()
+
+
+def _conflicts(db: Session, shipment: Shipment, changes: dict, base: dict) -> list[dict]:
+    """Fields this edit changes whose value moved since the user loaded it (and that
+    the user isn't setting to the value already there)."""
+    current = ShipmentOut.model_validate(shipment).model_dump(mode="json")
+    checks = [(f, f, current.get(f), v, base[f]) for f, v in changes.items()
+              if f in base and f != "custom_fields"]
+    cur_custom, base_custom = current.get("custom_fields") or {}, base.get("custom_fields") or {}
+    checks += [(f"custom:{k}", k, cur_custom.get(k), v, base_custom[k])
+               for k, v in (changes.get("custom_fields") or {}).items() if k in base_custom]
+    out = []
+    for audit_field, field, now, yours, seen in checks:
+        if _same(now, seen) or _same(now, yours):
+            continue
+        last = (db.query(AuditLogEntry)
+                .filter(AuditLogEntry.table_name == "shipments", AuditLogEntry.record_id == shipment.id,
+                        AuditLogEntry.field_name == audit_field)
+                .order_by(AuditLogEntry.id.desc()).first())
+        who = db.get(User, last.changed_by_id) if last and last.changed_by_id else None
+        out.append({"field": field, "current": now, "yours": yours, "base": seen,
+                    "changed_by": who.full_name if who else None,
+                    "changed_at": last.changed_at.isoformat() if last and last.changed_at else None})
+    return out
 
 
 def _get_shipment_or_404(db: Session, shipment_id: int) -> Shipment:
