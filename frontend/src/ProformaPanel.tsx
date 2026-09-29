@@ -7,7 +7,6 @@ import {
   addProformaLineItem,
   removeProformaLineItem,
   updateProformaStatus,
-  updateShipment,
   deleteDraftProforma,
   updateProforma,
   updateProformaLineItem,
@@ -17,6 +16,7 @@ import {
   listOrganizations,
   restoreProformaLine,
 } from "./api";
+import { useSaveShipment } from "./useSaveShipment";
 import { OrganizationForm } from "./DailyUpdates";
 import FinalInvoicesPanel from "./FinalInvoicesPanel";
 import { useConfirm } from "./ConfirmDialog";
@@ -232,6 +232,7 @@ function ExamReminder({
   onShipmentChange: (s: Shipment) => void;
   onAddExamCharge: (chargeId: number) => void;
 }) {
+  const saveShipment = useSaveShipment();
   const [saving, setSaving] = useState(false);
   const hasExamLine = !!examCharge && !!proforma?.line_items.some((li) => li.charge_master_id === examCharge.id);
   const source =
@@ -246,7 +247,7 @@ function ExamReminder({
   async function toggle() {
     setSaving(true);
     try {
-      onShipmentChange(await updateShipment(s.id, { under_examination: !s.under_examination }));
+      onShipmentChange((await saveShipment(s, { under_examination: !s.under_examination })).shipment);
     } finally {
       setSaving(false);
     }

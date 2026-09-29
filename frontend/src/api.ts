@@ -74,9 +74,40 @@ export async function createShipment(payload: ShipmentCreateInput): Promise<Ship
   return data;
 }
 
-export async function updateShipment(id: number, payload: Partial<Shipment>): Promise<Shipment> {
-  const { data } = await client.patch(`/shipments/${id}`, payload);
-  return data;
+export interface ShipmentConflict {
+  field: string;
+  current: unknown;
+  yours: unknown;
+  base: unknown;
+  changed_by: string | null;
+  changed_at: string | null;
+}
+
+/** 409 from PATCH /shipments: someone changed a field this edit changes since it was loaded. */
+export class ShipmentConflictError extends Error {
+  conflicts: ShipmentConflict[];
+  shipment: Shipment; // the row as it is now
+  constructor(detail: { message: string; conflicts: ShipmentConflict[]; shipment: Shipment }) {
+    super(detail.message);
+    this.conflicts = detail.conflicts;
+    this.shipment = detail.shipment;
+  }
+}
+
+/** base = the values the user saw for the fields being changed (see useSaveShipment). */
+export async function updateShipment(
+  id: number,
+  payload: Partial<Shipment>,
+  base?: Record<string, unknown>,
+): Promise<Shipment> {
+  try {
+    const { data } = await client.patch(`/shipments/${id}`, base ? { ...payload, base } : payload);
+    return data;
+  } catch (e) {
+    const detail = axios.isAxiosError(e) && e.response?.status === 409 ? e.response.data?.detail : null;
+    if (detail && typeof detail === "object" && Array.isArray(detail.conflicts)) throw new ShipmentConflictError(detail);
+    throw e;
+  }
 }
 
 export async function getShipment(id: number): Promise<Shipment> {

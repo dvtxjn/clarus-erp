@@ -11,6 +11,7 @@ interface ConfirmOptions {
   title?: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   danger?: boolean;
   /** Show a text box (e.g. "Reason"); its value is passed to onInput when confirmed. */
   inputLabel?: string;
@@ -74,7 +75,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             )}
             <div className="confirm-actions">
               <button type="button" className="btn-secondary" onClick={() => close(false)}>
-                Cancel
+                {pending.cancelLabel ?? "Cancel"}
               </button>
               <button
                 ref={confirmBtn}

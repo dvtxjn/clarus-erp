@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
 import { useParams, Link } from "react-router-dom";
-import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion, updateShipment } from "./api";
+import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion } from "./api";
+import { useSaveShipment } from "./useSaveShipment";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
 import ProformaPanel from "./ProformaPanel";
@@ -110,10 +111,11 @@ type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_deducted" | "tds_
 function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
   const ports = usePorts();
   const [saving, setSaving] = useState<ToggleField | null>(null);
+  const saveShipment = useSaveShipment();
   async function toggle(field: ToggleField) {
     setSaving(field);
     try {
-      onChange(await updateShipment(s.id, { [field]: !s[field] } as Partial<Shipment>));
+      onChange((await saveShipment(s, { [field]: !s[field] } as Partial<Shipment>)).shipment);
     } finally {
       setSaving(null);
     }
@@ -190,7 +192,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               <select
                 value={s.cfs_billed_as}
                 onChange={async (e) =>
-                  onChange(await updateShipment(s.id, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] }))
+                  onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)
                 }
               >
                 <option value="reimbursement">Reimbursement (at actuals)</option>
@@ -262,11 +264,12 @@ function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
   const [seller, setSeller] = useState("");
   const [buyer, setBuyer] = useState("");
   const [busy, setBusy] = useState(false);
+  const saveShipment = useSaveShipment();
 
   async function save(changes: Partial<Shipment>) {
     setBusy(true);
     try {
-      onChange(await updateShipment(s.id, changes));
+      onChange((await saveShipment(s, changes)).shipment);
       setEditing(false);
     } finally {
       setBusy(false);
@@ -327,6 +330,7 @@ const BE_FIELDS: [BeField, string][] = [
 
 /** BE figures (read from the Assessed / OOC copy) — "Edit" to correct a misread. */
 function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+  const saveShipment = useSaveShipment();
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState<Record<BeField, string>>({ assessable_value: "", igst_amount: "", duty_amount: "" });
   const [error, setError] = useState<string | null>(null);
@@ -348,7 +352,7 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
       payload[f] = v === "" ? null : v;
     }
     try {
-      onChange(await updateShipment(s.id, payload as Partial<Shipment>));
+      onChange((await saveShipment(s, payload as Partial<Shipment>)).shipment);
       setEditing(false);
     } catch {
       setError("Couldn't save.");

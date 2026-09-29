@@ -21,6 +21,21 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## ✅ Launch Phases 2, 4 (reduced), 6 (reduced) — multi-person editing (2026-09-29, branch `concurrency/phases-2-4-5-6`)
+
+Client priority: several people editing at once must never lose each other's work.
+
+- **Phase 2 — conflicts on tracker edits.** `shipments.version` (migration 0027, SQLAlchemy `version_id_col`: bumped on every write; a write based on a stale copy raises StaleDataError → global 409 handler, never a silent overwrite). `PATCH /shipments/{id}` accepts `base` = the values the user saw for the fields it changes (`base.custom_fields` per key). Inside the shipment lock: a field whose value moved since (and isn't already the new value) → 409 `{message, conflicts:[{field,current,yours,base,changed_by,changed_at}], version, shipment}`; nothing is written. Different fields never conflict; blank == null and 1500 == "1500.00". Without `base` = old behaviour (scripts).
+  - Frontend: `useSaveShipment()` (src/useSaveShipment.ts) sends `base` from what the user saw and on 409 asks **Keep mine / Use theirs** (ConfirmDialog got `cancelLabel`). Used by the grid (cells + checklist chips), the shipment Overview (toggles, CFS billed-as, HSS, BE amounts), the exam reminder and the Drive folder bar.
+  - **Undo/redo is now safe** (was Phase 5 item 1): it sends the value the change left as `base`; if someone changed the cell since → "…was changed by X since — not undone", and the entry is dropped.
+- **Phase 4 — locks** (`app/core/locking.py`: `locked_shipment`, `lock_shipments` (id order), `locked_proforma` (shipment, then proforma); lock order per Golden Rule 9). Used by: shipment PATCH / delete / bill / unbill; document upload + from-Drive (file saved and PDF read BEFORE the lock, then one short locked transaction), re-read (read first), remove, amounts, cost inclusion; every proforma write (create, lines add/edit/remove, fill, restore, PATCH, delete) so autofill and hand edits never interleave; create final invoices; challan refresh (all matched shipments, id order); tracker CSV apply (`pg_advisory_xact_lock` + every shipment row locked in id order); bulk client/consignee rename; custom column delete.
+  - Not done (Later per Fast Track): `version` + 409 on proforma lines (two people editing the same proforma line at the same instant — accepted risk, drafts only); CSV preview returning per-row versions.
+- **Phase 6 — tests.** `tests/test_conflicts.py` (6, both DBs). `tests/test_concurrency.py` (Postgres only, real threads, `locking._race_pause` widens the race): 1 same field → one 200 + one 409, no lost update; 2 different fields → both saved; 5 autofill vs manual line edit → manual wins; 6 document upload vs manual edit → both survive. **Proved real:** with FOR UPDATE removed, 2, 5, 6 fail; with FOR UPDATE and the version check both removed, 1 fails. Tests 3-4 (invoice numbers) wait for Phase 3. Suite: 96 pass on Postgres; 92 + 4 skipped on SQLite.
+- `docs/TWO_BROWSER_TEST.md`: 10-step manual check for two windows.
+- Checked live in the browser: conflict dialog, Use theirs, Keep mine, undo refused after a colleague's change (test values put back).
+
+---
+
 ## ⏸ Launch Phase 3 — deferred (2026-09-29)
 
 Client: final invoices are issued through another software (LiveImpex) for now, so safe invoice numbering is not a concern yet. **Do Phase 3 before the app issues a real final invoice number.** Design already worked out: in one transaction lock the proforma row (`FOR UPDATE`, serialises a tax/reimbursement pair), lock the invoice and require `draft` (else 409), reuse the pair's seq or take `UPDATE invoice_counters SET next_seq = next_seq + 1 ... RETURNING`, then one guarded `UPDATE ... WHERE status='draft'` that sets status + number together (the Phase 1 trigger forbids changing a row after it is issued). Unique (fy, seq, kind). Same compare-and-set for cancel, bill/unbill, proforma Sent, create final invoices (lock the proforma).

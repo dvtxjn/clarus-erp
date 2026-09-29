@@ -5,9 +5,9 @@ import {
   getDocumentChecklist,
   removeDocument,
   rereadDocument,
-  updateShipment,
   uploadDocument,
 } from "./api";
+import { useSaveShipment } from "./useSaveShipment";
 import { useAuth } from "./AuthContext";
 import { useConfirm } from "./ConfirmDialog";
 import { driveConfigured, folderIdFromLink, getDriveToken, pickDriveFolder, pickPdfFromDrive } from "./googleDrive";
@@ -308,6 +308,7 @@ export default function DocumentManagerPanel({
 }
 
 function DriveFolderBar({ shipment, onChanged }: { shipment: Shipment; onChanged: () => void }) {
+  const saveShipment = useSaveShipment();
   const [link, setLink] = useState("");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -315,7 +316,7 @@ function DriveFolderBar({ shipment, onChanged }: { shipment: Shipment; onChanged
   async function save(folderId: string | null, folderLink: string | null) {
     setError(null);
     try {
-      await updateShipment(shipment.id, { drive_folder_id: folderId, drive_folder_link: folderLink });
+      await saveShipment(shipment, { drive_folder_id: folderId, drive_folder_link: folderLink });
       setEditing(false);
       setLink("");
       onChanged();

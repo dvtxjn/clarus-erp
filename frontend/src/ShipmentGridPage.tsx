@@ -26,10 +26,12 @@ import {
   removeBuiltinColumn,
   renameClient,
   restoreBuiltinColumn,
+  ShipmentConflictError,
   updateShipment,
 } from "./api";
 import { useAuth } from "./AuthContext";
 import TrackerImportPanel from "./TrackerImportPanel";
+import { useSaveShipment } from "./useSaveShipment";
 import ColumnsPanel, { type PanelColumn } from "./ColumnsPanel";
 import { useConfirm } from "./ConfirmDialog";
 import { formatPort, usePorts } from "./ports";
@@ -174,6 +176,12 @@ function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & 
 }
 
 /** " · Status → IGM Filed" when a save moved the status (status follows the evidence). */
+/** A friendly reason for a failed save (e.g. two saves at the very same moment). */
+function saveErrorText(err: unknown): string {
+  const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
+  return typeof detail === "string" ? detail : "nothing changed.";
+}
+
 function statusNote(before: ShipmentStatus, after: ShipmentStatus): string {
   return before !== after ? ` · Status → ${SHIPMENT_STATUS_LABELS[after]}` : "";
 }
@@ -621,6 +629,7 @@ export default function ShipmentGridPage() {
   // refresh after a save, and doesn't cover the checklist chips. Undo re-saves the
   // old value (audit-logged like any edit).
   type Change = { id: number; field: string; customKey: string | null; oldValue: unknown; newValue: unknown; label: string };
+  const saveShipment = useSaveShipment();
   const undoStack = useRef<Change[]>([]);
   const redoStack = useRef<Change[]>([]);
   const record = useCallback((c: Change) => {
@@ -629,13 +638,23 @@ export default function ShipmentGridPage() {
   }, []);
   const applyChange = useCallback(async (c: Change, direction: "undo" | "redo") => {
     const value = direction === "undo" ? c.oldValue : c.newValue;
+    // Only undo if the cell still holds what this change put there (never clobber a colleague)
+    const expected = direction === "undo" ? c.newValue : c.oldValue;
+    const wrap = (v: unknown) => (c.customKey ? { custom_fields: { [c.customKey]: v } } : { [c.field]: v });
     try {
-      const payload = c.customKey ? { custom_fields: { [c.customKey]: value } } : { [c.field]: value };
-      const saved = await updateShipment(c.id, payload as Partial<Shipment>);
+      const saved = await updateShipment(c.id, wrap(value) as Partial<Shipment>, wrap(expected));
       setShipments((prev) => prev?.map((x) => (x.id === c.id ? saved : x)) ?? prev);
       (direction === "undo" ? redoStack : undoStack).current.push(c);
       setMessage({ kind: "ok", text: `${direction === "undo" ? "Undone" : "Redone"}: ${c.label}` });
-    } catch {
+    } catch (err) {
+      if (err instanceof ShipmentConflictError) {
+        // dropped from the stack: the cell has moved on
+        const fresh = err.shipment;
+        setShipments((prev) => prev?.map((x) => (x.id === c.id ? fresh : x)) ?? prev);
+        const who = err.conflicts[0]?.changed_by ?? "someone else";
+        setMessage({ kind: "error", text: `${c.label} was changed by ${who} since — not ${direction === "undo" ? "undone" : "redone"}.` });
+        return;
+      }
       (direction === "undo" ? undoStack : redoStack).current.push(c); // put it back
       setMessage({ kind: "error", text: `Couldn't ${direction} ${c.label}.` });
     }
@@ -705,32 +724,42 @@ export default function ShipmentGridPage() {
     if (field === "job" && value === null) value = "";
     try {
       const payload = customKey ? { custom_fields: { [customKey]: value } } : { [field]: value };
-      const saved = await updateShipment(id, payload as Partial<Shipment>);
+      // what the user saw before typing (AG Grid has already put the new value in e.data)
+      const seen = (customKey
+        ? { ...e.data, custom_fields: { ...e.data.custom_fields, [customKey]: e.oldValue ?? null } }
+        : { ...e.data, [field]: e.oldValue ?? null }) as Shipment;
+      const { shipment: saved, kept } = await saveShipment(seen, payload as Partial<Shipment>, e.colDef.headerName);
       // Replace in state (not just the grid row) so a changed client moves the
       // row into the right section and computed fields (Day) refresh.
       setShipments((prev) => prev?.map((s) => (s.id === id ? saved : s)) ?? prev);
+      e.node.setData(saved);
+      if (kept === "theirs") {
+        setMessage({ kind: "ok", text: `Kept the other change to ${e.colDef.headerName}` });
+        return;
+      }
       let old = e.oldValue ?? null;
       if (typeof old === "string" && old.trim() === "") old = null;
       if (field === "job" && old === null) old = "";
       record({ id, field: String(field), customKey: customKey ?? null, oldValue: old, newValue: value, label: `${e.colDef.headerName ?? field}` });
       setMessage({ kind: "ok", text: `Saved ${e.colDef.headerName}${statusNote(e.data.status, saved.status)}` });
-    } catch {
+    } catch (err) {
       revert();
-      setMessage({ kind: "error", text: `Couldn't save ${e.colDef.headerName} — change reverted.` });
+      setMessage({ kind: "error", text: `Couldn't save ${e.colDef.headerName} — ${saveErrorText(err)}` });
     }
-  }, [record]);
+  }, [record, saveShipment]);
 
   // Chip toggles in the Checklist column save like any other cell edit.
   const toggleFlag = useCallback(async (row: Shipment, field: FlagField) => {
     try {
-      const saved = await updateShipment(row.id, { [field]: !row[field] } as Partial<Shipment>);
+      const { shipment: saved, kept } = await saveShipment(row, { [field]: !row[field] } as Partial<Shipment>, FLAG_LABELS[field]);
       setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
+      if (kept === "theirs") return;
       record({ id: row.id, field, customKey: null, oldValue: !!row[field], newValue: !row[field], label: FLAG_LABELS[field] });
       setMessage({ kind: "ok", text: `Saved ${FLAG_LABELS[field]}${statusNote(row.status, saved.status)}` });
-    } catch {
-      setMessage({ kind: "error", text: "Couldn't save — nothing changed." });
+    } catch (err) {
+      setMessage({ kind: "error", text: `Couldn't save — ${saveErrorText(err)}` });
     }
-  }, [record]);
+  }, [record, saveShipment]);
   const gridContext = useMemo<GridContext>(() => ({ toggleFlag }), [toggleFlag]);
 
   // Ctrl/⌘+C copies the focused cell (as shown), unless you've selected text yourself.
