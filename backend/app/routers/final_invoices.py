@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import storage
@@ -19,7 +20,8 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
 from app.core.locking import locked_proforma
-from app.invoice.final import TAX_TYPES, compute, create_from_proforma, issue
+from app.invoice.final import TAX_TYPES, alter_until, compute, create_from_proforma, issue
+from app.models.settings import get_setting
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
 from app.models.proforma import Proforma
@@ -41,7 +43,8 @@ class FinalLine(BaseModel):
 
 
 class FinalInvoiceUpdate(BaseModel):
-    """Manual overrides. Draft: anything. Issued: only irn / ack_no / ack_date."""
+    """Manual overrides. Draft: anything. Issued: irn / ack_no / ack_date any time; anything else
+    until the 10th of next month (and, with e-invoicing, only while the e-invoice isn't filed)."""
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
     customer: Optional[dict[str, Any]] = None
@@ -52,6 +55,8 @@ class FinalInvoiceUpdate(BaseModel):
     irn: Optional[str] = Field(default=None, max_length=100)
     ack_no: Optional[str] = Field(default=None, max_length=50)
     ack_date: Optional[str] = Field(default=None, max_length=30)
+    # altering an issued invoice with e-invoicing on: has its e-invoice (IRN) been filed?
+    e_invoice_filed: Optional[bool] = None
 
 
 class CancelIn(BaseModel):
@@ -127,13 +132,29 @@ def update_final_invoice(invoice_id: int, payload: FinalInvoiceUpdate, db: Sessi
                          user: User = Depends(require_billing_access)):
     inv = _get(db, invoice_id)
     changes = payload.model_dump(exclude_unset=True, mode="json")
-    if inv.status != "draft":
-        locked = set(changes) - {"irn", "ack_no", "ack_date"}
-        if locked:
-            raise HTTPException(status_code=400, detail="This invoice is issued — only IRN / ACK can be filled in. "
-                                                        "Cancel it and make a new one to change anything else.")
-        if inv.status == "cancelled":
-            raise HTTPException(status_code=400, detail="This invoice is cancelled.")
+    filed = changes.pop("e_invoice_filed", None)
+    altered = False
+    if inv.status == "cancelled":
+        raise HTTPException(status_code=400, detail="This invoice is cancelled.")
+    if inv.status == "issued" and set(changes) - {"irn", "ack_no", "ack_date"}:
+        # altering an issued bill (client, 2026-09-30): mistakes happen — allowed until the 10th of
+        # next month; with e-invoicing, only while its e-invoice isn't filed
+        until = alter_until(inv)
+        if until is not None and date.today() > until:
+            raise HTTPException(status_code=400, detail=f"Issued invoices can be altered until {until:%d %b %Y} "
+                                "(that month's GSTR-1 is filed) — cancel it or issue a credit note instead.")
+        if get_setting(db, "e_invoicing"):
+            if inv.irn or filed:
+                raise HTTPException(status_code=400, detail="Its e-invoice is filed, so it can't be altered — cancel "
+                                    "the e-invoice (within 24 hours on the IRP) or issue a credit note.")
+            if filed is None:
+                raise HTTPException(status_code=409, detail={"ask": "e_invoice_filed",
+                                                             "message": "Has the e-invoice for this bill been filed?"})
+        altered = True
+        if db.get_bind().dialect.name != "postgresql":
+            raise HTTPException(status_code=400, detail="Altering issued invoices needs the Postgres database.")
+        # the database lock lets this one transaction through (number / status stay fixed) — 0039
+        db.execute(text("SET LOCAL clarus.invoice_alter = 'on'"))
     for field, value in changes.items():
         if field in ("invoice_date", "due_date") and value:
             value = date.fromisoformat(value)
@@ -145,7 +166,15 @@ def update_final_invoice(invoice_id: int, payload: FinalInvoiceUpdate, db: Sessi
         if old != value:
             record_change(db, "final_invoices", inv.id, field, old, value, user.id)
             setattr(inv, field, value)
+    if altered:
+        record_change(db, "final_invoices", inv.id, "altered after issue", None, inv.number, user.id)
     db.commit()
+    if altered:  # keep the corrected PDF as its own file (the issued one stays — nothing is deleted)
+        data = compute(inv)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        storage.save_pdf(db, f"final_invoice_pdf_altered_{stamp}", inv.id, f"Invoices/{inv.fy}",
+                         _pdf_name(data, inv).replace(".pdf", f" (altered {stamp}).pdf"), render_final_pdf(data))
+        db.commit()
     db.refresh(inv)
     return compute(inv)
 

@@ -682,3 +682,9 @@ The client will pick features they like from other software and feed them in. Re
   **The page is LOCKED to A4 (aspect never changes)**; a longer invoice is shrunk to fit inside it, like the PDF.
   Fit page (scaled to the pane) / 100 % (full size, scroll).
 - 📝 Later: make the proforma page work on phones (client, 2026-09-30) — same locked A4 page, controls above/below it.
+- Altering issued bills (client, 2026-09-30): "Alter invoice" on an issued tax / reimbursement invoice — same number,
+  every change audit-logged, the corrected PDF kept as its own file. Allowed until the 10th of the month after the
+  invoice month (September bills until 10 October); after that: cancel / credit note. Admin setting **E-invoicing
+  applies to Clarus** (Rates → Invoicing, `app_settings`, 0038): when on, altering first asks whether the e-invoice is
+  filed — filed (or IRN entered) = can't be altered. The DB lock stays; 0039 lets a deliberate, checked alteration
+  through (`SET LOCAL clarus.invoice_alter`), never the number / series / status.

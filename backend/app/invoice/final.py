@@ -197,6 +197,17 @@ def issue(db: Session, inv: FinalInvoice) -> None:
     inv.status, inv.issued_at = "issued", datetime.now()
 
 
+def alter_until(inv: FinalInvoice) -> Optional[date]:
+    """An issued invoice can be altered until the 10th of the month after its invoice month
+    (the GSTR-1 for that month is filed on the 11th) — September bills until 10 October
+    (client, 2026-09-30)."""
+    d = inv.invoice_date
+    if d is None:
+        return None
+    y, m = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    return date(y, m, 10)
+
+
 def compute(inv: FinalInvoice) -> dict:
     """Everything printed: per-line GST split, SAC summary, totals, words."""
     intra = (inv.customer or {}).get("state_code") == COMPANY["state_code"]
@@ -226,6 +237,7 @@ def compute(inv: FinalInvoice) -> dict:
         "id": inv.id, "kind": inv.kind, "title": TITLES[inv.kind], "status": inv.status, "number": inv.number,
         # no charges of this kind: issued anyway (keeps the pair's number), marked across the bill
         "not_applicable": bool((inv.header or {}).get("not_applicable")) and not inv.lines,
+        "alter_until": alter_until(inv).isoformat() if inv.status == "issued" and alter_until(inv) else None,
         "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
         "due_date": inv.due_date.isoformat() if inv.due_date else None,
         "customer": inv.customer or {},

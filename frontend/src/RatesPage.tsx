@@ -3,6 +3,8 @@ import {
   createCharge,
   deletePricingRule,
   getInvoiceCounters,
+  getSettings,
+  setSetting,
   setInvoiceCounter,
   listAllCharges,
   listLicences,
@@ -84,7 +86,7 @@ export default function RatesPage() {
             ["standard", "Standard rates"],
             ["licences", "Licences"],
             ["hss", "HSS rules"],
-            ["numbering", "Invoice numbering"],
+            ["numbering", "Invoicing"],
           ] as const
         ).map(([id, label]) => (
           <button key={id} className={tab === id ? "tab active" : "tab"} onClick={() => setParams(id === "standard" ? {} : { tab: id })}>
@@ -759,6 +761,7 @@ function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
   }, []);
   return (
     <section className="hss-rules">
+      <EInvoicing canEdit={canEdit} />
       <h2>Invoice numbering</h2>
       <p className="tracker-subtitle">
         Next final-invoice number per financial year — Tax Invoice CL/&lt;n&gt;/&lt;FY&gt;, Reimbursement RI/CL/&lt;n&gt;/&lt;FY&gt;
@@ -787,5 +790,49 @@ function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
       </div>
       {msg && <div className="field-note">{msg}</div>}
     </section>
+  );
+}
+
+/**
+ * Admin: does e-invoicing (IRN) apply to Clarus? When on, altering an issued bill first asks
+ * whether its e-invoice has been filed — a filed one can't be altered (client, 2026-09-30).
+ * Either way, issued bills can be altered only until the 10th of the next month.
+ */
+function EInvoicing({ canEdit }: { canEdit: boolean }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    getSettings()
+      .then((s) => setOn(s.e_invoicing))
+      .catch(() => setOn(null));
+  }, []);
+  if (on === null) return null;
+  return (
+    <div className="hss-rule">
+      <label className="toggle-row" title={canEdit ? "" : "Only the admin can change this"}>
+        <span>
+          <strong>E-invoicing applies to Clarus</strong>
+          <span className="field-note" style={{ display: "block" }}>
+            On: before altering an issued bill you're asked whether its e-invoice is filed — filed bills can't be altered.
+            Either way, bills can be altered until the 10th of the next month (September bills until 10 October).
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={on}
+          disabled={!canEdit}
+          onChange={async () => {
+            setErr(null);
+            try {
+              setOn((await setSetting("e_invoicing", !on)).e_invoicing);
+            } catch {
+              setErr("Couldn't save — only the admin can change this.");
+            }
+          }}
+        />
+      </label>
+      {err && <div className="auth-error">{err}</div>}
+    </div>
   );
 }

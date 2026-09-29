@@ -528,6 +528,7 @@ export interface FinalInvoiceLine {
 }
 export interface FinalInvoice {
   not_applicable: boolean; // no charges of this kind: issued anyway as BILL CANCELLED — NOT APPLICABLE
+  alter_until: string | null; // issued: can be altered until this day (10th of next month)
   id: number;
   kind: "tax" | "reimbursement";
   title: string;

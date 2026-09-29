@@ -588,3 +588,16 @@ export async function setUserPassword(id: number, newPassword: string): Promise<
 export async function forgotPassword(email: string): Promise<void> {
   await client.post("/auth/forgot-password", { email });
 }
+
+/** Admin switches (e.g. e-invoicing applies to the company). Admin changes them. */
+export interface AppSettings {
+  e_invoicing: boolean;
+}
+export async function getSettings(): Promise<AppSettings> {
+  const { data } = await client.get("/settings");
+  return data;
+}
+export async function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<AppSettings> {
+  const { data } = await client.put(`/settings/${key}`, { value });
+  return data;
+}
