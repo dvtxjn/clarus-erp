@@ -61,7 +61,7 @@ def test_generic_charge_lines_and_totals():
     assert got["DO Fees"] == (6000.0, 1080.0, "INR", True)
     assert got["TERMINAL HANDLING - DISCHARGE PORT"] == (100000.0, 18000.0, "INR", True)   # wrapped name
     assert got["EQUIPMENT SURCHARGE"] == (1900.0, 342.0, "INR", True)                     # CGST + SGST, ex-rate column
-    assert got["TSD TERMINAL SECURITY CHARGE (ISPS)"][2:] == ("USD", False)                # foreign currency: out
+    assert got["TSD TERMINAL SECURITY CHARGE (ISPS)"][2:] == ("USD", True)                 # not Maersk: destination anyway
     assert len(got) == 5                                                                  # the SAC summary row isn't a charge
     assert (r["cfs_before_tax"], r["cfs_gst"], r["cfs_after_tax"]) == (213660.6, 38537.91, 252198.51)
 

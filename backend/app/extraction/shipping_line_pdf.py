@@ -22,11 +22,12 @@ Samples it's built from (reference: client uploads, 2026-09-28):
 Returns the same amount keys as the CFS reader (cfs_before_tax / cfs_gst /
 cfs_after_tax / cfs_sanity_ok) so tracker sync treats all invoices alike, plus
 carrier, invoice_no, is_proforma and `charges` (one dict per charge line).
-Client rule (2026-09-28): a charge is a destination charge (-> cost inclusion)
-only if BOTH checks agree — it's billed in INR, and its charge head isn't
-freight. A foreign-currency charge is never a destination charge (e.g. USD
-freight, which Maersk invoices sometimes include). When the two checks
-disagree (an INR line named like freight) it's left out and flagged to review.
+Client rule (2026-09-28, narrowed 2026-09-30): on MAERSK invoices a charge is a
+destination charge (-> cost inclusion) only if BOTH checks agree — it's billed in
+INR, and its charge head isn't freight (Maersk invoices can include USD freight);
+when they disagree (an INR line named like freight) it's left out and flagged.
+Every other line's import invoice only carries destination charges: all count,
+whatever the currency.
 """
 from __future__ import annotations
 
@@ -187,7 +188,7 @@ def _charges(lines: list[str]) -> list[dict[str, Any]]:
                         "currency": m["cur"], "quantity": _num(m["qty"]), "rate": _num(m["rate"]),
                         "amount": _num(m["amount"]), "gst": _num(m["gst"]) if m["gst"] else 0.0})
     if seen_maersk:
-        return _classify(out)
+        return _classify(out, strict=True)
 
     # Cordelia: amounts first, the charge name (ending "(SAC:…)") on the following line(s)
     for i, line in enumerate(lines):
@@ -236,8 +237,15 @@ def _charges(lines: list[str]) -> list[dict[str, Any]]:
     return _classify(out)
 
 
-def _classify(out: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _classify(out: list[dict[str, Any]], strict: bool = False) -> list[dict[str, Any]]:
+    """Which charges are destination charges (-> cost inclusion).
+    Maersk (strict): only INR charges whose head isn't freight — its invoices can carry freight.
+    Every other line (client, 2026-09-30): their import invoices only ever carry destination
+    charges, so every line counts, whatever the currency (e.g. HMM's ISPS fee in USD)."""
     for c in out:
+        if not strict:
+            c["in_cost_inclusion"], c["review"] = True, False
+            continue
         inr = c["currency"] == "INR"
         freight_head = bool(FREIGHT_HEAD.search(c["description"] or ""))
         c["in_cost_inclusion"] = inr and not freight_head
