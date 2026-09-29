@@ -524,7 +524,9 @@ input { padding: 6px 9px; }
   .detail-page { padding: 16px; }
 }
 
-.toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; cursor: pointer; }
+.toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; cursor: pointer; }
+.toggle-row > span { min-width: 0; }
+.toggle-row select { flex: 0 1 auto; min-width: 0; max-width: 58%; font-size: 12.5px; padding: 3px 6px; text-overflow: ellipsis; }
 .toggle-row input[role="switch"] {
   appearance: none;
   width: 34px;
@@ -960,3 +962,11 @@ input { padding: 6px 9px; }
 .key-id-flags { flex: 1; border-left-color: var(--color-border-soft); }
 .flag-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .flag-row .flag-chip { padding: 3px 9px; font-size: 12.5px; font-weight: 500; }
+
+/* overview: a full-width shipment block, then four equal-height columns (one clean rectangle) */
+.detail-grid { align-items: stretch; }
+.detail-wide { grid-column: 1 / -1; }
+.detail-col > .detail-section:last-child { flex: 1; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); column-gap: 28px; }
+.field-grid .field-row:last-child { border-bottom: 1px solid var(--color-border); }
+.detail-wide .hss-editor { margin-top: 6px; max-width: 480px; }

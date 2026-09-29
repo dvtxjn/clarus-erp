@@ -150,8 +150,28 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         : "No";
 
   return (
-    // four columns: status + remarks | duty + shipment | CFS + container | shipping line
+    // shipment & movement across the top; then status + remarks | customs duty | CFS | shipping line
     <div className="detail-grid">
+      {/* shipment + container & movement: one wide block across the top, fields in a grid */}
+      <section className="detail-section detail-wide">
+        <h3>Shipment &amp; movement</h3>
+        <div className="field-grid">
+            <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
+            <Field label="ETA" value={fmtDate(s.eta)} />
+            <Field label="INW" value={s.inw} />
+            <Field label="Day" value={s.days} />
+            <Field label="IGM" value={s.igm} />
+            <Field label="License" value={s.license} />
+            <Field label="Containers" value={s.container} />
+            <Field label="Gross Wt" value={s.gross_wt} />
+            <Field label="Container Status" value={s.container_status} />
+            <Field label="CFS" value={s.cfs} />
+            <Field label="POC" value={s.poc} />
+            <Field label="Delivery" value={s.delivery_status} />
+            <Field label="Shipping Line" value={s.shipping_line} />
+        </div>
+        <HssEditor shipment={s} onChange={onChange} />
+      </section>
       <div className="detail-col">
         <section className="detail-section">
           <h3>Status</h3>
@@ -194,16 +214,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               />
             </label>
           ))}
-        </section>
-        <section className="detail-section">
-          <h3>Shipment</h3>
-          <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
-          <Field label="ETA" value={fmtDate(s.eta)} />
-          <Field label="INW" value={s.inw} />
-          <Field label="Day" value={s.days} />
-          <Field label="IGM" value={s.igm} />
-          <Field label="License" value={s.license} />
-          <HssEditor shipment={s} onChange={onChange} />
         </section>
       </div>
       <div className="detail-col">
@@ -251,16 +261,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           ) : (
             <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
           )}
-        </section>
-        <section className="detail-section">
-          <h3>Container &amp; Movement</h3>
-          <Field label="Containers" value={s.container} />
-          <Field label="Gross Wt" value={s.gross_wt} />
-          <Field label="Container Status" value={s.container_status} />
-          <Field label="CFS" value={s.cfs} />
-          <Field label="POC" value={s.poc} />
-          <Field label="Delivery" value={s.delivery_status} />
-          <Field label="Shipping Line" value={s.shipping_line} />
         </section>
       </div>
       <div className="detail-col">
