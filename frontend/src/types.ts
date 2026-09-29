@@ -193,7 +193,10 @@ export interface ShipmentDocument {
   tracker_sync_applied: boolean;
   uploaded_at: string;
   extraction: DocumentExtraction | null;
+  drive_file_id: string | null;
   drive_link: string | null;
+  drive_sync_pending: boolean; // not in the Shared Drive yet (the server retries every 5 min)
+  drive_error: string | null;
   // CFS invoices only (decimals as strings)
   amount_before_tax: string | null;
   gst_amount: string | null;

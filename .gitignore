@@ -24,3 +24,7 @@ __pycache__/
 
 # database dumps (pre-migration and backups) — never in git
 backups/
+
+# service account keys and other secret files — never in git
+secrets/
+*service-account*.json

@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 from urllib.parse import quote
@@ -5,11 +6,13 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
+from app import storage
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin, require_billing_access
 from app.core.locking import locked_proforma, locked_shipment
 from app.core.enums import ChargeCalculationBasis, ChargeCategory, ProformaStatus
+from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
 from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, build_invoice, invoice_filename, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
@@ -466,7 +469,12 @@ def update_proforma_status(
             setattr(proforma, field, value)
     if "bill_rate" in changes:
         sync_gst_difference(db, proforma)
+    sent_now = changes.get("status") == ProformaStatus.SENT
     db.commit()
+    if sent_now:  # the version that went to the client: keep its PDF (local + Drive)
+        storage.save_pdf(db, "proforma_pdf", proforma.id, f"Invoices/Proformas/{fy_of(date.today())}",
+                         invoice_filename(proforma, "pdf"), render_pdf(build_invoice(proforma)))
+        db.commit()
     db.refresh(proforma)
     return _to_out(proforma)
 

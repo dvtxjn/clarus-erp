@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm.exc import StaleDataError
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core import realtime
+from app.core import jobs, realtime
 from app.core.migrate import run_migrations
 from app import models  # noqa: F401 — populates Base.metadata
 from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router
@@ -54,6 +54,7 @@ def on_startup():
 @app.on_event("startup")
 async def start_live_updates():
     realtime.start(asyncio.get_running_loop())
+    jobs.start()
 
 
 @app.get("/health")

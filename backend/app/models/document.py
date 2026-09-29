@@ -67,6 +67,10 @@ class ShipmentDocument(SoftDeleteMixin, Base):
     # set when the file was picked from Google Drive instead of uploaded
     drive_file_id = Column(String, nullable=True)
     drive_link = Column(String, nullable=True)
+    # STORAGE_BACKEND=drive: the server's copy in the Shared Drive failed to save yet
+    # (the local file is kept; a background job retries). drive_error says why.
+    drive_sync_pending = Column(Boolean, nullable=False, default=False, server_default="0")
+    drive_error = Column(String, nullable=True)
 
     # CFS proforma / tax invoice amounts — read from the PDF, correctable by hand.
     # amount_total is always before-tax + GST. The shipment's CFS figures are

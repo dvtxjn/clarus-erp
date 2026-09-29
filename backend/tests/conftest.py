@@ -18,6 +18,7 @@ else:
     _db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     os.environ["DATABASE_URL"] = f"sqlite:///{_db.name}"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
+os.environ["JOBS_ENABLED"] = "0"  # background jobs are called directly in tests
 os.environ["DOCUMENT_STORAGE_ROOT"] = tempfile.mkdtemp(prefix="erp-test-docs-")
 
 import pytest  # noqa: E402

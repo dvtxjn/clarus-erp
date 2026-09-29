@@ -6,6 +6,8 @@ from typing import BinaryIO, Callable, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
+from urllib.parse import quote
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,7 @@ from app.core.database import get_db
 from app.core.audit import record_change
 from app.core.deps import get_current_user, get_user_allowed_ports, require_admin
 from app.core.locking import locked_shipment_or_404
+from app import storage
 from app.integrations import google_drive
 from decimal import Decimal
 
@@ -37,7 +40,7 @@ COMBINED_DOCUMENTS = {
     DocumentType.DO_EMPTY_LETTER: (DocumentType.DO_LETTER, DocumentType.EMPTY_LETTER),
 }
 
-STORAGE_ROOT = Path(os.getenv("DOCUMENT_STORAGE_ROOT", "./storage/documents"))
+STORAGE_ROOT = storage.STORAGE_ROOT
 
 
 @router.post("", response_model=ShipmentDocumentOut, status_code=201)
@@ -61,7 +64,8 @@ async def upload_document(
     shipment = _get_shipment(db, shipment_id, current_user)
     doc = _store_document(db, shipment, document_type, file.filename or "upload.pdf",
                           lambda out: shutil.copyfileobj(file.file, out), current_user)
-    if shipment.drive_folder_id:
+    if shipment.drive_folder_id and storage.drive() is None:
+        # no server-side Drive: the older per-shipment folder save (user's own Google token)
         await _save_to_drive_folder(db, shipment, doc, drive_access_token)
     return doc
 
@@ -127,7 +131,7 @@ def reread_document(shipment_id: int, document_id: int, db: Session = Depends(ge
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    fields = extract_document_fields(doc.document_type, doc.file_path)  # slow part, before the lock
+    fields = extract_document_fields(doc.document_type, storage.local_path(doc))  # slow part, before the lock
     shipment = locked_shipment_or_404(db, shipment_id)
     doc.tracker_sync_applied = False
     result = apply_tracker_sync(db, shipment, doc, current_user.id, fields)
@@ -163,6 +167,7 @@ def remove_document(shipment_id: int, document_id: int, db: Session = Depends(ge
                   f"{doc.document_type.value}: {doc.generated_filename}", None, current_user.id)
     was_invoice = doc.document_type in INVOICE_DOC_TYPES
     soft_delete(db, doc, current_user.id)
+    storage.mark_removed(doc, True)  # Drive: renamed "[removed] …", never deleted
     if was_invoice:  # CFS / shipping line totals are sums of the remaining invoices
         recompute_invoice_totals(db, shipment, current_user.id)
     refresh_draft_proformas(db, shipment)
@@ -311,9 +316,31 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
     doc.extraction = {"fields": fields, **result}
     refresh_draft_proformas(db, shipment)  # draft proformas pick up the new figures
 
+    db.commit()  # ends the locked part
+    # Save the lasting copy in the Shared Drive (STORAGE_BACKEND=drive), outside the lock;
+    # a Drive failure only marks it pending for the retry job
+    storage.push_document(doc, shipment)
     db.commit()
     db.refresh(doc)
     return doc
+
+
+@router.get("/{document_id}/file")
+def view_document_file(shipment_id: int, document_id: int, db: Session = Depends(get_db),
+                       current_user: User = Depends(get_current_user)):
+    """The stored PDF itself (opens in the browser). Fetched back from Drive if this
+    server's disk no longer has it."""
+    shipment = _get_shipment(db, shipment_id, current_user)
+    doc = db.query(ShipmentDocument).filter(ShipmentDocument.id == document_id,
+                                            ShipmentDocument.shipment_id == shipment.id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        path = storage.local_path(doc)
+    except (FileNotFoundError, storage.DriveError):
+        raise HTTPException(status_code=404, detail="The file isn't available — upload it again.")
+    return FileResponse(path, media_type="application/pdf",
+                        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quote(doc.generated_filename)}"})
 
 
 @router.get("", response_model=list[ShipmentDocumentOut])

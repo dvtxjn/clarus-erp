@@ -3,6 +3,7 @@ import axios from "axios";
 import {
   addDocumentFromDrive,
   getDocumentChecklist,
+  openDocumentFile,
   removeDocument,
   rereadDocument,
   uploadDocument,
@@ -248,7 +249,15 @@ export default function DocumentManagerPanel({
                         ? "—"
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
-                              {d.generated_filename}
+                              {d.generated_filename}{" "}
+                              <button type="button" className="link-btn" onClick={() => openDocumentFile(shipment.id, d.id)}>
+                                View
+                              </button>
+                              {d.drive_sync_pending && (
+                                <span className="exception-badge" title={d.drive_error ?? ""}>
+                                  {" "}not in Drive yet — retrying
+                                </span>
+                              )}
                               {d.drive_link && (
                                 <>
                                   {" "}

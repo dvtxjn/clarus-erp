@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app import storage
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
@@ -97,13 +98,17 @@ def list_final_invoices(shipment_id: int, db: Session = Depends(get_db), _user: 
     return [compute(i) for i in rows]
 
 
+def _pdf_name(data: dict, inv: FinalInvoice) -> str:
+    number = (inv.number or f"DRAFT-{inv.id}").replace("/", "-")
+    kind = "Tax Invoice" if inv.kind == "tax" else "Reimbursement Invoice"
+    return f"{data['customer'].get('name') or 'Client'} - {number} - {kind}.pdf"
+
+
 @router.get("/final-invoices/{invoice_id}.pdf")
 def final_invoice_pdf(invoice_id: int, db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
     inv = _get(db, invoice_id)
     data = compute(inv)
-    number = (inv.number or f"DRAFT-{inv.id}").replace("/", "-")
-    kind = "Tax Invoice" if inv.kind == "tax" else "Reimbursement Invoice"
-    filename = f"{data['customer'].get('name') or 'Client'} - {number} - {kind}.pdf"
+    filename = _pdf_name(data, inv)
     return Response(content=render_final_pdf(data), media_type="application/pdf", headers={
         "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
         "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename",
@@ -155,6 +160,11 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
         raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
     issue(db, inv)
     record_change(db, "final_invoices", inv.id, "issued", None, inv.number, user.id)
+    db.commit()
+    # what goes to the client / authorities: keep the PDF as issued (local + Drive)
+    data = compute(inv)
+    storage.save_pdf(db, "final_invoice_pdf", inv.id, f"Invoices/{inv.fy}", _pdf_name(data, inv),
+                     render_final_pdf(data))
     db.commit()
     db.refresh(inv)
     return compute(inv)

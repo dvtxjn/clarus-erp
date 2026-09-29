@@ -527,3 +527,13 @@ export async function listDeleted(): Promise<DeletedItem[]> {
 export async function restoreDeleted(kind: DeletedItem["kind"], id: number): Promise<void> {
   await client.post(`/deleted/${kind}/${id}/restore`);
 }
+
+/** Open a stored document's PDF in a new tab (the file needs the login header). */
+export async function openDocumentFile(shipmentId: number, documentId: number): Promise<void> {
+  const tab = window.open("", "_blank"); // opened now, while the click still counts
+  const { data } = await client.get(`/shipments/${shipmentId}/documents/${documentId}/file`, { responseType: "blob" });
+  const url = URL.createObjectURL(data);
+  if (tab) tab.location.href = url;
+  else window.location.href = url;
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

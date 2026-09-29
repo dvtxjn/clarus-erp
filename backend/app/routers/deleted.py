@@ -5,6 +5,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app import storage
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin
@@ -79,6 +80,7 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
     restore(db, obj)
     record_change(db, TABLES[kind], obj.id, "restored", None, _label(kind, obj), admin.id)
     if kind == "document":
+        storage.mark_removed(obj, False)  # Drive name back without "[removed] "
         ship = db.get(Shipment, obj.shipment_id)
         if obj.document_type in INVOICE_DOC_TYPES:
             recompute_invoice_totals(db, ship, admin.id)

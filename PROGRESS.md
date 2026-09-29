@@ -21,6 +21,26 @@ re-run and reconfirmed against a fresh SQLite DB.
 
 ---
 
+## 🟡 Launch Phase 7 — Google Drive storage (2026-09-29, branch `storage/phase-7`) — built, waiting for the real Shared Drive
+
+**Client rule (2026-09-29): the ERP may only READ and SAVE in Google Drive — NEVER delete.** Enforced twice: the service account is a **Contributor** on the Shared Drive (Google refuses deletes/trash/moves), and `app/storage/drive_client.py` has no delete/trash/move method and refuses DELETE requests or any body setting `trashed`. Remove document = Drive file renamed `[removed] …` (restore renames back). Backups (Phase 8) are never pruned by the app. DEPLOYMENT_PLAN updated (Golden Rule 0, H4, Phase 7 item 4, Phase 8 item 3).
+
+- `app/storage/__init__.py` (service) + `drive_client.py` (Drive v3 over httpx, service-account JWT via python-jose, Shared Drive flags). `STORAGE_BACKEND=local|drive` (local default; nothing changes until the keys are set).
+- Every file is written locally first (working copy for the PDF readers), then saved to Drive: `Documents/<Client>/<MBL or Job>/<generated name>.pdf`. Generated PDFs: a proforma when marked **Sent** → `Invoices/Proformas/<FY>/`; a final invoice when **issued** → `Invoices/<FY>/` (`stored_files` table, one per kind+id, first saved copy is never replaced; local mode keeps them under `storage/generated/`).
+- Folders: `drive_folders` registry (unique path), each level created in its own short transaction under `pg_advisory_xact_lock` → two simultaneous uploads for a new client make one folder (tested with threads on Postgres).
+- Guard: every write names a parent that must be inside DRIVE_ROOT/INVOICES/BACKUPS (walks `parents`, caches proven folders); otherwise `OutsideRoot`.
+- Drive failure never loses an upload: document saved + read as usual, marked `drive_sync_pending` with `drive_error`; `app/core/jobs.py` runs `storage.retry_pending` every 5 min (advisory-locked: one instance). Documents panel shows "not in Drive yet — retrying".
+- A wiped local disk (redeploy) is fine: `storage.local_path(doc)` fetches the file back from Drive (view + re-read).
+- New `GET /shipments/{id}/documents/{doc}/file` + **View** button (documents could not be opened in the app before).
+- The old per-shipment "save to my Drive folder" (user's own Google token) now runs only when server storage is local.
+- `scripts/check_drive.py`: checks key, three folders, Shared Drive, that the account can add but NOT delete/trash, and that the code refuses deletes.
+- Migration 0028 (drive_folders, stored_files, document drive_sync_pending/drive_error). Tests `tests/test_drive_storage.py` (fake Drive; real guard + refusal). 109 pass on Postgres.
+- Dev server must run with `--timeout-graceful-shutdown 3` (live streams keep connections open; without it a reload/deploy waits forever). Same flag for the production start command (Phase 10).
+
+**To switch on** (client's Google setup, see chat 2026-09-29): Shared Drive `Clarus ERP` with `Documents`, `Invoices`, `Backups`; Cloud project with Drive + Sheets APIs; service account `erp-storage` → JSON key into `backend/secrets/` (gitignored); add it to the Shared Drive as **Contributor**; put the three folder IDs + key path in `backend/.env`; run `scripts/check_drive.py`; set `STORAGE_BACKEND=drive`. Existing local documents are not copied yet — a one-time upload script is still to write.
+
+---
+
 ## ✅ Live tracker, Google-Sheets style (2026-09-29, branch `concurrency/phases-2-4-5-6`)
 
 Client: "ideally it should work exactly like google sheets". Replaces DEPLOYMENT_PLAN Phase 5's 8-second polling with push.

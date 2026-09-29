@@ -124,6 +124,8 @@ what I should click to check it. Then update PROGRESS.md and the phase tracker, 
 
 ## 2. Golden Rules for Claude Code
 
+0. **Google Drive: read and save only — the ERP never deletes, trashes or moves anything there** (client, 2026-09-29). Enforced by the Contributor role and by `app/storage/drive_client.py`.
+
 1. **Tests first.** For every phase, write the failing tests, then the code. Tests run against real Postgres (Docker), never SQLite.
 2. **Only touch what the phase needs.** Do not refactor unrelated files or change working features.
 3. **Never delete or overwrite user data.** No `DROP`, `TRUNCATE`, hard `DELETE` of business data, or destructive migrations without asking the human first and showing a backup exists.
@@ -146,7 +148,7 @@ what I should click to check it. Then update PROGRESS.md and the phase tracker, 
 | H1 | Turn on auto-renew and two-factor login for the domain at Dynadot | You/client | Phase 10 |
 | H2 | Create the Render account **in the client's name** (add yourself as a member) | Client | Phase 10 |
 | H3 | Google Workspace admin: create a **Shared Drive** named `Clarus ERP` (if the Workspace edition has no Shared Drives, tell Claude Code and use the fallback in Phase 7) | Client admin | Phase 7 |
-| H4 | Google Cloud project (client's): enable Drive API, create a **service account**, download its JSON key, add the service account as *Content manager* on the Shared Drive only | Client admin + you | Phase 7 |
+| H4 | Google Cloud project (client's): enable Drive API, create a **service account**, download its JSON key, add the service account as **Contributor** on the Shared Drive only (client rule 2026-09-29: the ERP may read and save, NEVER delete — Contributor cannot delete, trash or move) | Client admin + you | Phase 7 |
 | H5 | Create folders in the Shared Drive: `Documents`, `Invoices`, `Backups`. Give Claude Code the folder IDs | You | Phase 7 |
 | H6 | Add `https://erp.claruslogistics.in` to the OAuth authorised JavaScript origins (Drive picker) | You | Phase 10 |
 | H7 | Optional: a storage bucket (any S3-compatible, about $1-3/month) for a second backup copy outside Google | You | Phase 8 (optional) |
@@ -301,7 +303,7 @@ Also add `docs/TWO_BROWSER_TEST.md`: a 10-step manual script a non-developer can
 1. `DocumentStorage` interface with `LocalStorage` (dev) and `DriveStorage`. Selected by `STORAGE_BACKEND=local|drive`.
 2. `DriveStorage` uses the service account (env `GOOGLE_SERVICE_ACCOUNT_JSON`), Shared Drive flags (`supportsAllDrives=true`, `includeItemsFromAllDrives=true`) and env `DRIVE_ROOT_FOLDER_ID` (`Documents` folder), `DRIVE_INVOICES_FOLDER_ID`, `DRIVE_BACKUPS_FOLDER_ID`.
 3. Folder structure: `Documents/<Client>/<MBL or Job>/<generated name>.pdf`. Store the Drive folder ID in a `drive_folders` table (unique on path). Create folders under `pg_advisory_xact_lock` so two simultaneous uploads never create duplicates.
-4. **Safety guard:** before any Drive call, verify the target's ancestry is inside the configured root folders. Refuse otherwise. The app never deletes Drive files (except backup retention in Phase 8, and only files it created with the `erp-` prefix). "Remove document" moves the file to a `_removed` folder.
+4. **Safety guard:** before any Drive call, verify the target's ancestry is inside the configured root folders. Refuse otherwise. The app NEVER deletes, trashes or moves Drive files (client rule 2026-09-29, no exceptions). "Remove document" only renames the Drive file to `[removed] …`.
 5. Upload flow: browser -> backend (extract, name, tracker update) -> Drive -> save `drive_file_id` + link. A Drive failure never loses the upload: keep the file, mark `drive_sync_pending`, retry via a scheduled job, and show the warning in the result banner (as today).
 6. On **Issue**, generate the final invoice PDF and save it to `Invoices/<FY>/` in Drive; store the file id on the invoice.
 7. Keep the existing Drive picker ("Choose from Google Drive") for reading existing PDFs.
@@ -320,7 +322,7 @@ Also add `docs/TWO_BROWSER_TEST.md`: a 10-step manual script a non-developer can
 **Do:**
 1. `backend/scripts/backup.py`: `pg_dump -Fc`, encrypt (key from env `BACKUP_ENCRYPTION_KEY`, never stored in Drive), write a small manifest JSON (timestamp, size, row count per table), upload dump + manifest to Drive `Backups`, verify the upload (size/checksum) before finishing.
 2. **Schedule (inside the app, advisory-locked):** every 12 hours, e.g. 06:00 and 20:00 IST.
-3. **Retention (delete only after a newer backup is verified):** keep all from the last 14 days; keep the Sunday 06:00 one for 12 weeks; keep the 1st-of-month one for 12 months. Only delete files this job created (name prefix `erp-`). Name: `erp-YYYY-MM-DD-HHMM.dump.enc`.
+3. **No retention deletes** (client rule 2026-09-29: the ERP never deletes anything in Drive). Backups simply accumulate (about 100 KB each). Name: `erp-YYYY-MM-DD-HHMM.dump.enc`. If space ever matters, a human prunes old ones by hand.
 4. **Alerts:** admin dashboard shows a red banner if the last verified backup is older than 26 hours or its size dropped more than 40% from the previous one. Endpoint `GET /health/backups`. Send an email if SMTP env vars are configured.
 5. `backend/scripts/restore.py <file> --into <empty database url>`: decrypt, restore into a scratch database and print row counts against the manifest. Never restore over a live database without an explicit `--i-am-sure` flag.
 6. Optional (H7): if `EXTRA_BACKUP_S3_*` env vars exist, also upload the weekly dump to that bucket.
