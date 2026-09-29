@@ -710,3 +710,15 @@ The client will pick features they like from other software and feed them in. Re
 - ✅ P0 Settings page (2026-09-30): Company, Bank details, Invoice wording (proforma notes, final terms) — printed on
   invoices from Settings, validated (GSTIN / state code); Invoicing (e-invoicing, numbering — moved from Rates);
   Storage & backups status (read-only); Users & permissions. Defaults = the previous hard-coded values.
+
+- Order agreed (2026-09-30): P1 (payments & outstanding → Tally export → alerts → phone proforma), then **tracker
+  polish** (priority), then P3, P4, P5. Smaller items and housekeeping → P6.
+- ✅ P1 Payments & outstanding (2026-09-30): Invoicing → Outstanding & payments. Record money received (date, amount,
+  mode, UTR / cheque, notes) split over the client's issued invoices — oldest first or by hand — with any TDS they
+  deducted; the rest stays on account. Per client: billed / received / TDS / outstanding, ageing 0-30 / 31-60 /
+  61-90 / 90+, statement PDF, "copy reminder" (open invoices + bank details). Final invoices list shows outstanding.
+  A payment entered by mistake: admin removes it (soft delete; Recently deleted restores). Migration 0040.
+- 📝 LATER — Receipt agent (client, 2026-09-30): an accounts/billing mailbox; when a proforma is issued an auto-mail
+  goes to the client (contacts to be fed); the client replies with a payment screenshot and maybe the UTR; the bank's
+  credit e-mail (on one of the client's mailboxes) is read and matched by UTR + amount; if received → mark paid in the
+  ERP and issue a receipt automatically. Builds on the payments above.

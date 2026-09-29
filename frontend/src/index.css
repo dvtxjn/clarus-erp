@@ -1332,3 +1332,20 @@ input { padding: 6px 9px; }
 .settings-grid { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 8px 14px; font-size: 13px; }
 .settings-body .hss-rule { margin: 0; }
 @media (max-width: 900px) { .settings-section { grid-template-columns: 1fr; gap: 8px; } }
+
+/* Outstanding & payments */
+.recv-stats { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; display: grid; gap: 12px; margin-bottom: 12px; }
+.recv-client { cursor: pointer; }
+.recv-client:hover td { background: var(--color-inv-sub); }
+.recv-invoice td { background: var(--color-subtle); font-size: 12.5px; }
+.recv-actions { display: flex; gap: 4px; justify-content: flex-end; white-space: nowrap; }
+.recv-actions button { height: 26px; padding: 0 8px; font-size: 12px; }
+.recv-late { color: var(--bad-fg); font-weight: 600; }
+.recv-due { color: var(--warn-fg); font-weight: 600; }
+.recv-h2 { font-size: 14px; font-weight: 600; margin: 22px 0 8px; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(10, 12, 11, .45); display: grid; place-items: center; padding: 16px; }
+.modal { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: 0 20px 50px rgba(0, 0, 0, .25);
+  padding: 18px 20px; width: min(760px, 100%); max-height: 90vh; overflow: auto; display: flex; flex-direction: column; gap: 12px; }
+.modal h3 { margin: 0; font-size: 15px; }
+.pay-split-head { display: flex; justify-content: space-between; align-items: center; }
+.pay-dialog .rate-input { width: 120px; }

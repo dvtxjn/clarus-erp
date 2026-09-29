@@ -99,9 +99,12 @@ def create_final_invoices(proforma_id: int, db: Session = Depends(get_db),
     return [compute(i) for i in created]
 
 
-def _register_row(inv: FinalInvoice) -> dict:
+def _register_row(inv: FinalInvoice, settled: Optional[dict] = None) -> dict:
     """One line of the invoice register (the Invoices page)."""
     d = compute(inv)
+    paid = (settled or {}).get(inv.id, {"paid": Decimal("0"), "tds": Decimal("0")})
+    done = paid["paid"] + paid["tds"]
+    net = Decimal(d["totals"]["net_payable"])
     s = inv.shipment
     return {
         "id": inv.id, "kind": inv.kind, "status": inv.status, "number": inv.number, "seq": inv.seq, "fy": inv.fy,
@@ -110,6 +113,7 @@ def _register_row(inv: FinalInvoice) -> dict:
         "be_no": (inv.header or {}).get("be_no"), "not_applicable": d["not_applicable"],
         "taxable": d["totals"]["sub_taxable"], "non_gst": d["totals"]["sub_non_gst"], "gst": d["totals"]["gst"],
         "net_payable": d["totals"]["net_payable"], "irn": inv.irn,
+        "received": str(done), "outstanding": str(max(Decimal("0"), net - done)) if inv.status == "issued" else "0",
     }
 
 
@@ -151,8 +155,11 @@ def invoice_register(fy: Optional[str] = None, month: Optional[str] = None, kind
     """Every final invoice (tax + reimbursement) across shipments, filtered — the Invoices page
     (client, 2026-09-30: print / extract without opening each shipment)."""
     rows = _register(db, fy, month, kind, status, client, q)
+    from app.receivables import settled_by_invoice
+
+    settled = settled_by_invoice(db, [r.id for r in rows])
     fys = sorted({r.fy or fy_of(r.invoice_date) for r in db.query(FinalInvoice).all() if r.fy or r.invoice_date}, reverse=True)
-    return {"invoices": [_register_row(i) for i in rows], "financial_years": fys}
+    return {"invoices": [_register_row(i, settled) for i in rows], "financial_years": fys}
 
 
 @router.get("/final-invoices/export.pdf")

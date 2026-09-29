@@ -649,6 +649,8 @@ export interface RegisterRow {
   gst: string;
   net_payable: string;
   irn: string | null;
+  received: string;
+  outstanding: string;
 }
 export interface RegisterFilters {
   fy?: string;
@@ -692,4 +694,77 @@ export async function getProformaRegister(f: RegisterFilters): Promise<{ proform
 }
 export async function downloadProformasPdf(ids: number[]): Promise<void> {
   await downloadBlob(`/proformas/export.pdf?ids=${ids.join(",")}`, "proformas.pdf");
+}
+
+/** Payments & outstanding (P1). */
+export interface OpenInvoice {
+  id: number;
+  number: string | null;
+  kind: "tax" | "reimbursement";
+  invoice_date: string | null;
+  customer: string;
+  gstin: string;
+  shipment_id: number;
+  job: string | null;
+  net_payable: string;
+  paid: string;
+  tds: string;
+  outstanding: string;
+  pay_status: string;
+  age_days: number;
+  bucket: string;
+}
+export interface ClientReceivable {
+  party: string;
+  gstin: string;
+  billed: string;
+  received: string;
+  tds: string;
+  outstanding: string;
+  on_account: string;
+  buckets: Record<string, string>;
+  oldest_days: number;
+  invoices: OpenInvoice[];
+}
+export interface PaymentRecord {
+  id: number;
+  received_on: string;
+  party: string;
+  party_gstin: string | null;
+  amount: string;
+  mode: string | null;
+  reference: string | null;
+  notes: string | null;
+  allocations: { invoice_id: number; number: string | null; amount: string; tds: string }[];
+  unallocated: string;
+}
+export async function getReceivables(client?: string, includePaid = false): Promise<{ as_of: string; clients: ClientReceivable[] }> {
+  const { data } = await client_get("/receivables", { client: client || undefined, include_paid: includePaid || undefined });
+  return data;
+}
+export async function listPayments(party?: string): Promise<PaymentRecord[]> {
+  const { data } = await client_get("/payments", { party: party || undefined });
+  return data;
+}
+export async function recordPayment(body: {
+  received_on: string;
+  party: string;
+  party_gstin?: string | null;
+  amount: string;
+  mode?: string;
+  reference?: string;
+  notes?: string;
+  allocations: { invoice_id: number; amount: string; tds: string }[];
+}): Promise<PaymentRecord> {
+  const { data } = await client.post("/payments", body);
+  return data;
+}
+export async function deletePayment(id: number): Promise<void> {
+  await client.delete(`/payments/${id}`);
+}
+export async function downloadStatement(party: string): Promise<void> {
+  await downloadBlob(`/receivables/statement.pdf?client=${encodeURIComponent(party)}`, "statement.pdf");
+}
+function client_get(path: string, params: Record<string, unknown>) {
+  return client.get(path, { params });
 }

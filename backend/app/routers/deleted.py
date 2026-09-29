@@ -13,6 +13,7 @@ from app.extraction.cfs_totals import INVOICE_DOC_TYPES, recompute_invoice_total
 from app.invoice.autofill import refresh_draft_proformas
 from app.models.document import ShipmentDocument
 from app.models.final_invoice import FinalInvoice
+from app.models.payment import Payment
 from app.models.proforma import Proforma
 from app.models.shipment import Shipment
 from app.models.soft_delete import restore
@@ -20,10 +21,11 @@ from app.models.user import User
 
 router = APIRouter(prefix="/deleted", tags=["recently deleted"], dependencies=[Depends(require_admin)])
 
-Kind = Literal["shipment", "document", "proforma", "final_invoice"]
-MODELS = {"shipment": Shipment, "document": ShipmentDocument, "proforma": Proforma, "final_invoice": FinalInvoice}
+Kind = Literal["shipment", "document", "proforma", "final_invoice", "payment"]
+MODELS = {"shipment": Shipment, "document": ShipmentDocument, "proforma": Proforma, "final_invoice": FinalInvoice,
+          "payment": Payment}
 TABLES = {"shipment": "shipments", "document": "shipment_documents", "proforma": "proformas",
-          "final_invoice": "final_invoices"}
+          "final_invoice": "final_invoices", "payment": "payments"}
 
 
 def _all(db: Session, model):
@@ -37,6 +39,8 @@ def _label(kind: str, obj) -> str:
         return obj.generated_filename or obj.original_filename or obj.document_type.value
     if kind == "proforma":
         return f"Proforma v{obj.version_number}" + (f" · {obj.name}" if obj.name else "")
+    if kind == "payment":
+        return f"Payment ₹{obj.amount:,.2f} from {obj.party} ({obj.received_on:%d %b %Y})"
     return f"{'Tax' if obj.kind == 'tax' else 'Reimbursement'} invoice (draft)"
 
 
@@ -47,7 +51,7 @@ def list_deleted(db: Session = Depends(get_db)):
     out = []
     for kind, model in MODELS.items():
         for obj in _all(db, model).filter(model.deleted_at.isnot(None)):
-            ship = obj if kind == "shipment" else ships.get(obj.shipment_id)
+            ship = obj if kind == "shipment" else ships.get(getattr(obj, "shipment_id", None))
             out.append({
                 "kind": kind, "id": obj.id, "label": _label(kind, obj),
                 "shipment_id": ship.id if ship else None,
@@ -66,7 +70,7 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
         raise HTTPException(status_code=404, detail="Not found")
     if not obj.is_deleted:
         raise HTTPException(status_code=400, detail="This isn't deleted")
-    if kind != "shipment":
+    if kind not in ("shipment", "payment"):
         ship = _all(db, Shipment).filter(Shipment.id == obj.shipment_id).first()
         if ship and ship.is_deleted:
             raise HTTPException(status_code=400, detail="Its shipment is deleted — restore the shipment first")
