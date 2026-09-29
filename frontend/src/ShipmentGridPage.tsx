@@ -40,6 +40,7 @@ import { useSaveShipment } from "./useSaveShipment";
 import { colorIndex, connectLive, PRESENCE_COLORS, sendPresence, TAB_ID } from "./live";
 import ColumnsPanel, { type PanelColumn } from "./ColumnsPanel";
 import { useConfirm } from "./ConfirmDialog";
+import { ShipmentDetail } from "./ShipmentDetailPage";
 import { formatPort, usePorts } from "./ports";
 import { SHIPMENT_STATUS_LABELS, type Port, type Shipment, type ShipmentStatus, type TrackerColumn } from "./types";
 
@@ -283,7 +284,16 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       suppressMovable: true,
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
-          <Link to={`/shipments/${p.data.id}`} className="grid-open-link" title="Open shipment">
+          <Link
+            to={`/shipments/${p.data.id}`}
+            className="grid-open-link"
+            title="Open in a side panel (Ctrl / ⌘-click: full page)"
+            onClick={(e) => {
+              if (e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab / full page as usual
+              e.preventDefault();
+              window.dispatchEvent(new CustomEvent("tracker:peek", { detail: p.data!.id }));
+            }}
+          >
             ↗
           </Link>
         ) : null,
@@ -492,6 +502,33 @@ export default function ShipmentGridPage() {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const statusFilter = (searchParams.get("status") as ShipmentStatus | null) ?? undefined;
+  // side panel ("peek"): the shipment opens over the tracker; kept in the URL (?peek=58)
+  const peekId = Number(searchParams.get("peek")) || null;
+  const setPeek = useCallback(
+    (id: number | null) =>
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set("peek", String(id));
+          else next.delete("peek");
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
+  useEffect(() => {
+    const open = (e: Event) => setPeek((e as CustomEvent<number>).detail);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector(".ag-cell-inline-editing, .confirm-dialog")) setPeek(null);
+    };
+    window.addEventListener("tracker:peek", open);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("tracker:peek", open);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [setPeek]);
   const ports = usePorts();
   const confirm = useConfirm();
   const { user } = useAuth();
@@ -1351,6 +1388,11 @@ export default function ShipmentGridPage() {
 
           {shownGroups.length === 0 && <div className="tracker-empty">No shipments match this view.</div>}
         </SettledStack>
+      )}
+      {peekId && (
+        <aside className="peek-panel" aria-label="Shipment">
+          <ShipmentDetail key={peekId} shipmentId={peekId} onClose={() => setPeek(null)} />
+        </aside>
       )}
     </div>
   );

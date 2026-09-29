@@ -29,7 +29,15 @@ function fmtMoney(v: string | null): string | null {
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const shipmentId = Number(id);
+  return <ShipmentDetail shipmentId={Number(id)} />;
+}
+
+/**
+ * The shipment: a page of its own, or (peek) a panel over the tracker — open a row,
+ * glance, close, next row (client, 2026-09-29).
+ */
+export function ShipmentDetail({ shipmentId, onClose }: { shipmentId: number; onClose?: () => void }) {
+  const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("overview");
@@ -46,10 +54,21 @@ export default function ShipmentDetailPage() {
   if (!shipment) return <div className="tracker-empty">Shipment not found.</div>;
 
   return (
-    <div className="detail-page">
-      <Link to="/shipments" className="back-link">
-        ← Back to Shipment Tracker
-      </Link>
+    <div className={peek ? "detail-page detail-peek" : "detail-page"}>
+      {peek ? (
+        <div className="peek-bar">
+          <Link to={`/shipments/${shipment.id}`} className="back-link">
+            Open full page ↗
+          </Link>
+          <button type="button" className="peek-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+            ✕
+          </button>
+        </div>
+      ) : (
+        <Link to="/shipments" className="back-link">
+          ← Back to Shipment Tracker
+        </Link>
+      )}
 
       <header className="detail-header">
         <div className="detail-title">
