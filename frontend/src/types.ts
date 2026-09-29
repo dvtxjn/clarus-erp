@@ -426,6 +426,20 @@ export interface DashboardSummary {
   by_status: Record<ShipmentStatus, number>;
   by_port: Record<string, number>;
   upcoming_etas: { id: number; job: string; mbl: string; consignee: string | null; eta: string | null; port: string | null }[];
+  live_containers: number;
+  live_tonnes: number;
+  containers_by_eta_month: MonthFigures[];
+  containers_cleared_by_month: MonthFigures[];
+  this_month: string; // "2026-09"
+  last_month: string;
+}
+
+/** Containers and gross weight (tonnes) in one month, split by port. */
+export interface MonthFigures {
+  month: string;
+  containers: number;
+  tonnes: number;
+  by_port: Record<string, { containers: number; tonnes: number }>;
 }
 
 export interface ShipmentCreateInput {

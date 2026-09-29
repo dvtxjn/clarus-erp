@@ -73,6 +73,67 @@ def list_shipments(
     return q.order_by(Shipment.eta.asc().nullslast()).all()
 
 
+def _containers(s: Shipment) -> int:
+    """The tracker's Cntr column is text; blank or unreadable counts as 0."""
+    try:
+        return max(0, int(str(s.container or "").strip().split()[0]))
+    except (ValueError, IndexError):
+        return 0
+
+
+def _tonnes(s: Shipment) -> float:
+    """Gross Wt is text like '124.270 MTS' (tonnes); 'KGS' is converted; anything else counts as 0."""
+    import re
+
+    text = str(s.gross_wt or "").replace(",", "").upper()
+    m = re.search(r"\d+(?:\.\d+)?", text)
+    if not m:
+        return 0.0
+    n = float(m.group())
+    return n / 1000 if "KG" in text else n
+
+
+def _month(d: date) -> str:
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def container_metrics(shipments: list[Shipment], today: date) -> dict:
+    """Dashboard (client, 2026-09-29): containers and gross weight — what matters, not the
+    number of shipments — per month by ETA and by Cleared Date, each split by port; the
+    last 12 months up to 2 months ahead."""
+    first = date(today.year - (1 if today.month <= 11 else 0), (today.month - 11 - 1) % 12 + 1, 1)
+    last_y, last_m = (today.year + (today.month + 1) // 12, (today.month + 1) % 12 + 1)
+    last = date(last_y, last_m, 1)
+
+    def series(get_date) -> list[dict]:
+        months: dict[str, dict] = {}
+        for s in shipments:
+            d = get_date(s)
+            if d is None or not (first <= date(d.year, d.month, 1) <= last):
+                continue
+            m = months.setdefault(_month(d), {"month": _month(d), "containers": 0, "tonnes": 0.0, "by_port": {}})
+            n, t = _containers(s), _tonnes(s)
+            m["containers"] += n
+            m["tonnes"] += t
+            port = m["by_port"].setdefault(s.port or "Unassigned", {"containers": 0, "tonnes": 0.0})
+            port["containers"] += n
+            port["tonnes"] += t
+        out = [months[k] for k in sorted(months)]
+        for m in out:  # tonnes to 3 decimals, like the tracker
+            m["tonnes"] = round(m["tonnes"], 3)
+            for p in m["by_port"].values():
+                p["tonnes"] = round(p["tonnes"], 3)
+        return out
+
+    prev = date(today.year - (today.month == 1), (today.month - 2) % 12 + 1, 1)
+    return {
+        "containers_by_eta_month": series(lambda s: s.eta),
+        "containers_cleared_by_month": series(lambda s: s.cleared_date if s.is_fully_cleared else None),
+        "this_month": _month(today),
+        "last_month": _month(prev),
+    }
+
+
 @router.get("/summary/dashboard")
 def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
@@ -103,6 +164,7 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
         by_port[port_key] = by_port.get(port_key, 0) + 1
 
     upcoming = sorted((s for s in live if s.eta and s.eta >= today), key=lambda s: s.eta)[:5]
+    containers = container_metrics(everything, today)
 
     return {
         "total_live": len(live),
@@ -113,6 +175,9 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
         "cleared_this_month_unbilled": sum(1 for s in cleared_this_month if not s.is_billed),
         "by_status": by_status,
         "by_port": by_port,
+        **containers,
+        "live_containers": sum(_containers(s) for s in live),
+        "live_tonnes": round(sum(_tonnes(s) for s in live), 3),
         "upcoming_etas": [
             {"id": s.id, "job": s.job, "mbl": s.mbl, "consignee": s.consignee, "eta": s.eta, "port": s.port} for s in upcoming
         ],
