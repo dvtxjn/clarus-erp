@@ -82,9 +82,27 @@
   --color-bg: #F1F1EF; --color-surface: #FFFFFF; --color-border: #DEDEDA; --color-border-soft: #E8E8E4;
   --color-text: #1B1C1F; --color-text-muted: #5F636A; --color-subtle: #EDEDEA; --color-hover: #E2E2DE;
   --color-inv-sub: #F4F4F1; --color-ink: #26272B; --color-inv-head: #EDEDEA;
-  --color-danger: #C24A40; --color-danger-bg: #F8E9E6; --mix-toward: black;
+  --color-danger: #C24A40; --color-danger-bg: #F8E9E6; --mix-toward: black; --on-accent: #FFFFFF;
+  /* derived colours are re-worked here so they mix with the paper white, not the dark theme */
+  --color-accent-hover: color-mix(in srgb, var(--color-accent) 85%, black);
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 12%, #FFFFFF);
+  --color-accent-border: color-mix(in srgb, var(--color-accent) 32%, #FFFFFF);
+  --color-accent-text: color-mix(in srgb, var(--color-accent) 72%, black);
+  --ok-bg: #E2F0E6; --ok-fg: #25643F; --ok-border: #BFDCC8;
+  --warn-bg: #F7EDD6; --warn-fg: #7A5510; --warn-border: #E6CD8E;
+  --bad-bg: #F8E6E3; --bad-fg: #9A3129; --bad-border: #EAC3BD;
+  --info-bg: #E3EBF5; --info-fg: #2D5387;
+  --violet-bg: #ECE6F3; --violet-fg: #58418A;
+  --shadow-sm: 0 1px 2px rgba(16, 17, 20, .05);
+  color-scheme: light;
   color: var(--color-text);
 }
+/* the paper keeps the light theme's accent too (the dark themes lighten it for dark screens) */
+:root[data-theme] .a4-page, :root[data-theme] .invoice-sheet { --color-accent: #3F7F6E; }
+:root[data-theme][data-accent="orange"] .a4-page, :root[data-theme][data-accent="orange"] .invoice-sheet { --color-accent: #C8703C; }
+:root[data-theme][data-accent="indigo"] .a4-page, :root[data-theme][data-accent="indigo"] .invoice-sheet { --color-accent: #5E6AD2; }
+:root[data-theme][data-accent="blue"] .a4-page, :root[data-theme][data-accent="blue"] .invoice-sheet { --color-accent: #2F6FEB; }
+:root[data-theme][data-accent="graphite"] .a4-page, :root[data-theme][data-accent="graphite"] .invoice-sheet { --color-accent: #3A3D42; }
 
 * { box-sizing: border-box; }
 
