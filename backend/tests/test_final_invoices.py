@@ -202,3 +202,25 @@ def test_proforma_register(client, admin_headers):
     assert client.get("/proformas", params={"q": "881", "status": "sent"}, headers=h).json()["proformas"] == []
     pdf = client.get("/proformas/export.pdf", params={"ids": str(pid)}, headers=h)
     assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 1
+
+
+def test_company_bank_and_terms_come_from_settings(client, admin_headers):
+    """Client, 2026-09-30 (P0): the admin changes what's printed on invoices on the Settings page."""
+    h = admin_headers
+    s = client.get("/settings", headers=h).json()
+    assert s["company"]["gstin"] == "27AAVFC6734E1Z4" and s["bank"][0][0] == "Account Name"
+    co = {**s["company"], "name": "CLARUS LOGISTICS LLP (TEST)", "phone": "+91 00000 00000"}
+    assert client.put("/settings/company", json={"value": co}, headers=h).status_code == 200
+    assert client.put("/settings/company", json={"value": {**co, "gstin": "bad"}}, headers=h).status_code == 422
+    client.put("/settings/bank", json={"value": [["Account Name", "CLARUS TEST"], ["Bank Name", "Test Bank"]]}, headers=h)
+    client.put("/settings/proforma_notes", json={"value": ["A note from settings"]}, headers=h)
+
+    sid = client.post("/shipments", json={"mbl": "SETTINGS0001", "consignee": "Settings Co"}, headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    inv = client.get(f"/proformas/{pid}/invoice", headers=h).json()
+    assert inv["company"]["name"] == "CLARUS LOGISTICS LLP (TEST)" and "+91 00000 00000" in inv["company"]["contact_line"]
+    assert inv["bank"] == [["Account Name", "CLARUS TEST"], ["Bank Name", "Test Bank"]]
+    assert inv["notes"] == ["A note from settings"]
+    # back to the real values for the other tests
+    for k in ("company", "bank", "proforma_notes"):
+        client.put(f"/settings/{k}", json={"value": s[k]}, headers=h)

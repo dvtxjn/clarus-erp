@@ -1315,3 +1315,20 @@ input { padding: 6px 9px; }
 .inv-register .inv-no { font-weight: 600; font-variant-numeric: tabular-nums; }
 .inv-register tr.is-picked td { background: var(--color-accent-soft); }
 .inv-register tfoot td { border-top: 2px solid var(--color-border); background: var(--color-subtle); }
+
+/* Settings page */
+.settings-page { max-width: 1100px; }
+.settings-section { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 24px; padding: 18px 0; border-top: 1px solid var(--color-border); }
+.settings-head h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+.settings-head .tracker-subtitle { font-size: 12.5px; }
+.settings-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+.settings-form .settings-wide { grid-column: 1 / -1; }
+.settings-form input, .settings-form textarea, .settings-list textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 9px; }
+.settings-save { display: flex; gap: 8px; align-items: center; }
+.settings-ok { color: var(--ok-fg); font-size: 12.5px; }
+.settings-rows { display: flex; flex-direction: column; gap: 6px; }
+.settings-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) 28px; gap: 6px; }
+.settings-grid { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 8px 14px; font-size: 13px; }
+.settings-body .hss-rule { margin: 0; }
+@media (max-width: 900px) { .settings-section { grid-template-columns: 1fr; gap: 8px; } }

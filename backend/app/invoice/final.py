@@ -21,7 +21,7 @@ from app.core.enums import ChargeCategory
 from app.invoice.build import (
     GST_DIFFERENCE_CODE, bill_to_organization, bill_to_name, container_count,
 )
-from app.invoice.company import BANK, COMPANY, TERMS
+from app.invoice.company import bank as company_bank, company as company_details, terms as final_terms
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
 from app.models.proforma import Proforma
 
@@ -210,7 +210,8 @@ def alter_until(inv: FinalInvoice) -> Optional[date]:
 
 def compute(inv: FinalInvoice) -> dict:
     """Everything printed: per-line GST split, SAC summary, totals, words."""
-    intra = (inv.customer or {}).get("state_code") == COMPANY["state_code"]
+    co = company_details()
+    intra = (inv.customer or {}).get("state_code") == co["state_code"]
     lines, sac = [], {}
     sub_non = sub_taxable = sub_tax = ZERO
     for i, ln in enumerate(inv.lines or [], start=1):
@@ -253,6 +254,6 @@ def compute(inv: FinalInvoice) -> dict:
             "round_off": _money(net - exact), "net_payable": _money(net), "reverse_charge": "0.00",
             "in_words": in_words(net),
         },
-        "company": COMPANY, "bank": BANK, "terms": TERMS, "proforma_id": inv.proforma_id,
+        "company": co, "bank": company_bank(), "terms": final_terms(), "proforma_id": inv.proforma_id,
         "shipment_id": inv.shipment_id,
     }

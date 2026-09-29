@@ -31,7 +31,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session, object_session
 
 from app.core.enums import ChargeCategory, DocumentType
-from app.invoice.company import BANK, COMPANY, NOTES
+from app.invoice.company import bank as company_bank, company as company_details, notes as proforma_notes
 from app.models.challan import DutyChallan
 from app.models.organization import OrganizationEntry
 from app.models.proforma import Proforma, ProformaLineItem
@@ -353,7 +353,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     if proforma.bill_to_role == "seller" and seller:
         payer_chain = [seller, name or s.hss_buyer]
     else:
-        payer_chain = [name or s.consignee, COMPANY["name"]]
+        payer_chain = [name or s.consignee, company_details()["name"]]
     grand_total_label = " pays ".join(x for x in payer_chain if x)
     disclaimer = None
     if proforma.bill_to_role == "seller":
@@ -362,7 +362,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     duty = customs_duty(s, challan)
     value = value_summary(proforma)
     return {
-        "company": COMPANY,
+        "company": company_details(),
         "title": "PROFORMA INVOICE",
         "copy_label": copy_for(proforma, db),
         "disclaimer": disclaimer,
@@ -402,6 +402,6 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
         "grand_total": _money(round_off(grand)[0]),
         "round_off": _money(round_off(grand)[1]),  # + / − paise to the rupee
         "grand_total_label": grand_total_label,
-        "notes": NOTES,
-        "bank": BANK,
+        "notes": proforma_notes(),
+        "bank": company_bank(),
     }
