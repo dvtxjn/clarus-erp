@@ -26,8 +26,19 @@ def is_sandbox() -> bool:
     return os.getenv("SANDBOX", "0") == "1"
 
 
+def _database_name(url: str = DATABASE_URL) -> str:
+    """The database's own name — not the last part of the URL (on Cloud Run that's the Cloud SQL
+    socket: postgresql://u:p@/erp_sandbox?host=/cloudsql/project:region:instance)."""
+    from sqlalchemy.engine import make_url
+
+    try:
+        return (make_url(url).database or "").lower()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _safe_to_wipe() -> bool:
-    return is_sandbox() and "sandbox" in DATABASE_URL.rsplit("/", 1)[-1].lower()
+    return is_sandbox() and "sandbox" in _database_name()
 
 
 # made-up clients (not the real ones)

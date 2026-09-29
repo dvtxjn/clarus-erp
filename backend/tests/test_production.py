@@ -99,3 +99,11 @@ def test_health_says_sandbox_with_the_demo_login(client, monkeypatch):
     monkeypatch.setenv("SANDBOX", "1")
     body = client.get("/health").json()
     assert body["sandbox"] is True and body["demo_email"] and body["demo_password"]
+
+
+def test_sandbox_reads_the_database_name_from_a_cloud_sql_url():
+    from app.sandbox import _database_name
+
+    assert _database_name("postgresql://erp:x@/erp_sandbox?host=/cloudsql/clarus-erp:asia-southeast1:clarus-erp-db") == "erp_sandbox"
+    assert _database_name("postgresql://erp:x@/erp_db?host=/cloudsql/clarus-erp:asia-southeast1:clarus-erp-db") == "erp_db"
+    assert _database_name("postgresql+psycopg2://erp:x@localhost/erp_sandbox") == "erp_sandbox"
