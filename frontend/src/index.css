@@ -934,7 +934,7 @@ input { padding: 6px 9px; }
 }
 .charge-toggle:hover { background: var(--color-subtle); }
 .charge-popover {
-  position: absolute; z-index: 50; top: calc(100% + 4px); right: 0; width: min(440px, 90vw); max-height: 60vh; overflow: auto;
+  position: fixed; z-index: 50; width: min(440px, 90vw); max-height: 60vh; overflow: auto;
   background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px;
   box-shadow: 0 12px 32px rgba(16, 17, 20, .16); padding: 10px 12px;
 }
@@ -973,3 +973,4 @@ input { padding: 6px 9px; }
 .detail-remarks { display: flex; gap: 12px; padding: 5px 0; font-size: 13px; }
 .detail-remarks > span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 1100px) { .detail-wide-foot { grid-template-columns: 1fr; } }
+.invoice-list { display: flex; flex-direction: column; gap: 6px; max-height: 270px; overflow-y: auto; padding-right: 2px; }

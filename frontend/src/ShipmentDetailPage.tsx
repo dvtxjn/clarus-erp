@@ -546,6 +546,8 @@ function InvoiceGroup({
         </span>
       </div>
       {docs.length === 0 && <p className="field-note">{cfg.empty}</p>}
+      {/* several invoices scroll inside the box instead of stretching it */}
+      <div className="invoice-list">
       {docs.map((d) => (
         <div key={d.id} className={`invoice-row${counted.has(d.id) ? "" : " invoice-not-counted"}`}>
           <div className="invoice-row-head">
@@ -599,6 +601,7 @@ function InvoiceGroup({
           )}
         </div>
       ))}
+      </div>
       {receipts.length > 0 && <Receipts receipts={receipts} onSaved={async () => { onChange(await getShipment(s.id)); load(); }} />}
       {docs.length > 0 &&
         cfg.totals.map(([field, label], i) => (
@@ -670,7 +673,7 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
   const charges = fields.charges_complete ? fields.charges ?? [] : [];
   const excluded = new Set(doc.cost_excluded ?? []);
   const [typing, setTyping] = useState(false);
-  const [open, setOpen] = useState(false); // charge lines: an overlay, the count varies a lot
+  const [open, setOpen] = useState<{ top: number; left: number } | null>(null); // charge lines: an overlay
   const popover = useRef<HTMLDivElement>(null);
   const [before, setBefore] = useState("");
   const [gst, setGst] = useState("");
@@ -694,14 +697,19 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => {
-      if (popover.current && !popover.current.contains(e.target as Node)) setOpen(false);
+      if (popover.current && !popover.current.contains(e.target as Node)) setOpen(null);
     };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    const scrolled = (e: Event) => {
+      if (!(e.target instanceof Node && popover.current?.contains(e.target))) setOpen(null);
+    };
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", esc);
+    window.addEventListener("scroll", scrolled, true);
     return () => {
       document.removeEventListener("mousedown", away);
       document.removeEventListener("keydown", esc);
+      window.removeEventListener("scroll", scrolled, true);
     };
   }, [open]);
 
@@ -757,12 +765,21 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
       )}
       {charges.length > 0 && !doc.cost_manual && (
         <>
-          <button type="button" className="charge-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <button
+            type="button"
+            className="charge-toggle"
+            aria-expanded={!!open}
+            onClick={(e) => {
+              if (open) return setOpen(null);
+              const r = e.currentTarget.getBoundingClientRect();
+              setOpen({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 460)) });
+            }}
+          >
             {charges.length} charge{charges.length === 1 ? "" : "s"}
             {leftOut > 0 && ` · ${leftOut} left out`} — choose {open ? "▴" : "▾"}
           </button>
           {open && (
-            <div className="charge-popover" role="dialog" aria-label="Charges in the cost inclusion">
+            <div className="charge-popover" style={open} role="dialog" aria-label="Charges in the cost inclusion">
               <div className="charge-popover-head">Tick the charges that go in the cost inclusion</div>
             <ul className="charge-lines">
               {charges.map((c, i) => (
