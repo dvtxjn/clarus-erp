@@ -105,7 +105,7 @@ const COLUMN_VIEWS = {
   },
   billing: {
     label: "Billing",
-    cols: ["job", "mbl", "consignee", "license", "is_hss", "be_no", "be_dt", "cleared_date", "checklist", "cfs_tds", "is_billed", "status"],
+    cols: ["job", "mbl", "consignee", "license", "be_no", "be_dt", "cleared_date", "checklist", "is_billed", "status"],
   },
   grid: { label: "Full grid", cols: null },
 } as const;
@@ -115,11 +115,25 @@ const COLVIEW_KEY = "tracker.columnView"; // + "." + tab
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "2026-08-27" -> "27 Aug" ("27 Aug 25" when it isn't this year) — compact dates, denser columns. */
-function shortDate(v: string | null | undefined): string {
+function shortDate(v: string | null | undefined, withYear = false): string {
   if (!v) return "";
   const [y, m, d] = v.split("-");
-  const year = String(new Date().getFullYear()) === y ? "" : ` ${y.slice(2)}`;
+  const year = !withYear && String(new Date().getFullYear()) === y ? "" : ` ${y.slice(2)}`;
   return `${d} ${MONTHS[Number(m) - 1]}${year}`;
+}
+/** INW is typed text ("19-Sep-2026", "19/09/2026", "2026-09-19"): shown the same short way. */
+function shortInw(v: string | null | undefined): string {
+  const t = (v ?? "").trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return shortDate(t);
+  m = t.match(/^(\d{1,2})[-\s/.]([A-Za-z]{3})[A-Za-z]*[-\s/.](\d{2,4})$/);
+  if (m) {
+    const mon = MONTHS.findIndex((x) => x.toLowerCase() === m![2].toLowerCase());
+    if (mon >= 0) return shortDate(`${m[3].length === 2 ? "20" + m[3] : m[3]}-${String(mon + 1).padStart(2, "0")}-${m[1].padStart(2, "0")}`);
+  }
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) return shortDate(`${m[3].length === 2 ? "20" + m[3] : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`);
+  return t;
 }
 function formatDate(p: ValueFormatterParams): string {
   return shortDate(p.value as string | null);
@@ -138,6 +152,7 @@ const text = (field: keyof Shipment, headerName: string, width = 130): ColDef<Sh
   headerName,
   width,
   cellDataType: "text",
+  autoHeight: true, // no text is ever cut (client, 2026-09-29): long values wrap, the row grows
 });
 const dateCol = (field: keyof Shipment, headerName: string, width = 76): ColDef<Shipment> => ({
   field,
@@ -269,7 +284,7 @@ function withSavedState(defs: ColDef<Shipment>[], key: string): ColDef<Shipment>
     .map((x) => x.d);
 }
 
-function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]): ColDef<Shipment>[] {
+function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], byClient: boolean): ColDef<Shipment>[] {
   const removed = new Set(trackerCols.filter((c) => !c.is_custom && c.is_removed).map((c) => c.key));
   const all: ColDef<Shipment>[] = [
     {
@@ -302,6 +317,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
     {
       ...text("mbl", "MBL", 170),
       pinned: "left",
+      cellClass: "grid-wrap grid-wrap-anywhere",
       cellRenderer: (p: ICellRendererParams<Shipment>) => (
         <span>
           {p.value}
@@ -323,7 +339,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
           <span className="inw-cell">
-            <span>{p.data.inw}</span>
+            <span title={p.data.inw ?? undefined}>{shortInw(p.data.inw)}</span>
             <span className={`day-badge${p.data.days === "Pending" ? " day-pending" : ""}`}>
               {p.data.days === "Pending" ? "Pending" : p.data.days.replace(/ days?$/, "d")}
             </span>
@@ -331,12 +347,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
         ) : null,
     },
     { ...text("license", "Lic", 80), headerTooltip: "License" },
-    text("client", "Client", 105),
-    text("consignee", "Consignee", 130),
-    {
-      ...flag("is_hss", "HSS", 56),
-      headerTooltip: "High sea sale — set automatically when the consignee is 'SELLER - BUYER'; tick/untick to override",
-    },
+    // grouped by client, each section's bar already names it
+    ...(byClient ? [] : [text("client", "Client", 105)]),
+    { ...text("consignee", "Consignee", 130), cellClass: "grid-wrap" },
     {
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
@@ -350,12 +363,12 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
     { ...text("container_status", "Cntr St", 72), headerTooltip: "Container Status" },
     text("cfs", "CFS", 90),
     text("be_no", "BE No", 78),
-    dateCol("be_dt", "BE Dt"),
+    { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
     text("container", "Cntr", 52),
     { ...text("gross_wt", "Wt", 88), headerTooltip: "Gross Weight" },
     text("remark", "Remark", 72),
     text("poc", "POC", 95),
-    text("remarks", "Remarks", 150),
+    { ...text("remarks", "Remarks", 150), cellClass: "grid-wrap" },
     { ...dateCol("cleared_date", "Cleared"), headerTooltip: "Cleared Date" },
     {
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
@@ -368,18 +381,6 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[]):
       valueGetter: (p) => (p.data ? FLAGS.map(([f, l]) => `${l}:${p.data![f] ? "Y" : "N"}`).join(" ") : ""),
       cellRenderer: ChecklistCell,
       cellRendererParams: { flags: FLAGS },
-    },
-    {
-      colId: "cfs_tds",
-      headerName: "CFS / TDS",
-      width: 190,
-      editable: false,
-      sortable: false,
-      headerTooltip: "CFS paid by us · TDS cut on the shipment · TDS cut on CFS payment. Filter with e.g. TDS:Y",
-      valueGetter: (p) =>
-        p.data ? CFS_TDS_FLAGS.map(([f, l]) => `${l}:${p.data![f] ? "Y" : "N"}`).join(" ") : "",
-      cellRenderer: ChecklistCell,
-      cellRendererParams: { flags: CFS_TDS_FLAGS },
     },
     text("igm", "IGM", 72),
     { ...text("delivery_status", "Deliv", 76), headerTooltip: "Delivery" },
@@ -469,14 +470,11 @@ const defaultColDef: ColDef<Shipment> = {
   suppressFloatingFilterButton: true, // narrower filter boxes
   wrapHeaderText: true, // two-line headers, like Excel, so columns can be narrow
   autoHeaderHeight: true,
-  // One line per row (client, 2026-09-29): long values are cut with "…" and shown in full
-  // on hover — about twice as many shipments fit on a 1080p screen.
-  wrapText: false,
+  // Nothing is ever cut off (client, 2026-09-29): long values wrap and the row grows to fit.
+  // Only text columns measure their height (autoHeight) — measuring every column froze the
+  // page ~1s on load. Dates, flags and chips are fixed-size.
+  wrapText: true,
   autoHeight: false,
-  tooltipValueGetter: (p) => {
-    const v = p.valueFormatted ?? p.value;
-    return typeof v === "string" && v.length > 12 ? v : undefined;
-  },
 };
 // Client/month sections have no visible header row
 const sectionColDef: ColDef<Shipment> = { ...defaultColDef, wrapHeaderText: false, autoHeaderHeight: false, floatingFilter: false };
@@ -549,8 +547,12 @@ export default function ShipmentGridPage() {
   // Saved widths/order/pinning go into the definitions, so every grid first renders at its
   // final layout — applying them after load re-wrapped and re-measured every row (visible jump).
   const columnDefs = useMemo(
-    () => withSavedState(buildColumnDefs(ports, tab, trackerCols), `${COLUMN_STATE_KEY}.${tab}`),
-    [ports, tab, trackerCols],
+    () =>
+      withSavedState(
+        buildColumnDefs(ports, tab, trackerCols, tab === "ongoing" && view === "client"),
+        `${COLUMN_STATE_KEY}.${tab}`,
+      ),
+    [ports, tab, trackerCols, view],
   );
 
   const refresh = useCallback(async () => {
@@ -1079,7 +1081,7 @@ export default function ShipmentGridPage() {
         visible: !hiddenCols.has(colId),
         isCustom: trackerCols.some((c) => c.is_custom && c.key === colId),
         // mbl is required; checklist is a combined view of five fields
-        removable: colId !== "mbl" && colId !== "checklist" && colId !== "cfs_tds",
+        removable: colId !== "mbl" && colId !== "checklist",
       };
     });
   function rememberColView(v: ColumnView) {
@@ -1602,27 +1604,14 @@ function AddShipmentForm({
   );
 }
 
-/** Client section at a glance: containers, weight, and what's pending (client, 2026-09-29). */
+/** Client section at a glance: containers and weight (client, 2026-09-29). */
 function SectionGlance({ rows }: { rows: Shipment[] }) {
   const cntr = rows.reduce((n, r) => n + (parseInt(r.container ?? "", 10) || 0), 0);
   const tonnes = rows.reduce((n, r) => n + (parseFloat((r.gross_wt ?? "").replace(/,/g, "")) || 0), 0);
-  const pending = (f: keyof Shipment) => rows.filter((r) => !r[f]).length;
-  const bits: [string, number][] = [
-    ["duty", pending("duty_paid")],
-    ["OOC", pending("ooc")],
-    ["DO", pending("do")],
-  ];
   return (
     <span className="section-glance">
       <span>{cntr} cntr</span>
       <span>{tonnes.toLocaleString("en-IN", { maximumFractionDigits: 1 })} t</span>
-      {bits
-        .filter(([, n]) => n > 0)
-        .map(([label, n]) => (
-          <span key={label} className="glance-pending">
-            {n} pending {label}
-          </span>
-        ))}
     </span>
   );
 }
