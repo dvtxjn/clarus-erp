@@ -150,17 +150,26 @@ def lines_for(proforma: Proforma, kind: str) -> list[dict]:
     return out
 
 
+NOT_APPLICABLE = "BILL CANCELLED — NOT APPLICABLE"
+
+
 def create_from_proforma(db: Session, proforma: Proforma, user_id: Optional[int]) -> list[FinalInvoice]:
-    """Draft tax + reimbursement invoices (only the kinds that have lines)."""
+    """Draft tax + reimbursement invoices — always both, so the pair keeps one number
+    (client, 2026-09-30). A kind with no charges is still made: every detail but no charge
+    heads, marked "BILL CANCELLED — NOT APPLICABLE", so the numbering never breaks.
+    Nothing at all to invoice: none made."""
     today = date.today()
+    per_kind = {kind: lines_for(proforma, kind) for kind in KINDS}
+    if not any(per_kind.values()):
+        return []
     created = []
-    for kind in KINDS:
-        lines = lines_for(proforma, kind)
+    for kind, lines in per_kind.items():
+        header = _header(db, proforma, today)
         if not lines:
-            continue
+            header["not_applicable"] = True
         inv = FinalInvoice(shipment_id=proforma.shipment_id, proforma_id=proforma.id, kind=kind, status="draft",
                            invoice_date=today, due_date=today, customer=_customer(db, proforma),
-                           header=_header(db, proforma, today), lines=lines, advance_received=ZERO,
+                           header=header, lines=lines, advance_received=ZERO,
                            created_by_id=user_id)
         db.add(inv)
         created.append(inv)
@@ -215,6 +224,8 @@ def compute(inv: FinalInvoice) -> dict:
     net = exact.quantize(Decimal("1"), ROUND_CEILING)  # never round down (client)
     return {
         "id": inv.id, "kind": inv.kind, "title": TITLES[inv.kind], "status": inv.status, "number": inv.number,
+        # no charges of this kind: issued anyway (keeps the pair's number), marked across the bill
+        "not_applicable": bool((inv.header or {}).get("not_applicable")) and not inv.lines,
         "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
         "due_date": inv.due_date.isoformat() if inv.due_date else None,
         "customer": inv.customer or {},

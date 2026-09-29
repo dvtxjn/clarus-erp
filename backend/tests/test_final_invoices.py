@@ -59,3 +59,33 @@ def test_intra_state_splits_cgst_sgst(client, admin_headers):
     tax = next(i for i in client.post(f"/proformas/{pid}/final-invoices", headers=h).json() if i["kind"] == "tax")
     ln = tax["lines"][0]
     assert tax["intra_state"] and ln["cgst"] == ln["sgst"] == "1260.00" and ln["igst"] is None
+
+
+def test_no_reimbursement_still_issued_as_not_applicable_and_pair_issued_together(client, admin_headers):
+    """Client, 2026-09-30: tax and reimbursement always share one number. With no charges paid
+    by us, the reimbursement invoice is still issued — no charge heads, "BILL CANCELLED — NOT
+    APPLICABLE" — and both are issued in one action; one PDF with both, or two."""
+    import pypdfium2
+
+    h = admin_headers
+    client.post("/organizations", json={"name": "Solo Tax Traders", "gstin": "24AAAAA1111A1Z5"}, headers=h)
+    sid = client.post("/shipments", json={"mbl": "SOLOTAX0001", "consignee": "Solo Tax Traders", "container": "1"},
+                      headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]  # agency only: nothing reimbursed
+    made = {i["kind"]: i for i in client.post(f"/proformas/{pid}/final-invoices", headers=h).json()}
+    assert set(made) == {"tax", "reimbursement"}
+    assert made["reimbursement"]["not_applicable"] is True and made["reimbursement"]["lines"] == []
+    assert made["tax"]["not_applicable"] is False
+
+    both = client.post(f"/proformas/{pid}/final-invoices/issue", headers=h).json()
+    nums = {i["kind"]: i["number"] for i in both}
+    n, fy = nums["tax"].split("/")[1], nums["tax"].split("/")[2]
+    assert nums["reimbursement"] == f"RI/CL/{n}/{fy}"                    # the chain doesn't break
+    assert all(i["status"] == "issued" for i in both)
+    assert client.post(f"/proformas/{pid}/final-invoices/issue", headers=h).status_code == 400  # already issued
+
+    pdf = client.get(f"/proformas/{pid}/final-invoices.pdf", headers=h)
+    assert pdf.status_code == 200 and len(pypdfium2.PdfDocument(pdf.content)) == 2   # tax + reimbursement
+    ri = next(i for i in both if i["kind"] == "reimbursement")
+    text = pypdfium2.PdfDocument(client.get(f"/final-invoices/{ri['id']}.pdf", headers=h).content)[0].get_textpage().get_text_range()
+    assert "BILL CANCELLED" in text and "NOT APPLICABLE" in text

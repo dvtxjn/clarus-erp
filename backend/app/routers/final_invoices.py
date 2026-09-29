@@ -3,6 +3,8 @@ draft (every change audit-logged — this is what goes to the authorities), then
 (numbered + locked). See app/invoice/final.py."""
 from __future__ import annotations
 
+import io
+
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
@@ -154,7 +156,7 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
     inv = _get(db, invoice_id)
     if inv.status != "draft":
         raise HTTPException(status_code=400, detail="Only a draft can be issued")
-    if not inv.lines:
+    if not inv.lines and not (inv.header or {}).get("not_applicable"):
         raise HTTPException(status_code=400, detail="The invoice has no lines")
     if not (inv.customer or {}).get("gstin"):
         raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
@@ -168,6 +170,62 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
     db.commit()
     db.refresh(inv)
     return compute(inv)
+
+
+@router.post("/proformas/{proforma_id}/final-invoices/issue")
+def issue_pair(proforma_id: int, db: Session = Depends(get_db), user: User = Depends(require_billing_access)):
+    """One action for the pair (client, 2026-09-30): number and lock the tax AND the
+    reimbursement invoice together — same <n> — and keep both PDFs."""
+    locked_proforma(db, proforma_id)
+    drafts = (db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id, FinalInvoice.status == "draft")
+              .order_by(FinalInvoice.kind.desc()).all())  # tax first
+    if not drafts:
+        raise HTTPException(status_code=400, detail="No draft invoices to issue — make them from the proforma first")
+    for inv in drafts:
+        if not inv.lines and not (inv.header or {}).get("not_applicable"):
+            raise HTTPException(status_code=400, detail=f"The {inv.kind} invoice has no lines")
+        if not (inv.customer or {}).get("gstin"):
+            raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
+    for inv in drafts:
+        issue(db, inv)
+        db.flush()  # so the second one finds the first's number (the pair shares <n>)
+        record_change(db, "final_invoices", inv.id, "issued", None, inv.number, user.id)
+    db.commit()
+    for inv in drafts:
+        data = compute(inv)
+        storage.save_pdf(db, "final_invoice_pdf", inv.id, f"Invoices/{inv.fy}", _pdf_name(data, inv),
+                         render_final_pdf(data))
+    db.commit()
+    return [compute(i) for i in drafts]
+
+
+@router.get("/proformas/{proforma_id}/final-invoices.pdf")
+def pair_pdf(proforma_id: int, db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    """Both invoices of the pair in one PDF — tax invoice, then reimbursement (one per page).
+    (Separate PDFs: /final-invoices/{id}.pdf for each.)"""
+    import pypdfium2
+
+    rows = (db.query(FinalInvoice).filter(FinalInvoice.proforma_id == proforma_id, FinalInvoice.status != "cancelled")
+            .order_by(FinalInvoice.kind.desc(), FinalInvoice.id.desc()).all())
+    pair = {}
+    for inv in rows:  # newest of each kind
+        pair.setdefault(inv.kind, inv)
+    if not pair:
+        raise HTTPException(status_code=404, detail="No final invoices for this proforma")
+    out = pypdfium2.PdfDocument.new()
+    for kind in ("tax", "reimbursement"):
+        if kind in pair:
+            out.import_pages(pypdfium2.PdfDocument(render_final_pdf(compute(pair[kind]))))
+    buf = io.BytesIO()
+    out.save(buf)
+    first = pair.get("tax") or next(iter(pair.values()))
+    data = compute(first)
+    number = (first.number or f"DRAFT-{first.id}").replace("/", "-")
+    filename = f"{data['customer'].get('name') or 'Client'} - {number} - Tax + Reimbursement.pdf"
+    return Response(content=buf.getvalue(), media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename), "Access-Control-Expose-Headers": "X-Filename",
+    })
 
 
 @router.post("/final-invoices/{invoice_id}/cancel")
