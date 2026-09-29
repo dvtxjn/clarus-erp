@@ -1048,8 +1048,19 @@ input { padding: 6px 9px; }
 .rates-page h1 { margin: 0; }
 .rates-tabs { margin-top: 4px; }
 .rates-page .hss-rules { margin-top: 0; }
-.licence-grid { columns: 2; column-gap: 12px; }
-.licence-grid > .hss-rule { break-inside: avoid; margin-bottom: 12px; }
-.licence-grid .hss-rule-parties input:not([role="switch"]) { width: 190px; }
-@media (max-width: 1400px) { .licence-grid { columns: 1; } }
+/* licences: one row each, click to open its rates */
+.licence-list { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+.licence-item + .licence-item { border-top: 1px solid var(--color-border); }
+.licence-summary {
+  width: 100%; display: grid; grid-template-columns: 16px 140px minmax(0, 1fr) 80px 80px auto; gap: 12px; align-items: center;
+  background: none; border: none; box-shadow: none; border-radius: 0; color: var(--color-text); text-align: left; padding: 8px 12px; font-weight: 400;
+}
+.licence-summary:hover { background: var(--color-inv-sub); }
+.licence-caret { color: var(--color-text-muted); font-size: 11px; }
+.licence-no { font-weight: 600; font-variant-numeric: tabular-nums; }
+.licence-importer { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.licence-count { color: var(--color-text-muted); font-size: 12px; }
+.licence-item.is-open .licence-summary { background: var(--color-subtle); }
+.licence-body { padding: 10px 12px 12px 40px; display: flex; flex-direction: column; gap: 10px; }
+.licence-closed .licence-summary { color: var(--color-text-muted); }
 .hss-rule-parties .toggle-row input[role="switch"] { align-self: flex-start; flex: none; }

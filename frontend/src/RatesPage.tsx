@@ -576,6 +576,14 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
   const ports = usePorts();
   const [items, setItems] = useState<(Licence & { dirty?: boolean })[] | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set()); // licences shown as rows; click to open
+  const toggleOpen = (id: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const load = () => listLicences().then(setItems);
   useEffect(() => {
     load();
@@ -617,9 +625,11 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
         {canEdit && (
           <div className="rates-actions">
             <button
-              onClick={() =>
-                setItems((prev) => [...(prev ?? []), { id: -Date.now(), number: "", importer_name: "", rates: [{ code: "AC", per_container: 7000 }], is_active: true, notes: null, dirty: true }])
-              }
+              onClick={() => {
+                const id = -Date.now();
+                setItems((prev) => [...(prev ?? []), { id, number: "", importer_name: "", rates: [{ code: "AC", per_container: 7000 }], is_active: true, notes: null, dirty: true }]);
+                setOpen((prev) => new Set(prev).add(id));
+              }}
             >
               + Add licence
             </button>
@@ -627,9 +637,21 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
         )}
       </div>
       {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
-      <div className="licence-grid">
+      <div className="licence-list">
       {items.map((l, i) => (
-        <div className={`hss-rule${l.is_active ? "" : " licence-closed"}`} key={l.id}>
+        <div className={`licence-item${l.is_active ? "" : " licence-closed"}${open.has(l.id) ? " is-open" : ""}`} key={l.id}>
+          <button type="button" className="licence-summary" aria-expanded={open.has(l.id)} onClick={() => toggleOpen(l.id)}>
+            <span className="licence-caret">{open.has(l.id) ? "▾" : "▸"}</span>
+            <span className="licence-no">{l.number || "New licence"}</span>
+            <span className="licence-importer">{l.importer_name || "—"}</span>
+            <span className="licence-count">
+              {l.rates.length} rate{l.rates.length === 1 ? "" : "s"}
+            </span>
+            <span className={`status-pill ${l.is_active ? "status-cleared" : ""}`}>{l.is_active ? "Active" : "Closed"}</span>
+            {l.dirty && <span className="edited-tag">unsaved</span>}
+          </button>
+          {open.has(l.id) && (
+          <div className="licence-body">
           <div className="hss-rule-parties">
             <label>
               <span>Licence no.</span>
@@ -718,6 +740,8 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
                 Save licence
               </button>
             </div>
+          )}
+          </div>
           )}
         </div>
       ))}
