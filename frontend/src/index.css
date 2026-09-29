@@ -2,23 +2,24 @@
    The accent is chosen with data-accent on <html> (temporary switcher in the sidebar). */
 :root {
   --color-brand: #D26B21;            /* logo orange — the wordmark always keeps it */
-  --color-bg: #FBFBFC;
-  --color-sidebar: #F5F5F7;
-  --color-surface: #FFFFFF;
-  --color-border: #E6E6EA;
-  --color-border-soft: #EFEFF2;
+  /* whites toned down a step (client, 2026-09-29) */
+  --color-bg: #F1F1EF;
+  --color-sidebar: #E9E9E6;
+  --color-surface: #FAFAF8;
+  --color-border: #DEDEDA;
+  --color-border-soft: #E8E8E4;
   --color-text: #1B1C1F;
   --color-text-muted: #6B6F76;
-  --color-subtle: #F2F2F5;
-  --color-hover: #EDEDF1;
-  --color-accent: #D9621C;           /* Clarus orange (default) */
+  --color-subtle: #EDEDEA;
+  --color-hover: #E2E2DE;
+  --color-accent: #D8773E;           /* Clarus orange, softened (client, 2026-09-29) */
   --color-accent-hover: color-mix(in srgb, var(--color-accent) 85%, black);
-  --color-accent-soft: color-mix(in srgb, var(--color-accent) 9%, white);
-  --color-accent-border: color-mix(in srgb, var(--color-accent) 28%, white);
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
+  --color-accent-border: color-mix(in srgb, var(--color-accent) 28%, var(--color-surface));
   --color-accent-text: color-mix(in srgb, var(--color-accent) 70%, black);
   --color-ink: #26272B;              /* invoice section bars */
   --color-inv-head: var(--color-subtle);
-  --color-inv-sub: #F7F7F9;
+  --color-inv-sub: #F4F4F1;
   --color-danger: #D0453D;
   --color-danger-bg: #FCEEED;
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -161,17 +162,17 @@ input { padding: 6px 9px; }
 .tracker-grid { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tracker-grid th, .tracker-grid td {
   text-align: left;
-  padding: 10px 14px;
+  padding: 5px 10px;
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
 .tracker-grid th {
   color: var(--color-text-muted);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  background: var(--color-inv-sub);
+  letter-spacing: 0.03em;
+  background: var(--color-subtle);
 }
 .tracker-grid tbody tr:hover { background: var(--color-inv-sub); }
 .tracker-grid tbody tr.row-stuck { background: var(--color-danger-bg); }
@@ -236,6 +237,22 @@ input { padding: 6px 9px; }
 }
 .accent-picker button.on { box-shadow: 0 0 0 2px var(--color-text); }
 .app-main { flex: 1; min-width: 0; }
+/* page tools in the sidebar: it widens only while a page has put something there */
+.app-sidebar { transition: width .15s; }
+.app-sidebar:has(.app-sidebar-slot:not(:empty)) { width: 300px; }
+.app-sidebar-slot { flex: 1; min-height: 0; overflow: auto; margin: 6px -10px 0; padding: 0 10px; }
+.app-sidebar-slot:empty { display: none; }
+.app-sidebar-slot:not(:empty) + .app-sidebar-foot { margin-top: 0; }
+.sidebar-panel { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border-top: 1px solid var(--color-border); }
+.sidebar-panel .version-tabs { display: flex; flex-direction: column; gap: 2px; }
+.sidebar-panel .version-tabs .tab { text-align: left; margin: 0; padding: 4px 8px; border: none; border-radius: var(--radius); }
+.sidebar-panel .version-tabs .tab.active { background: var(--color-surface); box-shadow: 0 0 0 1px var(--color-border); color: var(--color-text); }
+.sidebar-panel .proforma-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+.sidebar-panel .proforma-toolbar-actions, .sidebar-panel .invoice-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sidebar-panel button { padding: 4px 9px; font-size: 12.5px; }
+.sidebar-panel .add-shipment-form { flex-direction: column; align-items: stretch; margin: 0; padding: 8px; gap: 6px; }
+.sidebar-panel .add-shipment-form > * { width: 100%; min-width: 0; flex: none; }
+.sidebar-panel .field-note, .sidebar-panel .hss-banner, .sidebar-panel .tracker-subtitle { font-size: 12px; }
 
 /* phones / narrow windows: the sidebar becomes a top bar */
 @media (max-width: 900px) {
@@ -274,16 +291,19 @@ input { padding: 6px 9px; }
 /* --- Shipment detail --- */
 .detail-page { padding: 18px 24px; }
 .back-link { color: var(--color-text-muted); text-decoration: none; font-size: 13px; }
-.detail-header { display: flex; justify-content: space-between; align-items: center; margin: 12px 0 6px; }
+.detail-header { display: flex; align-items: stretch; gap: 12px; margin: 6px 0 4px; }
+.detail-header .status-pill { align-self: center; margin-left: auto; }
 .detail-header h1 { margin: 0; font-size: 17px; font-weight: 600; }
 .detail-stuck-banner { margin-bottom: 14px; }
-.detail-tabs { display: flex; gap: 4px; margin: 18px 0; border-bottom: 1px solid var(--color-border); }
+.detail-tabs { display: flex; gap: 4px; margin: 10px 0 12px; border-bottom: 1px solid var(--color-border); }
 .tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; color: var(--color-text-muted); padding: 8px 4px; margin-right: 20px; cursor: pointer; }
 .tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); font-weight: 600; }
-.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.detail-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px 18px; grid-column: span 1; }
+.detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.detail-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+@media (max-width: 1200px) { .detail-grid { grid-template-columns: 1fr 1fr; } }
+.detail-section { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 8px; padding: 12px 14px; }
 .detail-section h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: .02em; }
-.field-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
+.field-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .field-row:last-child { border-bottom: none; }
 .field-label { color: var(--color-text-muted); }
 .flag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -469,10 +489,11 @@ input { padding: 6px 9px; }
 .upload-result-note { color: #92400E; }
 
 /* shipment detail: BL + BE up front */
-.detail-title { display: flex; flex-direction: column; gap: 2px; }
-.detail-job { font-size: 20px; font-weight: 700; }
+.detail-title { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 150px; }
+.detail-job { font-size: 17px; font-weight: 600; }
 .detail-client { color: var(--color-text-muted); font-size: 13px; }
-.key-ids { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 14px 0 6px; }
+.key-ids { display: flex; gap: 10px; margin: 0; flex: 1; min-width: 0; }
+.key-ids .key-id { flex: 1; min-width: 0; padding: 6px 12px; }
 .key-id {
   display: flex;
   flex-direction: column;
@@ -484,8 +505,8 @@ input { padding: 6px 9px; }
   border-left: 4px solid var(--color-accent);
 }
 .key-id-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); }
-.key-id-value { font-size: 22px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere; user-select: all; }
-.key-id-date { font-size: 16px; font-weight: 600; color: var(--color-text-muted); user-select: text; }
+.key-id-value { font-size: 17px; font-weight: 700; letter-spacing: .01em; overflow-wrap: anywhere; user-select: all; }
+.key-id-date { font-size: 14px; font-weight: 600; color: var(--color-text-muted); user-select: text; }
 .key-id-sub { font-size: 13px; color: var(--color-text-muted); }
 .key-id-missing { border-left-color: var(--color-danger); }
 .key-id-missing .key-id-value { color: var(--color-danger); font-size: 18px; }
@@ -498,7 +519,8 @@ input { padding: 6px 9px; }
 .field-empty { color: var(--color-text-muted); }
 .field-divider { border-top: 1px solid var(--color-border); margin: 8px 0; }
 @media (max-width: 720px) {
-  .key-ids, .detail-grid { grid-template-columns: 1fr; }
+  .detail-header { flex-wrap: wrap; } .key-ids { flex-direction: column; flex-basis: 100%; }
+  .detail-grid { grid-template-columns: 1fr; }
   .detail-page { padding: 16px; }
 }
 
@@ -522,7 +544,7 @@ input { padding: 6px 9px; }
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--color-surface);
   box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
   transition: transform .15s;
 }
@@ -619,7 +641,7 @@ input { padding: 6px 9px; }
 .invoice-error { background: var(--color-danger-bg); color: var(--color-danger, #b42318); padding: 8px 12px; border-radius: 6px; font-size: 13px; }
 .fill-result { background: var(--color-inv-sub); border: 1px solid var(--color-border); border-radius: 6px; padding: 10px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .fill-result ul { margin: 0; padding-left: 18px; color: #555; }
-.invoice-sheet { background: #fff; border: 1px solid var(--color-border); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; max-width: 1000px; }
+.invoice-sheet { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; padding: 16px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; max-width: 1000px; }
 .inv-company { background: var(--color-ink); color: #EDE5DE; padding: 12px 14px; border-radius: 4px; line-height: 1.5; font-size: 12px; }
 .inv-company-name { color: #F0A56C; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
 .inv-title { text-align: center; font-size: 17px; font-weight: 700; color: var(--color-ink); letter-spacing: 1px; }
@@ -875,3 +897,16 @@ input { padding: 6px 9px; }
 
 .auth-forgot { margin-top: 10px; align-self: center; }
 .row-inactive td { color: var(--color-text-muted); }
+
+/* --- Proforma: invoice in a preview pane (options live in the sidebar) --- */
+.invoice-preview {
+  position: relative; overflow: auto; background: var(--color-hover); border: 1px solid var(--color-border);
+  border-radius: 8px; padding: 12px;
+}
+.invoice-preview-inner { display: flex; flex-direction: column; gap: 10px; max-width: 1000px; margin: 0 auto; transform-origin: top center; }
+.invoice-preview-zoom { position: sticky; top: 0; z-index: 3; display: flex; justify-content: flex-end; gap: 2px; height: 0; }
+.invoice-preview-zoom button {
+  background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border);
+  padding: 2px 8px; font-size: 11.5px; box-shadow: var(--shadow-sm); height: 24px;
+}
+.invoice-preview-zoom button.on { color: var(--color-text); border-color: var(--color-text-muted); }

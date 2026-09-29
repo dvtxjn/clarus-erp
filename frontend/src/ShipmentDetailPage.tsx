@@ -58,24 +58,24 @@ export default function ShipmentDetailPage() {
             {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
           </span>
         </div>
+      {/* BL and BE are the two keys everything is filed and searched by */}
+        <div className="key-ids">
+          <div className="key-id">
+            <span className="key-id-label">BL No (MBL / HBL)</span>
+            <span className="key-id-value">{shipment.mbl}</span>
+            {shipment.hbl && <span className="key-id-sub">HBL {shipment.hbl}</span>}
+          </div>
+          <div className={`key-id${shipment.be_no ? "" : " key-id-missing"}`}>
+            <span className="key-id-label">BE No · BE Date</span>
+            <span className="key-id-value">
+              {shipment.be_no ?? "Not filed yet"}
+              {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
+            </span>
+          </div>
+        </div>
         <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
       </header>
 
-      {/* BL and BE are the two keys everything is filed and searched by */}
-      <div className="key-ids">
-        <div className="key-id">
-          <span className="key-id-label">BL No (MBL / HBL)</span>
-          <span className="key-id-value">{shipment.mbl}</span>
-          {shipment.hbl && <span className="key-id-sub">HBL {shipment.hbl}</span>}
-        </div>
-        <div className={`key-id${shipment.be_no ? "" : " key-id-missing"}`}>
-          <span className="key-id-label">BE No · BE Date</span>
-          <span className="key-id-value">
-            {shipment.be_no ?? "Not filed yet"}
-            {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
-          </span>
-        </div>
-      </div>
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -143,135 +143,142 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         : "No";
 
   return (
+    // three columns, each stacked: status + remarks | duty & CFS | shipment + container
     <div className="detail-grid">
-      <section className="detail-section">
-        <h3>Status</h3>
-        <div className="flag-grid">
-          {flagFields.map(([label, value]) => (
-            <div className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label}>
-              <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
-              {!value && <span className="flag-pending-text">Pending</span>}
-            </div>
-          ))}
-        </div>
-        <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
-        <Field label="Examination" value={examination} hint="Read from the OOC copy" />
-        <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
-          <span>Under examination</span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={!!s.under_examination}
-            disabled={saving === "under_examination"}
-            onChange={() => toggle("under_examination")}
-          />
-        </label>
-        <Field label="Cleared Date" value={fmtDate(s.cleared_date)} />
-      </section>
-
-      <section className="detail-section">
-        <h3>Duty &amp; CFS amounts</h3>
-        <BeAmounts shipment={s} onChange={onChange} />
-        <div className="field-divider" />
-        <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
-        {s.cfs_paid_by_us ? (
-          <>
-            <Field
-              label="TDS @ 2% of basic"
-              value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
-              hint="2% of the CFS basic value (before GST)"
-            />
-            <Field
-              label="Payment after TDS"
-              value={fmtMoney(s.cfs_payment_after_tds)}
-              hint="Basic + GST − 2% of basic"
-              strong
-            />
-            <label className="toggle-row" title="How CFS goes on the proforma">
-              <span>CFS on the proforma</span>
-              <select
-                value={s.cfs_billed_as}
-                onChange={async (e) =>
-                  onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)
-                }
-              >
-                <option value="reimbursement">Reimbursement (at actuals)</option>
-                <option value="taxable">Taxable — Billed by Clarus + 18% GST</option>
-              </select>
-            </label>
-          </>
-        ) : (
-          <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
-        )}
-        <div className="field-divider" />
-        <InvoiceGroup group="line" shipment={s} onChange={onChange} />
-        <p className="field-note">
-          {s.line_paid_by_us
-            ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
-            : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
-        </p>
-        <div className="field-divider" />
-        {toggles.map(([field, label]) => (
-          <label className="toggle-row" key={field}>
-            <span>{label}</span>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>Status</h3>
+          <div className="flag-grid">
+            {flagFields.map(([label, value]) => (
+              <div className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label}>
+                <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
+                {!value && <span className="flag-pending-text">Pending</span>}
+              </div>
+            ))}
+          </div>
+          <Field label="OOC Date" value={fmtDate(s.ooc_date)} />
+          <Field label="Examination" value={examination} hint="Read from the OOC copy" />
+          <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
+            <span>Under examination</span>
             <input
               type="checkbox"
               role="switch"
-              checked={!!s[field]}
-              disabled={saving === field}
-              onChange={() => toggle(field)}
+              checked={!!s.under_examination}
+              disabled={saving === "under_examination"}
+              onChange={() => toggle("under_examination")}
             />
           </label>
-        ))}
-        <label
-          className="toggle-row"
-          title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
-        >
-          <span>Shipping line in cost inclusion</span>
-          <select
-            value={s.line_cost_inclusion ?? "auto"}
-            disabled={s.line_paid_by_us}
-            onChange={async (e) => {
-              const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
-              onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
-            }}
-          >
-            <option value="auto">Auto (client's setting)</option>
-            <option value="include">Include</option>
-            <option value="exclude">Leave out</option>
-          </select>
-        </label>
-      </section>
-
-      <section className="detail-section">
-        <h3>Shipment</h3>
-        <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
-        <Field label="ETA" value={fmtDate(s.eta)} />
-        <Field label="INW" value={s.inw} />
-        <Field label="Day" value={s.days} />
-        <Field label="IGM" value={s.igm} />
-        <Field label="License" value={s.license} />
-        <HssEditor shipment={s} onChange={onChange} />
-      </section>
-
-      <section className="detail-section">
-        <h3>Container &amp; Movement</h3>
-        <Field label="Containers" value={s.container} />
-        <Field label="Gross Wt" value={s.gross_wt} />
-        <Field label="Container Status" value={s.container_status} />
-        <Field label="CFS" value={s.cfs} />
-        <Field label="POC" value={s.poc} />
-        <Field label="Delivery" value={s.delivery_status} />
-        <Field label="Shipping Line" value={s.shipping_line} />
-      </section>
-
-      {(s.remark || s.remarks) && (
-        <section className="detail-section">
-          <h3>Remarks</h3>
-          {s.remark && <p>{s.remark}</p>}
-          {s.remarks && <p>{s.remarks}</p>}
+          <Field label="Cleared Date" value={fmtDate(s.cleared_date)} />
         </section>
-      )}
+
+        {(s.remark || s.remarks) && (
+          <section className="detail-section">
+            <h3>Remarks</h3>
+            {s.remark && <p>{s.remark}</p>}
+            {s.remarks && <p>{s.remarks}</p>}
+          </section>
+        )}
+      </div>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>Duty &amp; CFS amounts</h3>
+          <BeAmounts shipment={s} onChange={onChange} />
+          <div className="field-divider" />
+          <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
+          {s.cfs_paid_by_us ? (
+            <>
+              <Field
+                label="TDS @ 2% of basic"
+                value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
+                hint="2% of the CFS basic value (before GST)"
+              />
+              <Field
+                label="Payment after TDS"
+                value={fmtMoney(s.cfs_payment_after_tds)}
+                hint="Basic + GST − 2% of basic"
+                strong
+              />
+              <label className="toggle-row" title="How CFS goes on the proforma">
+                <span>CFS on the proforma</span>
+                <select
+                  value={s.cfs_billed_as}
+                  onChange={async (e) =>
+                    onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)
+                  }
+                >
+                  <option value="reimbursement">Reimbursement (at actuals)</option>
+                  <option value="taxable">Taxable — Billed by Clarus + 18% GST</option>
+                </select>
+              </label>
+            </>
+          ) : (
+            <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
+          )}
+          <div className="field-divider" />
+          <InvoiceGroup group="line" shipment={s} onChange={onChange} />
+          <p className="field-note">
+            {s.line_paid_by_us
+              ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
+              : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
+          </p>
+          <div className="field-divider" />
+          {toggles.map(([field, label]) => (
+            <label className="toggle-row" key={field}>
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={!!s[field]}
+                disabled={saving === field}
+                onChange={() => toggle(field)}
+              />
+            </label>
+          ))}
+          <label
+            className="toggle-row"
+            title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
+          >
+            <span>Shipping line in cost inclusion</span>
+            <select
+              value={s.line_cost_inclusion ?? "auto"}
+              disabled={s.line_paid_by_us}
+              onChange={async (e) => {
+                const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
+                onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
+              }}
+            >
+              <option value="auto">Auto (client's setting)</option>
+              <option value="include">Include</option>
+              <option value="exclude">Leave out</option>
+            </select>
+          </label>
+        </section>
+
+      </div>
+      <div className="detail-col">
+        <section className="detail-section">
+          <h3>Shipment</h3>
+          <Field label="Port (POD)" value={formatPort(s.port, ports) || null} />
+          <Field label="ETA" value={fmtDate(s.eta)} />
+          <Field label="INW" value={s.inw} />
+          <Field label="Day" value={s.days} />
+          <Field label="IGM" value={s.igm} />
+          <Field label="License" value={s.license} />
+          <HssEditor shipment={s} onChange={onChange} />
+        </section>
+
+        <section className="detail-section">
+          <h3>Container &amp; Movement</h3>
+          <Field label="Containers" value={s.container} />
+          <Field label="Gross Wt" value={s.gross_wt} />
+          <Field label="Container Status" value={s.container_status} />
+          <Field label="CFS" value={s.cfs} />
+          <Field label="POC" value={s.poc} />
+          <Field label="Delivery" value={s.delivery_status} />
+          <Field label="Shipping Line" value={s.shipping_line} />
+        </section>
+
+      </div>
     </div>
   );
 }

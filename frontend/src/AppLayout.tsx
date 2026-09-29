@@ -4,6 +4,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
 import { ACCENTS, savedAccent, setAccent, type AccentId } from "./accent";
+import { SidebarSlotContext } from "./sidebarSlot";
 
 // 16px line icons (stroke follows the text colour)
 const icon = (d: ReactNode) => (
@@ -31,6 +32,7 @@ function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICO
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const [accent, pickAccent] = useState<AccentId>(savedAccent);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
   // admin: red banner when backups are late, shrank or failed (checked every 10 minutes)
   const [backupWarnings, setBackupWarnings] = useState<string[]>([]);
   useEffect(() => {
@@ -62,6 +64,8 @@ export default function AppLayout() {
             </>
           )}
         </nav>
+        {/* page tools (see sidebarSlot.tsx) */}
+        <div className="app-sidebar-slot" ref={setSlot} />
         <div className="app-sidebar-foot">
           <div className="accent-picker" title="Accent colour (trial — pick one and we'll make it permanent)">
             Accent
@@ -98,7 +102,9 @@ export default function AppLayout() {
             <strong>Backups:</strong> {backupWarnings.join(" ")}
           </div>
         )}
-        <Outlet />
+        <SidebarSlotContext.Provider value={slot}>
+          <Outlet />
+        </SidebarSlotContext.Provider>
       </main>
     </div>
   );
