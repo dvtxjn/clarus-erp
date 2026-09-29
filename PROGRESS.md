@@ -544,3 +544,5 @@ The client will pick features they like from other software and feed them in. Re
 - Design refresh: left sidebar, full 1920×1080 use, Linear-like minimal look, maybe a new accent colour.
 - Feature ideas from other software (client will send).
 - Test/cleanup: SQLite still works as a fallback; `docs/TWO_BROWSER_TEST.md` for manual multi-user checks.
+
+**Drive setup decision (2026-09-29):** the client's shipment folders are in a normal Drive folder (synced to desktops offline via Google Drive for desktop). Moving to a Shared Drive is planned **later** (process explained: create Shared Drive, members, move folders — IDs/links kept, desktop paths change and "Available offline" must be re-ticked, sync must be complete before moving). **For now:** service account gets **Viewer** on the shipments parent folder (read only — can find/read, cannot touch staff files) and **Editor** on a separate `Clarus ERP – system` folder (backups, generated proforma/invoice PDFs; the code never deletes). Waiting for: key file name, both folder links.
