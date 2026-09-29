@@ -107,3 +107,17 @@ def test_sandbox_reads_the_database_name_from_a_cloud_sql_url():
     assert _database_name("postgresql://erp:x@/erp_sandbox?host=/cloudsql/clarus-erp:asia-southeast1:clarus-erp-db") == "erp_sandbox"
     assert _database_name("postgresql://erp:x@/erp_db?host=/cloudsql/clarus-erp:asia-southeast1:clarus-erp-db") == "erp_db"
     assert _database_name("postgresql+psycopg2://erp:x@localhost/erp_sandbox") == "erp_sandbox"
+
+
+def test_sandbox_settings_pass_the_production_check(monkeypatch):
+    """The sandbox deploy (deploy/gcp/sandbox.sh): local files, no Drive / backups / scheduler token."""
+    from app.core import production
+
+    for k in ("GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID", "DRIVE_INVOICES_FOLDER_ID", "DRIVE_BACKUPS_FOLDER_ID",
+              "BACKUP_ENCRYPTION_KEY", "JOB_TOKEN", "PUBLIC_URL"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in {"APP_ENV": "production", "SANDBOX": "1", "AUTO_MIGRATE": "0", "JOBS_ENABLED": "0",
+                 "STORAGE_BACKEND": "local", "JWT_SECRET_KEY": "x" * 64}.items():
+        monkeypatch.setenv(k, v)
+    problems = production.problems()
+    assert [p for p in problems if "postgresql" not in p] == []
