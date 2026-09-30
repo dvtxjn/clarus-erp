@@ -912,3 +912,8 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
   never shown; a refused password sets password_bad and stops all logins (no lockout) until a new one is entered.
   ICEGATE ID / CHA code: admin sets them there too.
 - Open: latest_challan() matches challans by BE no only (pre-existing) — BE numbers repeat yearly; add the BE date.
+- Deploy 2026-09-30 (rev 00006): org policy constraints/iam.allowedPolicyMemberDomains refused
+  gmail-api-push@system.gserviceaccount.com on topic icegate-mail -> instant push off; deploy.sh now warns and
+  continues (15-min mailbox check still works). To allow push: an org-policy admin adds a project-level exception
+  for iam.allowedPolicyMemberDomains (allowAll) on clarus-erp, re-runs deploy (binding + subscription), then may
+  restore the policy — the binding stays.

@@ -209,8 +209,11 @@ def sync(db: Session, gm: Optional[Gmail] = None, topic: Optional[str] = None) -
         row, st = state(db)  # import committed
         st.update(history_id=str(latest), last_run=now, last_error=None, last_new=res.get("new", 0))
         if topic and (not st.get("watch_expires") or int(st["watch_expires"]) / 1000 - time.time() < 2 * 86400):
-            w = gm.watch(topic)
-            st["watch_expires"] = w.get("expiration")
+            try:
+                w = gm.watch(topic)
+                st["watch_expires"], st["push_error"] = w.get("expiration"), None
+            except GmailError as e:  # push not allowed (e.g. org policy on the topic): the 15-min check still reads
+                st["push_error"] = str(e)[:200]
     except (GmailError, httpx.HTTPError, KeyError, ValueError) as e:
         db.rollback()
         row, st = state(db)

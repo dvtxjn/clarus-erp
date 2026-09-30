@@ -44,12 +44,16 @@ fi
 # Google Sheets copy of the tracker every 15 min (Sheets API on, job created once)
 gcloud services enable sheets.googleapis.com picker.googleapis.com drive.googleapis.com gmail.googleapis.com pubsub.googleapis.com --quiet
 # ICEGATE mailbox: Gmail tells Pub/Sub about new mail -> Pub/Sub pushes to the ERP at once (created once)
-if ! gcloud pubsub topics describe icegate-mail >/dev/null 2>&1; then
-  gcloud pubsub topics create icegate-mail --quiet
+gcloud pubsub topics describe icegate-mail >/dev/null 2>&1 || gcloud pubsub topics create icegate-mail --quiet
+# Gmail's push account is outside the company domain: an org policy ("domain restricted sharing") may refuse it.
+# Then mail is still read by the 15-minute check; see PROGRESS.md for the one-time policy exception.
+PUSH_OK=1
+if ! gcloud pubsub topics get-iam-policy icegate-mail --format=json 2>/dev/null | grep -q gmail-api-push; then
   gcloud pubsub topics add-iam-policy-binding icegate-mail \
-    --member serviceAccount:gmail-api-push@system.gserviceaccount.com --role roles/pubsub.publisher --quiet >/dev/null
+    --member serviceAccount:gmail-api-push@system.gserviceaccount.com --role roles/pubsub.publisher --quiet >/dev/null 2>&1 \
+    || { PUSH_OK=0; echo "!! Instant mail push not enabled (org policy blocks gmail-api-push) — the 15-minute check still reads mail."; }
 fi
-if ! gcloud pubsub subscriptions describe icegate-mail-push >/dev/null 2>&1; then
+if [ "$PUSH_OK" = 1 ] && ! gcloud pubsub subscriptions describe icegate-mail-push >/dev/null 2>&1; then
   TOKEN=$(gcloud secrets versions access latest --secret=job-token)
   gcloud pubsub subscriptions create icegate-mail-push --topic icegate-mail --ack-deadline 120 \
     --push-endpoint "$PUBLIC_URL/internal/gmail/push?token=$TOKEN" --quiet
