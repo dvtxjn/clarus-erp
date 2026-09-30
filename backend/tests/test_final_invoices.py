@@ -224,3 +224,43 @@ def test_company_bank_and_terms_come_from_settings(client, admin_headers):
     # back to the real values for the other tests
     for k in ("company", "bank", "proforma_notes"):
         client.put(f"/settings/{k}", json={"value": s[k]}, headers=h)
+
+
+def test_number_formats_restart_and_deleting_trial_invoices(client, admin_headers):
+    """Client, 2026-09-30: trial invoices are deleted before going live, the series restarts from a new number
+    in the admin's own format — and no number is ever given twice."""
+    from app.invoice.final import fy_of
+    from datetime import date
+
+    h, fy = admin_headers, fy_of(date.today())
+
+    def pair(mbl):
+        client.post("/organizations", json={"name": f"Series Co {mbl}", "gstin": "24AAAAA2222A1Z5"}, headers=h)
+        sid = client.post("/shipments", json={"mbl": mbl, "consignee": f"Series Co {mbl}", "container": "1"}, headers=h).json()["id"]
+        pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+        client.post(f"/proformas/{pid}/final-invoices", headers=h)
+        return pid
+
+    # bad formats refused
+    assert client.put("/invoice-series", json={"tax": "CL/{fy}", "reimbursement": "RI/{n}"}, headers=h).status_code == 422
+    assert client.put("/invoice-series", json={"tax": "X/{n}", "reimbursement": "X/{n}"}, headers=h).status_code == 422
+    assert client.put("/invoice-series", json={"tax": "CL/{bad}", "reimbursement": "RI/{n}"}, headers=h).status_code == 422
+    r = client.put("/invoice-series", json={"tax": "CLR/{n:04d}/{fy}", "reimbursement": "CLR-RI/{n:04d}/{fy}"}, headers=h)
+    assert r.status_code == 200 and r.json()["example_tax"] == f"CLR/0201/{fy}"
+
+    assert client.put("/invoice-counter", json={"fy": fy, "next_seq": 5000}, headers=h).status_code == 200
+    trial = client.post(f"/proformas/{pair('SERIES0001')}/final-invoices/issue", headers=h).json()
+    nums = {i["kind"]: i["number"] for i in trial}
+    assert nums == {"tax": f"CLR/5000/{fy}", "reimbursement": f"CLR-RI/5000/{fy}"}
+
+    # the admin deletes the trial pair (issued) — restorable, number kept out of use
+    for i in trial:
+        assert client.delete(f"/final-invoices/{i['id']}", headers=h).status_code == 204
+    # restart at the same number: refused, it was given once already
+    client.put("/invoice-counter", json={"fy": fy, "next_seq": 5000}, headers=h)
+    r = client.post(f"/proformas/{pair('SERIES0002')}/final-invoices/issue", headers=h)
+    assert r.status_code == 400 and "already used" in r.json()["detail"]
+    client.put("/invoice-counter", json={"fy": fy, "next_seq": 5001}, headers=h)
+    live = client.post(f"/proformas/{pair('SERIES0003')}/final-invoices/issue", headers=h).json()
+    assert {i["number"] for i in live} == {f"CLR/5001/{fy}", f"CLR-RI/5001/{fy}"}
+    client.put("/invoice-series", json={"tax": "CL/{n}/{fy}", "reimbursement": "RI/CL/{n}/{fy}"}, headers=h)  # back for other tests

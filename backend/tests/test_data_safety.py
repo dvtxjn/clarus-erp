@@ -106,7 +106,10 @@ def test_final_invoice_draft_delete_and_restore(client, admin_headers):
     assert _count("final_invoices", reim["id"]) == 1
     assert {i["id"] for i in client.get(f"/shipments/{sid}/final-invoices", headers=h).json()} == {tax["id"]}
     assert _restore(client, h, "final_invoice", reim["id"]).status_code == 200
-    assert client.delete(f"/final-invoices/{tax['id']}", headers=h).status_code == 400  # issued: never
+    # issued: only the admin may delete it (clearing trial invoices, client 2026-09-30) — still only hidden
+    assert client.delete(f"/final-invoices/{tax['id']}", headers=h).status_code == 204
+    assert _count("final_invoices", tax["id"]) == 1
+    assert _restore(client, h, "final_invoice", tax["id"]).status_code == 200
 
 
 def test_database_refuses_changes_to_issued_invoices(client, admin_headers):
@@ -123,7 +126,8 @@ def test_database_refuses_changes_to_issued_invoices(client, admin_headers):
                 "UPDATE final_invoices SET remarks = 'changed' WHERE id = :i",
                 "UPDATE final_invoices SET advance_received = 5 WHERE id = :i",
                 "UPDATE final_invoices SET status = 'draft' WHERE id = :i",
-                "UPDATE final_invoices SET deleted_at = CURRENT_TIMESTAMP WHERE id = :i"):
+                # hiding it (soft delete) is allowed, but not together with any other change
+                "UPDATE final_invoices SET deleted_at = CURRENT_TIMESTAMP, remarks = 'x' WHERE id = :i"):
         with pytest.raises(sa.exc.DatabaseError):
             run(sql)
     with pytest.raises(sa.exc.DatabaseError):  # drafts can't be hard-deleted either

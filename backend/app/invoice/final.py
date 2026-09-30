@@ -54,8 +54,25 @@ def fy_of(d: date) -> str:
     return f"{start % 100:02d}-{(start + 1) % 100:02d}"
 
 
-def number_for(kind: str, seq: int, fy: str) -> str:
-    return f"CL/{seq}/{fy}" if kind == "tax" else f"RI/CL/{seq}/{fy}"
+def number_for(kind: str, seq: int, fy: str, series: Optional[dict] = None) -> str:
+    """The invoice number from the admin's format (Settings → Invoice numbering; default CL/{n}/{fy},
+    RI/CL/{n}/{fy})."""
+    fmt = (series or {}).get(kind) or ("CL/{n}/{fy}" if kind == "tax" else "RI/CL/{n}/{fy}")
+    return fmt.format(n=seq, fy=fy)
+
+
+def check_series(series: dict) -> Optional[str]:
+    """What's wrong with a pair of formats, or None."""
+    try:
+        tax, ri = number_for("tax", 7, "26-27", series), number_for("reimbursement", 7, "26-27", series)
+    except (KeyError, IndexError, ValueError):
+        return "Use only {n} (the number) and {fy} (e.g. 26-27) in braces"
+    for k in ("tax", "reimbursement"):
+        if "{n" not in (series.get(k) or ""):
+            return "Each format needs {n} — the invoice number"
+    if tax == ri:
+        return "The tax and reimbursement formats must differ"
+    return None
 
 
 def _d(v: Any) -> Decimal:
@@ -176,9 +193,15 @@ def create_from_proforma(db: Session, proforma: Proforma, user_id: Optional[int]
     return created
 
 
+class NumberingNotSet(Exception):
+    """The ERP's very first invoice: where the series continues from (after LiveImpex) must be set first."""
+
+
 def issue(db: Session, inv: FinalInvoice) -> None:
     """Give the number and lock. The tax / reimbursement pair made from one proforma
-    shares its number (CL/200/26-27 and RI/CL/200/26-27)."""
+    shares its number (CL/200/26-27 and RI/CL/200/26-27). The first invoice ever waits until the admin
+    has set where the series continues (billing moved from LiveImpex on 1-Oct-2026, mid-year) — a new
+    financial year after that starts at 1 by itself."""
     d = inv.invoice_date or date.today()
     fy = fy_of(d)
     sibling = db.query(FinalInvoice).filter(FinalInvoice.proforma_id == inv.proforma_id, FinalInvoice.id != inv.id,
@@ -189,11 +212,23 @@ def issue(db: Session, inv: FinalInvoice) -> None:
     else:
         counter = db.get(InvoiceCounter, fy)
         if counter is None:
+            if db.query(InvoiceCounter).first() is None:
+                raise NumberingNotSet("Set where the invoice numbers continue from first (Settings → Invoice numbering: "
+                                      "the last LiveImpex invoice number + 1)")
             counter = InvoiceCounter(fy=fy, next_seq=1)
             db.add(counter)
         seq = counter.next_seq
         counter.next_seq = seq + 1
-    inv.seq, inv.fy, inv.number = seq, fy, number_for(inv.kind, seq, fy)
+    from app.models.settings import get_setting
+
+    number = number_for(inv.kind, seq, fy, get_setting(db, "invoice_series"))
+    # a number is never given twice — not even one a deleted or cancelled invoice had
+    taken = (db.query(FinalInvoice.id).execution_options(include_deleted=True)
+             .filter(FinalInvoice.number == number, FinalInvoice.id != inv.id).first())
+    if taken:
+        raise NumberingNotSet(f"{number} is already used by an earlier invoice (or a deleted one) — set a higher next number "
+                              "in Settings → Invoice numbering")
+    inv.seq, inv.fy, inv.number = seq, fy, number
     inv.status, inv.issued_at = "issued", datetime.now()
 
 

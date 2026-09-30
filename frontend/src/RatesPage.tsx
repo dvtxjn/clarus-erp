@@ -3,6 +3,9 @@ import {
   createCharge,
   deletePricingRule,
   getInvoiceCounters,
+  getInvoiceSeries,
+  setInvoiceSeries,
+  type InvoiceSeries,
   getSettings,
   setSetting,
   setInvoiceCounter,
@@ -750,26 +753,52 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
   );
 }
 
-/** Where the final-invoice series continues (CL/<n>/<FY>, RI/CL/<n>/<FY>). */
+/** The final-invoice number formats and where the series continues (e.g. after the last LiveImpex invoice). */
 export function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
-  const [rows, setRows] = useState<{ fy: string; next_seq: number }[]>([]);
+  const [rows, setRows] = useState<{ fy: string; next_seq: number | null }[]>([]);
+  const [series, setSeries] = useState<InvoiceSeries | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => {
     getInvoiceCounters().then((r) => setRows(r.counters));
+    getInvoiceSeries().then(setSeries);
   }, []);
+  const saveSeries = (patch: Partial<Pick<InvoiceSeries, "tax" | "reimbursement">>) =>
+    series &&
+    setInvoiceSeries(patch.tax ?? series.tax, patch.reimbursement ?? series.reimbursement)
+      .then((s) => {
+        setSeries(s);
+        setMsg(`Next numbers look like ${s.example_tax} and ${s.example_reimbursement}`);
+      })
+      .catch((e) => setMsg(errorText(e)));
   return (
     <section className="hss-rules">
       <h2>Invoice numbering</h2>
       <p className="tracker-subtitle">
-        Next final-invoice number per financial year — Tax Invoice CL/&lt;n&gt;/&lt;FY&gt;, Reimbursement RI/CL/&lt;n&gt;/&lt;FY&gt;
-        (a pair from one proforma shares &lt;n&gt;). Set it to continue from the last invoice made elsewhere.
+        Number formats and the next number per financial year. In a format, {"{n}"} is the number ({"{n:04d}"} pads it to
+        0201) and {"{fy}"} the year, e.g. 26-27. A pair from one proforma shares the number. Changing the format doesn’t
+        renumber invoices already issued; no number is ever given twice.
       </p>
+      {series && (
+        <div className="numbering-rows">
+          <label className="final-field numbering-row">
+            <span>Tax invoice format</span>
+            <TextInput value={series.tax} width={180} disabled={!canEdit} onSave={(v) => saveSeries({ tax: v })} />
+          </label>
+          <label className="final-field numbering-row">
+            <span>Reimbursement format</span>
+            <TextInput value={series.reimbursement} width={180} disabled={!canEdit} onSave={(v) => saveSeries({ reimbursement: v })} />
+          </label>
+          <span className="field-note">
+            e.g. {series.example_tax} · {series.example_reimbursement}
+          </span>
+        </div>
+      )}
       <div className="numbering-rows">
         {rows.map((r) => (
           <label key={r.fy} className="final-field numbering-row">
-            <span>FY {r.fy} — next number</span>
+            <span>FY {r.fy} — next number{r.next_seq == null ? " (not set: last LiveImpex invoice + 1)" : ""}</span>
             <TextInput
-              value={String(r.next_seq)}
+              value={r.next_seq == null ? "" : String(r.next_seq)}
               numeric
               width={100}
               disabled={!canEdit}
@@ -777,7 +806,7 @@ export function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
                 setInvoiceCounter(r.fy, Number(v))
                   .then((c) => {
                     setRows((prev) => prev.map((x) => (x.fy === c.fy ? c : x)));
-                    setMsg(`Next invoice for FY ${c.fy}: CL/${c.next_seq}/${c.fy}`);
+                    setMsg(`Next invoice for FY ${c.fy}: number ${c.next_seq}`);
                   })
                   .catch((e) => setMsg(errorText(e)))
               }

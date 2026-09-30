@@ -255,7 +255,9 @@ function FinalInvoiceEditor({
     const texts = {
       issue: ["Issue this invoice?", "It gets the next invoice number and is locked — only IRN / ACK can be added after this.", "Issue"],
       cancel: ["Cancel this invoice?", "It stays on record as cancelled and its number is not reused.", "Cancel invoice"],
-      delete: ["Delete this draft?", "The draft is moved to Recently deleted (the admin can restore it).", "Delete draft"],
+      delete: draft
+        ? ["Delete this draft?", "The draft is moved to Recently deleted (the admin can restore it).", "Delete draft"]
+        : [`Delete ${inv.number}?`, "It moves to Recently deleted (you can restore it). Its number is never given again.", "Delete invoice"],
     }[kind];
     let reason = "";
     const ok = await confirm({
@@ -430,6 +432,9 @@ function FinalInvoiceEditor({
         {draft && <button className="btn-secondary link-danger" onClick={() => act("delete")}>Delete draft</button>}
         {inv.status === "issued" && user?.role === "admin" && (
           <button className="btn-secondary link-danger" onClick={() => act("cancel")}>Cancel invoice</button>
+        )}
+        {!draft && user?.role === "admin" && (
+          <button className="btn-secondary link-danger" onClick={() => act("delete")}>Delete invoice</button>
         )}
       </div>
     </div>

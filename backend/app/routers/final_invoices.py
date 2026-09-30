@@ -20,7 +20,7 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
 from app.core.locking import locked_proforma
-from app.invoice.final import TAX_TYPES, alter_until, compute, create_from_proforma, fy_of, issue
+from app.invoice.final import TAX_TYPES, NumberingNotSet, alter_until, check_series, number_for, compute, create_from_proforma, fy_of, issue
 from app.models.settings import get_setting
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
@@ -303,7 +303,11 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
         raise HTTPException(status_code=400, detail="The invoice has no lines")
     if not (inv.customer or {}).get("gstin"):
         raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
-    issue(db, inv)
+    try:
+        issue(db, inv)
+    except NumberingNotSet as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     record_change(db, "final_invoices", inv.id, "issued", None, inv.number, user.id)
     db.commit()
     # what goes to the client / authorities: keep the PDF as issued (local + Drive)
@@ -330,7 +334,11 @@ def issue_pair(proforma_id: int, db: Session = Depends(get_db), user: User = Dep
         if not (inv.customer or {}).get("gstin"):
             raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
     for inv in drafts:
-        issue(db, inv)
+        try:
+            issue(db, inv)
+        except NumberingNotSet as e:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(e))
         db.flush()  # so the second one finds the first's number (the pair shares <n>)
         record_change(db, "final_invoices", inv.id, "issued", None, inv.number, user.id)
     db.commit()
@@ -389,18 +397,57 @@ def cancel_final_invoice(invoice_id: int, payload: Optional[CancelIn] = None, db
 
 @router.delete("/final-invoices/{invoice_id}", status_code=204)
 def delete_final_draft(invoice_id: int, db: Session = Depends(get_db), user: User = Depends(require_billing_access)):
+    """A draft: anyone who bills. An issued / cancelled one: the admin only (e.g. clearing trial invoices before
+    going live, client 2026-09-30), never one with a payment set against it. Soft delete: restorable from
+    Recently deleted, and its number is never given again."""
+    from app.models.payment import PaymentAllocation
+
     inv = _get(db, invoice_id)
     if inv.status != "draft":
-        raise HTTPException(status_code=400, detail="Only drafts can be deleted — cancel an issued invoice instead")
-    record_change(db, "final_invoices", inv.id, "deleted", inv.kind, None, user.id)
+        if user.role.value != "admin":
+            raise HTTPException(status_code=403, detail="Only the admin can delete an issued invoice — cancel it instead")
+        if db.query(PaymentAllocation).filter(PaymentAllocation.final_invoice_id == inv.id).first():
+            raise HTTPException(status_code=400, detail="A payment is set against this invoice — remove that first")
+    record_change(db, "final_invoices", inv.id, "deleted", inv.number or inv.kind, None, user.id)
     soft_delete(db, inv, user.id)  # never removed from the database (a trigger refuses DELETE)
     db.commit()
 
 
 @router.get("/invoice-counter")
 def get_counters(db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
-    return {"counters": [{"fy": c.fy, "next_seq": c.next_seq} for c in db.query(InvoiceCounter).order_by(InvoiceCounter.fy)],
-            "tax_types": TAX_TYPES}
+    rows = [{"fy": c.fy, "next_seq": c.next_seq} for c in db.query(InvoiceCounter).order_by(InvoiceCounter.fy)]
+    now = fy_of(date.today())
+    if not any(r["fy"] == now for r in rows):
+        rows.append({"fy": now, "next_seq": None})  # not set yet: shown so the admin can set it
+    return {"counters": rows, "tax_types": TAX_TYPES}
+
+
+class SeriesIn(BaseModel):
+    tax: str = Field(min_length=3, max_length=40)
+    reimbursement: str = Field(min_length=3, max_length=40)
+
+
+@router.get("/invoice-series")
+def get_series(db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
+    s = get_setting(db, "invoice_series")
+    return {**s, "example_tax": number_for("tax", 201, fy_of(date.today()), s),
+            "example_reimbursement": number_for("reimbursement", 201, fy_of(date.today()), s)}
+
+
+@router.put("/invoice-series")
+def set_series(payload: SeriesIn, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Admin: the number formats, e.g. CL/{n}/{fy}. Numbers already given don't change."""
+    from app.models.settings import AppSetting
+
+    new = {"tax": payload.tax.strip(), "reimbursement": payload.reimbursement.strip()}
+    err = check_series(new)
+    if err:
+        raise HTTPException(status_code=422, detail=err)
+    old = get_setting(db, "invoice_series")
+    db.merge(AppSetting(key="invoice_series", value=new))
+    record_change(db, "app_settings", 0, "invoice_series", str(old), str(new), user.id)
+    db.commit()
+    return get_series(db, user)
 
 
 @router.put("/invoice-counter")

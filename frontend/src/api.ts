@@ -250,7 +250,22 @@ async function downloadBlob(path: string, fallback: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export async function getInvoiceCounters(): Promise<{ counters: { fy: string; next_seq: number }[] }> {
+export interface InvoiceSeries {
+  tax: string;
+  reimbursement: string;
+  example_tax: string;
+  example_reimbursement: string;
+}
+export async function getInvoiceSeries(): Promise<InvoiceSeries> {
+  const { data } = await client.get("/invoice-series");
+  return data;
+}
+export async function setInvoiceSeries(tax: string, reimbursement: string): Promise<InvoiceSeries> {
+  const { data } = await client.put("/invoice-series", { tax, reimbursement });
+  return data;
+}
+
+export async function getInvoiceCounters(): Promise<{ counters: { fy: string; next_seq: number | null }[] }> {
   const { data } = await client.get("/invoice-counter");
   return data;
 }
