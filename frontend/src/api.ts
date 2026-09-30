@@ -1091,3 +1091,36 @@ export async function runIcegateLookup(what: "status" | "challans"): Promise<Ice
   const { data } = await client.post("/icegate-login/run", { what });
   return data;
 }
+
+// Change history (the audit log, readable)
+export interface HistoryEntry {
+  id: number;
+  at: string;
+  who: string | null; // null + automatic: the ERP itself (ICEGATE, mails, invoices read)
+  automatic: boolean;
+  table: string;
+  kind: string; // Shipment / Container / Document / …
+  record_id: number;
+  field: string;
+  label: string;
+  old: string | null;
+  new: string | null;
+  about?: string | null; // container no / document name
+  undo?: Record<string, unknown> | null; // shipment field that can be put back
+  shipment_id?: number;
+  job?: string | null;
+  mbl?: string | null;
+  be_no?: string | null;
+}
+export async function shipmentHistory(id: number): Promise<HistoryEntry[]> {
+  const { data } = await client.get(`/shipments/${id}/history`);
+  return data;
+}
+export async function allHistory(params: { who?: string; kind?: string; date_from?: string; date_to?: string; q?: string }): Promise<HistoryEntry[]> {
+  const { data } = await client.get("/history", { params });
+  return data;
+}
+export async function historyFilters(): Promise<{ users: { id: number; name: string }[]; kinds: { kind: string; label: string }[] }> {
+  const { data } = await client.get("/history/filters");
+  return data;
+}

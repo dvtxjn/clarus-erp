@@ -9,9 +9,10 @@ import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type 
 import DocumentManagerPanel from "./DocumentManagerPanel";
 import ProformaPanel from "./ProformaPanel";
 import FpodContainers from "./FpodContainers";
+import ShipmentHistory from "./ShipmentHistory";
 import { formatPort, usePorts } from "./ports";
 
-type Tab = "overview" | "customs" | "documents" | "proforma";
+type Tab = "overview" | "customs" | "documents" | "history" | "proforma";
 
 // sea ports: free days start at the POD inward; every other port is inland (ICD) — client, 2026-09-30
 const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
@@ -36,7 +37,7 @@ function fmtMoney(v: string | null): string | null {
 /** Documents per shipment, last loaded — shared by the Overview's CFS / shipping line blocks. */
 const docsCache = new Map<number, ShipmentDocument[]>();
 
-const TABS: Tab[] = ["overview", "customs", "documents", "proforma"];
+const TABS: Tab[] = ["overview", "customs", "documents", "history", "proforma"];
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -184,6 +185,9 @@ export function ShipmentDetail({
         <button role="tab" aria-selected={tab === "documents"} className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
           Documents
         </button>
+        <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab active" : "tab"} onClick={() => setTab("history")}>
+          History
+        </button>
         {isAdmin && (
           <button role="tab" aria-selected={tab === "proforma"} className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
             Proforma &amp; Billing
@@ -194,6 +198,7 @@ export function ShipmentDetail({
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} />}
+      {tab === "history" && <ShipmentHistory shipment={shipment} onChange={setShipment} />}
       {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
     </div>
   );

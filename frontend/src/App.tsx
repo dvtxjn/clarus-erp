@@ -12,6 +12,7 @@ import { usePhone } from "./usePhone";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import RatesPage from "./RatesPage";
 import DeletedPage from "./DeletedPage";
+import HistoryPage from "./HistoryPage";
 import UsersPage from "./UsersPage";
 import InvoicesPage from "./InvoicesPage";
 import SettingsPage from "./SettingsPage";
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/rates" element={<AdminRoute><RatesPage /></AdminRoute>} />
             <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />
             <Route path="/deleted" element={<AdminRoute><DeletedPage /></AdminRoute>} />
+            <Route path="/history" element={<AdminRoute><HistoryPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -22,6 +22,7 @@ const ICONS = {
   deleted: icon(<><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9" /></>),
   settings: icon(<><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" /></>),
   mail: icon(<><rect x="1.5" y="3" width="13" height="10" rx="1.5" /><path d="M2 4l6 5 6-5" /></>),
+  history: icon(<><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></>),
   users: icon(<><circle cx="6" cy="5.5" r="2.5" /><path d="M1.5 13.5c.6-2.4 2.3-3.5 4.5-3.5s3.9 1.1 4.5 3.5M11 3.5a2.2 2.2 0 0 1 0 4.2M12.5 10.3c1 .5 1.7 1.6 2 3.2" /></>),
 };
 
@@ -37,7 +38,7 @@ function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICO
 // browser tab title per page, e.g. "Shipments · Clarus ERP"
 const PAGE_TITLES: Record<string, string> = {
   dashboard: "Dashboard", shipments: "Shipments", "customs-mail": "Customs mail", invoices: "Invoicing", rates: "Rates",
-  users: "Users", deleted: "Recently deleted", settings: "Settings",
+  users: "Users", history: "Change history", deleted: "Recently deleted", settings: "Settings",
 };
 
 export default function AppLayout() {
@@ -126,6 +127,7 @@ export default function AppLayout() {
               <Item to="/invoices" label="Invoicing" i="invoices" />
               <Item to="/rates" label="Rates" i="rates" />
               <Item to="/users" label="Users" i="users" />
+              <Item to="/history" label="Change history" i="history" />
               <Item to="/deleted" label="Recently deleted" i="deleted" />
               <Item to="/settings" label="Settings" i="settings" />
             </>
@@ -199,6 +201,7 @@ export default function AppLayout() {
                 <NavLink to="/customs-mail">{ICONS.mail}Customs mail</NavLink>
                 <NavLink to="/rates">{ICONS.rates}Rates</NavLink>
                 <NavLink to="/users">{ICONS.users}Users</NavLink>
+                <NavLink to="/history">{ICONS.history}Change history</NavLink>
                 <NavLink to="/deleted">{ICONS.deleted}Recently deleted</NavLink>
                 <NavLink to="/settings">{ICONS.settings}Settings</NavLink>
               </nav>
