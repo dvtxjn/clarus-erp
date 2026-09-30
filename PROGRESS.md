@@ -821,3 +821,29 @@ The client will pick features they like from other software and feed them in. Re
 6. **Organisation KYC**: fill from GSTIN, KYC documents per client, **lower-TDS certificates** (feeds payments TDS).
 7. Bill **cover letter**; **e-mail log + templates**; **quotations** → proforma.
    Skip: filing, eSanchit, SCMTR/E-way bill, TradeCHAIN exchange, exchange-rate tables, DSC signing.
+
+## 📝 NEXT (planned 2026-09-30, not started) — Google Sheets mirror + "never goes down"
+### A. Tracker mirror in Google Sheets (view-only fallback)
+- Client creates ONE Google Sheet in the Shared Drive and pastes its link in **Settings → Tracker copy**
+  (the ERP never creates files it can't clean up; no Drive deletes, ever). Stored in app_settings.
+- ERP writes it with the service account (Sheets API scope, same key as Drive): tabs **Ongoing** / **Cleared**,
+  all tracker columns (Job, Client, Consignee, MBL, HBL, BE No, BE Date, Port, ETA, INW, Day, IGM, Containers,
+  Gross Wt, Status, checklist, CFS, Line (from BL), Examination, Cleared date, Billed, Remarks, custom columns)
+  + "Last synced". Values only (clear + update of the tabs) — never deletes the file.
+- **View-only**: staff shared as Viewer; ERP adds a protected range (editors: service account) so Drive
+  contributors can't type in it. Staff use File → Make a copy if the ERP is down; the copy comes back through
+  the existing tracker CSV import (preview → apply).
+- Refresh every **15 min** (Cloud Scheduler `erp-sheets-mirror` → /internal/jobs/sheets-mirror, add to deploy.sh /
+  setup.sh like erp-icegate) + right after a CSV import + "Sync now" button. Only runs when a sheet is set.
+- Tests with a fake Sheets client (tests must never touch real Google). Optional later: dated daily snapshot.
+
+### B. Uptime ("make sure it never goes down") — needs client approval (costs)
+1. **Cloud SQL**: now db-f1-micro, single zone, shared core (no SLA). → dedicated-core + **HA (regional failover)**
+   ≈ +₹6–10k/month. Biggest single risk.
+2. **Cloud Run min-instances 1** (no cold starts, always warm) ≈ +₹1–2k/month.
+3. **Uptime check + alert** (Cloud Monitoring on /health → e-mail/SMS the client within minutes) — free.
+4. **Safer deploys**: deploy with --no-traffic → health check → switch; one-command rollback documented.
+5. **Error alerts** from Cloud Logging (500s, failed jobs: backup / ICEGATE / mirror) — free.
+6. **Restore drill**: restore last backup into a scratch DB once, prove it works.
+7. The Sheets mirror (A) as the manual fallback.
+Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
