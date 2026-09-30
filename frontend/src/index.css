@@ -1491,3 +1491,43 @@ input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color:
 .settings-row .link-button:hover:not(:disabled) { color: var(--color-danger); }
 /* disabled primary buttons read as "nothing to do" (neutral), not as a faded accent */
 button:not([class]):disabled { background: var(--color-subtle); border-color: var(--color-border); color: var(--color-text-muted); opacity: 1; box-shadow: none; }
+/* switch: no inherited text-box border/padding (it pushed the knob down); knob centred on the track */
+.toggle-row input[role="switch"] { border: none; padding: 0; box-shadow: none; }
+.toggle-row input[role="switch"]::after { top: 50%; left: 2px; transform: translateY(-50%); }
+.toggle-row input[role="switch"]:checked::after { transform: translate(12px, -50%); }
+.toggle-row input[role="switch"]:focus { box-shadow: var(--focus-ring); }
+/* every switch in the app looks the same, inside a .toggle-row or not */
+input[type="checkbox"][role="switch"] {
+  appearance: none; position: relative; flex: none; width: 30px; height: 18px; margin: 0; padding: 0; border: none;
+  border-radius: 999px; cursor: pointer; vertical-align: middle; transition: background-color .15s;
+  background: color-mix(in srgb, var(--color-text-muted) 42%, var(--color-surface));
+}
+input[type="checkbox"][role="switch"]::after {
+  content: ""; position: absolute; top: 50%; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transform: translateY(-50%); transition: transform .15s;
+}
+input[type="checkbox"][role="switch"]:checked { background: var(--color-accent); }
+input[type="checkbox"][role="switch"]:checked::after { transform: translate(12px, -50%); }
+input[type="checkbox"][role="switch"]:disabled { opacity: .5; cursor: not-allowed; }
+input[type="checkbox"][role="switch"]:focus { outline: none; box-shadow: var(--focus-ring); }
+/* documents: the pill carries the status (red "Missing"), rows stay calm; columns line up across groups */
+.status-pill.status-missing { background: var(--bad-bg); color: var(--bad-fg); }
+.doc-row-missing td:first-child { box-shadow: inset 2px 0 0 var(--bad-fg); }
+.doc-table { table-layout: fixed; }
+.doc-table .doc-col-name { width: 44%; }
+.doc-table .doc-col-status { width: 18%; }
+.doc-table .doc-col-file { width: 16%; }
+.doc-table .doc-col-when { width: 22%; }
+.doc-table td:first-child { overflow: hidden; text-overflow: ellipsis; }
+/* native file picker button matches the secondary buttons */
+input[type="file"] { font-size: 13px; color: var(--color-text-muted); }
+input[type="file"]::file-selector-button {
+  font: inherit; font-weight: 500; margin-right: 10px; padding: 4px 10px; border-radius: var(--radius);
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); cursor: pointer;
+}
+input[type="file"]::file-selector-button:hover { background: var(--color-subtle); }
+/* scrollbars follow the theme (the tracker's per-group scrollbars were bright bars in dark) */
+html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-scroll-viewport {
+  scrollbar-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent) transparent;
+}
+:root[data-theme="dim"] .ag-root-wrapper, :root[data-theme="dark"] .ag-root-wrapper { color-scheme: dark; }
