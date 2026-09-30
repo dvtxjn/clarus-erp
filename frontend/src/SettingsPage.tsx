@@ -58,7 +58,7 @@ function SaveBar({ dirty, busy, msg, onSave, onReset }: { dirty: boolean; busy: 
           Undo changes
         </button>
       )}
-      {msg && <span className={msg.ok ? "settings-ok" : "auth-error"}>{msg.text}</span>}
+      {msg && <span role="status" className={msg.ok ? "settings-ok" : "auth-error"}>{msg.text}</span>}
     </div>
   );
 }
@@ -194,7 +194,7 @@ function BankBlock({ s, onSaved }: { s: AppSettings; onSaved: (s: AppSettings) =
           <div className="settings-row" key={i}>
             <input value={r[0]} placeholder="Label" onChange={(e) => setRow(i, 0, e.target.value)} />
             <input value={r[1]} placeholder="Value" onChange={(e) => setRow(i, 1, e.target.value)} />
-            <button type="button" className="link-button link-danger" onClick={() => b.setValue(rows.filter((_, k) => k !== i))}>
+            <button type="button" className="link-button link-danger" aria-label="Remove row" onClick={() => b.setValue(rows.filter((_, k) => k !== i))}>
               ✕
             </button>
           </div>

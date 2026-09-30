@@ -94,13 +94,13 @@ export default function Receivables() {
       </div>
 
       <div className="inv-filters">
-        <input list="org-names" placeholder="Client (type or pick)" value={client} onChange={(e) => setClient(e.target.value)} />
+        <input list="org-names" aria-label="Client" placeholder="Client (type or pick)…" value={client} onChange={(e) => setClient(e.target.value)} />
         <label className="toggle-row">
           <span>Show paid invoices too</span>
           <input type="checkbox" role="switch" checked={withPaid} onChange={() => setWithPaid((x) => !x)} />
         </label>
       </div>
-      {msg && <div className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      {msg && <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
 
       <div className="tracker-grid-wrap">
         <table className="tracker-grid inv-register">
@@ -246,7 +246,9 @@ function ClientRows({
     <>
       <tr className="recv-client" onClick={onToggle}>
         <td>
-          <span className="licence-caret">{open ? "▾" : "▸"}</span> <strong>{c.party}</strong>
+          <button type="button" className="row-toggle" aria-expanded={open} onClick={(e) => { e.stopPropagation(); onToggle(); }}>
+            <span className="licence-caret" aria-hidden="true">{open ? "▾" : "▸"}</span> <strong>{c.party}</strong>
+          </button>
           <span className="doc-group-count">{c.gstin}</span>
         </td>
         <td className="num">{inr(c.billed)}</td>

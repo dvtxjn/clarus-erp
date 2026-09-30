@@ -22,6 +22,29 @@ const inr = (v: string | number) => Number(v).toLocaleString("en-IN", { minimumF
 const date = (v: string | null) =>
   v ? new Date(`${v}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
 
+/** "Any month" + the last 24 months, newest first (a native month box renders as dashes when empty). */
+function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const now = new Date();
+  const months: string[] = [];
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+  if (value && !months.includes(value)) months.push(value);
+  const label = (m: string) =>
+    new Date(`${m}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Month">
+      <option value="">Any month</option>
+      {months.map((m) => (
+        <option key={m} value={m}>
+          {label(m)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default function InvoicesPage() {
   // two sections: proformas, and the final (issued) tax / reimbursement invoices
   const [params, setParams] = useSearchParams();
@@ -38,14 +61,14 @@ export default function InvoicesPage() {
         <h1>Invoicing</h1>
         <span className="tracker-subtitle">Every shipment's proformas and final invoices in one place</span>
       </div>
-      <div className="detail-tabs">
-        <button className={section === "proformas" ? "tab active" : "tab"} onClick={() => setParams({ section: "proformas" })}>
+      <div className="detail-tabs" role="tablist" aria-label="Invoicing sections">
+        <button role="tab" aria-selected={section === "proformas"} className={section === "proformas" ? "tab active" : "tab"} onClick={() => setParams({ section: "proformas" })}>
           Proformas
         </button>
-        <button className={section === "final" ? "tab active" : "tab"} onClick={() => setParams({})}>
+        <button role="tab" aria-selected={section === "final"} className={section === "final" ? "tab active" : "tab"} onClick={() => setParams({})}>
           Final invoices (tax + reimbursement)
         </button>
-        <button className={section === "outstanding" ? "tab active" : "tab"} onClick={() => setParams({ section: "outstanding" })}>
+        <button role="tab" aria-selected={section === "outstanding"} className={section === "outstanding" ? "tab active" : "tab"} onClick={() => setParams({ section: "outstanding" })}>
           Outstanding &amp; payments
         </button>
       </div>
@@ -121,7 +144,7 @@ function FinalRegister() {
             </option>
           ))}
         </select>
-        <input type="month" value={f.month ?? ""} onChange={(e) => set("month", e.target.value)} aria-label="Month" />
+        <MonthSelect value={f.month ?? ""} onChange={(v) => set("month", v)} />
         <select value={f.kind ?? ""} onChange={(e) => set("kind", e.target.value)} aria-label="Type">
           <option value="">Tax + reimbursement</option>
           <option value="tax">Tax invoices</option>
@@ -133,8 +156,8 @@ function FinalRegister() {
           <option value="draft">Draft</option>
           <option value="cancelled">Cancelled</option>
         </select>
-        <input list="org-names" placeholder="Client (type or pick)" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
-        <input placeholder="Number, job, MBL, BE, IRN" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
+        <input list="org-names" aria-label="Client" placeholder="Client (type or pick)…" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
+        <input aria-label="Search" placeholder="Number, job, MBL, BE, IRN…" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
         <span className="inv-filters-actions">
           <button
             disabled={!chosen.length || !!busy}
@@ -293,15 +316,15 @@ function ProformaRegister() {
             </option>
           ))}
         </select>
-        <input type="month" value={f.month ?? ""} onChange={(e) => set("month", e.target.value)} aria-label="Month" />
+        <MonthSelect value={f.month ?? ""} onChange={(v) => set("month", v)} />
         <select value={f.status ?? ""} onChange={(e) => set("status", e.target.value)} aria-label="Status">
           <option value="">Any status</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
           <option value="superseded">Superseded</option>
         </select>
-        <input list="org-names" placeholder="Bill to (type or pick)" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
-        <input placeholder="Job, MBL, BE, name" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
+        <input list="org-names" aria-label="Bill to" placeholder="Bill to (type or pick)…" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
+        <input aria-label="Search" placeholder="Job, MBL, BE, name…" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
         <span className="inv-filters-actions">
           <button
             disabled={!chosen.length || busy}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion } from "./api";
 import { useSaveShipment } from "./useSaveShipment";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
@@ -27,20 +27,39 @@ function fmtMoney(v: string | null): string | null {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const TABS: Tab[] = ["overview", "documents", "proforma"];
+
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
-  return <ShipmentDetail shipmentId={Number(id)} />;
+  // the open tab lives in the URL (?tab=proforma): links, Back and refresh land on it
+  const [params, setParams] = useSearchParams();
+  const fromUrl = params.get("tab") as Tab | null;
+  const tab: Tab = fromUrl && TABS.includes(fromUrl) ? fromUrl : "overview";
+  const setTab = (t: Tab) => setParams(t === "overview" ? {} : { tab: t });
+  return <ShipmentDetail shipmentId={Number(id)} tab={tab} onTab={setTab} />;
 }
 
 /**
  * The shipment: a page of its own, or (peek) a panel over the tracker — open a row,
  * glance, close, next row (client, 2026-09-29).
  */
-export function ShipmentDetail({ shipmentId, onClose }: { shipmentId: number; onClose?: () => void }) {
+export function ShipmentDetail({
+  shipmentId,
+  onClose,
+  tab: tabProp,
+  onTab,
+}: {
+  shipmentId: number;
+  onClose?: () => void;
+  tab?: Tab;
+  onTab?: (t: Tab) => void;
+}) {
   const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("overview");
+  const [localTab, setLocalTab] = useState<Tab>("overview"); // peek panel: no URL of its own
+  const tab = tabProp ?? localTab;
+  const setTab = onTab ?? setLocalTab;
   const isAdmin = useAuth().user?.role === "admin"; // invoicing is admin-only
 
   const reload = useCallback(() => getShipment(shipmentId).then(setShipment), [shipmentId]);
@@ -51,7 +70,13 @@ export function ShipmentDetail({ shipmentId, onClose }: { shipmentId: number; on
   }, [reload]);
 
   if (loading) return <div className="tracker-empty">Loading…</div>;
-  if (!shipment) return <div className="tracker-empty">Shipment not found.</div>;
+  if (!shipment)
+    return (
+      <div className="tracker-empty">
+        <p>This shipment doesn’t exist or was deleted.</p>
+        <Link to="/shipments">Back to the Shipment Tracker</Link>
+      </div>
+    );
 
   return (
     <div className={peek ? "detail-page detail-peek" : "detail-page"}>
@@ -118,15 +143,15 @@ export function ShipmentDetail({ shipmentId, onClose }: { shipmentId: number; on
         </div>
       )}
 
-      <div className="detail-tabs">
-        <button className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
+      <div className="detail-tabs" role="tablist" aria-label="Shipment sections">
+        <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
           Overview
         </button>
-        <button className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
+        <button role="tab" aria-selected={tab === "documents"} className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
           Documents
         </button>
         {isAdmin && (
-          <button className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
+          <button role="tab" aria-selected={tab === "proforma"} className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
             Proforma &amp; Billing
           </button>
         )}

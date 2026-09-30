@@ -28,3 +28,5 @@ backups/
 # service account keys and other secret files — never in git
 secrets/
 *service-account*.json
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

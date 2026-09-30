@@ -355,6 +355,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
           <Link
             to={`/shipments/${p.data.id}`}
             className="grid-open-link"
+            aria-label={`Open job ${p.data.job}`}
             title="Open in a side panel (Ctrl / ⌘-click: full page)"
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab / full page as usual
@@ -1316,7 +1317,7 @@ export default function ShipmentGridPage() {
             )}
           </p>
         </div>
-        {message && <div className={`grid-toast grid-toast-${message.kind}`}>{message.text}</div>}
+        {message && <div role="status" className={`grid-toast grid-toast-${message.kind}`}>{message.text}</div>}
       </header>
 
       <div className="tracker-tabs" role="tablist" aria-label="Tracker section">

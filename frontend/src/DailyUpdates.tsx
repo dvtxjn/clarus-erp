@@ -140,7 +140,7 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
           </button>
         </form>
       )}
-      {error && <div className="invoice-error">{error}</div>}
+      {error && <div role="alert" className="invoice-error">{error}</div>}
       {result && (
         <div className="fill-result">
           <div>
@@ -348,7 +348,7 @@ export function OrganizationForm({
         />
         <span>Shipping line invoices NOT in cost inclusion (on shipments involving this party)</span>
       </label>
-      {error && <div className="invoice-error wide">{error}</div>}
+      {error && <div role="alert" className="invoice-error wide">{error}</div>}
       <div className="org-form-actions wide">
         <button type="submit" disabled={saving}>
           {org ? "Save changes" : "Add organization"}

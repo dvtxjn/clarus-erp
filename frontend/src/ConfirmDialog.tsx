@@ -24,12 +24,16 @@ const ConfirmContext = createContext<ConfirmFn | null>(null);
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<(ConfirmOptions & { resolve: (ok: boolean) => void }) | null>(null);
   const confirmBtn = useRef<HTMLButtonElement>(null);
+  const cancelBtn = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const [text, setText] = useState("");
 
   const confirm = useCallback<ConfirmFn>(
     (opts) =>
       new Promise<boolean>((resolve) => {
         setText("");
+        opener.current = document.activeElement as HTMLElement | null;
         setPending({ ...opts, resolve });
       }),
     [],
@@ -39,13 +43,29 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     if (ok) pending?.onInput?.(text.trim());
     pending?.resolve(ok);
     setPending(null);
+    // focus goes back to whatever opened the dialog
+    opener.current?.focus?.();
   }
 
   useEffect(() => {
     if (!pending) return;
-    confirmBtn.current?.focus();
+    // destructive: start on Cancel so a stray Enter can't delete
+    (pending.danger ? cancelBtn : confirmBtn).current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close(false);
+      if (e.key === "Tab" && dialog.current) {
+        // keep Tab inside the dialog
+        const els = dialog.current.querySelectorAll<HTMLElement>("input, button");
+        const first = els[0];
+        const last = els[els.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -58,6 +78,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
       {pending && (
         <div className="confirm-backdrop" onMouseDown={() => close(false)}>
           <div
+            ref={dialog}
             className="confirm-dialog"
             role="alertdialog"
             aria-modal="true"
@@ -74,7 +95,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               </label>
             )}
             <div className="confirm-actions">
-              <button type="button" className="btn-secondary" onClick={() => close(false)}>
+              <button ref={cancelBtn} type="button" className="btn-secondary" onClick={() => close(false)}>
                 {pending.cancelLabel ?? "Cancel"}
               </button>
               <button

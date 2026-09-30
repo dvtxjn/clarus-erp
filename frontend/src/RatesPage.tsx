@@ -111,7 +111,7 @@ export default function RatesPage() {
           {canEdit && <button onClick={() => setAdding((a) => !a)}>{adding ? "Close" : "+ Add charge"}</button>}
         </div>
       </div>
-      {message && <div className={message.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{message.text}</div>}
+      {message && <div role="status" className={message.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{message.text}</div>}
       {adding && (
         <NewCharge
           onCreated={(c) => {
@@ -340,7 +340,7 @@ function HssRules({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
           )}
         </div>
       </div>
-      {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      {msg && <div role="status" className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
       {pairs.length === 0 && <p className="tracker-subtitle">No HSS rules yet.</p>}
       {pairs.map((p, i) => {
         const st = total(p.lines.seller), bt = total(p.lines.buyer);
@@ -636,7 +636,7 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
           </div>
         )}
       </div>
-      {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      {msg && <div role="status" className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
       <div className="licence-list">
       {items.map((l, i) => (
         <div className={`licence-item${l.is_active ? "" : " licence-closed"}${open.has(l.id) ? " is-open" : ""}`} key={l.id}>

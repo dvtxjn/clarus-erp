@@ -75,7 +75,7 @@ export default function TrackerImportPanel({ onApplied, onClose }: { onApplied: 
           </button>
         </div>
       </div>
-      {error && <div className="invoice-error">{error}</div>}
+      {error && <div role="alert" className="invoice-error">{error}</div>}
       {p && (
         <div className="import-summary">
           <div className="import-counts">
@@ -140,7 +140,7 @@ export default function TrackerImportPanel({ onApplied, onClose }: { onApplied: 
               <span className="field-note">Every change is logged.</span>
             </div>
           )}
-          {done && <div className="grid-toast grid-toast-ok">Import applied — the tracker is up to date with the sheet.</div>}
+          {done && <div role="status" className="grid-toast grid-toast-ok">Import applied — the tracker is up to date with the sheet.</div>}
         </div>
       )}
     </div>

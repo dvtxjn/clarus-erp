@@ -301,6 +301,12 @@ export default function DocumentManagerPanel({
                       </span>
                     </div>
                     <table className="tracker-grid doc-table">
+                      <colgroup>
+                        <col className="doc-col-name" />
+                        <col className="doc-col-status" />
+                        <col className="doc-col-file" />
+                        <col className="doc-col-when" />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th>Document</th>
@@ -314,13 +320,13 @@ export default function DocumentManagerPanel({
                 const missing = !row.uploaded;
                 const coveredByCombined = row.document && row.document.document_type !== row.document_type;
                 return (
-                  <tr key={row.document_type} className={row.required && !row.optional && missing ? "row-stuck" : ""}>
+                  <tr key={row.document_type} className={row.required && !row.optional && missing ? "doc-row-missing" : ""}>
                     <td>
                       <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span>{" "}
                       <span title={DOCUMENT_TYPE_LABELS[row.document_type]}>{SHORT_LABELS[row.document_type] ?? DOCUMENT_TYPE_LABELS[row.document_type]}</span>
                     </td>
                     <td>
-                      <span className={`status-pill ${row.uploaded ? "status-cleared" : ""}`}>
+                      <span className={`status-pill ${row.uploaded ? "status-cleared" : row.required && !row.optional ? "status-missing" : ""}`}>
                         {row.uploaded ? "Uploaded" : !row.required ? "Not needed" : row.optional ? "Optional" : "Missing"}
                       </span>
                       {coveredByCombined && (
