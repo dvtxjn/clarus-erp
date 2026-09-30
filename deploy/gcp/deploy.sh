@@ -78,4 +78,6 @@ for j in "erp-icegate-status|*/30 8-21 * * *|icegate-status" "erp-icegate-challa
       --uri "$URL/internal/jobs/$JOB" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 900s --quiet
   fi
 done
+# uptime alert (created once; e-mail when the site stops answering) — never stops a release
+bash deploy/gcp/uptime.sh || echo "(uptime alert not set up — run: bash deploy/gcp/uptime.sh)"
 echo "Released: $URL"
