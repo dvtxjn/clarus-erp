@@ -33,6 +33,9 @@ function fmtMoney(v: string | null): string | null {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Documents per shipment, last loaded — shared by the Overview's CFS / shipping line blocks. */
+const docsCache = new Map<number, ShipmentDocument[]>();
+
 const TABS: Tab[] = ["overview", "customs", "documents", "proforma"];
 
 export default function ShipmentDetailPage() {
@@ -54,11 +57,15 @@ export function ShipmentDetail({
   onClose,
   tab: tabProp,
   onTab,
+  full = false,
+  onFull,
 }: {
   shipmentId: number;
   onClose?: () => void;
   tab?: Tab;
   onTab?: (t: Tab) => void;
+  full?: boolean;
+  onFull?: (full: boolean) => void;
 }) {
   const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
@@ -72,8 +79,10 @@ export function ShipmentDetail({
 
   useEffect(() => {
     setLoading(true);
-    reload().finally(() => setLoading(false));
-  }, [reload]);
+    // documents come with the first load, so the Overview draws complete (no late push-down)
+    const docs = listDocuments(shipmentId).then((all) => void docsCache.set(shipmentId, all)).catch(() => {});
+    Promise.all([reload(), docs]).finally(() => setLoading(false));
+  }, [reload, shipmentId]);
 
   if (loading) return <div className="tracker-empty">Loading…</div>;
   if (!shipment)
@@ -85,15 +94,26 @@ export function ShipmentDetail({
     );
 
   return (
-    <div className={peek ? "detail-page detail-peek" : "detail-page"}>
+    <div className={peek && !full ? "detail-page detail-peek" : "detail-page"}>
       {peek ? (
         <div className="peek-bar">
-          <Link to={`/shipments/${shipment.id}`} className="back-link">
-            Open full page ↗
-          </Link>
-          <button type="button" className="peek-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
-            ✕
-          </button>
+          {onFull ? (
+            <button type="button" className="peek-size" onClick={() => onFull(!full)} aria-pressed={full}>
+              {full ? "⇥ Half view" : "⇤ Full width"}
+            </button>
+          ) : (
+            <Link to={`/shipments/${shipment.id}`} className="back-link">
+              Open full page ↗
+            </Link>
+          )}
+          <span className="peek-bar-right">
+            <Link to={`/shipments/${shipment.id}`} className="peek-newtab" target="_blank" rel="noreferrer" title="Open in a new tab">
+              New tab ↗
+            </Link>
+            <button type="button" className="peek-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+              ✕
+            </button>
+          </span>
         </div>
       ) : (
         <Link to="/shipments" className="back-link">
@@ -633,8 +653,12 @@ function InvoiceGroup({
   onChange: (s: Shipment) => void;
 }) {
   const cfg = INVOICE_GROUPS[group];
-  const [docs, setDocs] = useState<ShipmentDocument[]>([]);
-  const [receipts, setReceipts] = useState<ShipmentDocument[]>([]);
+  // start from the documents already loaded for this shipment: the block draws complete instead of
+  // appearing empty and then pushing the page down (the "twitch", client 2026-09-30)
+  const cached = docsCache.get(s.id);
+  const [docs, setDocs] = useState<ShipmentDocument[]>(() => (cached ?? []).filter((d) => (cfg.types as readonly string[]).includes(d.document_type)));
+  const [receipts, setReceipts] = useState<ShipmentDocument[]>(() => (cached ?? []).filter((d) => d.document_type === cfg.receiptType));
+  const [loaded, setLoaded] = useState(!!cached);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [before, setBefore] = useState("");
   const [gst, setGst] = useState("");
@@ -643,8 +667,10 @@ function InvoiceGroup({
   const load = useCallback(
     () =>
       listDocuments(s.id).then((all) => {
+        docsCache.set(s.id, all);
         setDocs(all.filter((d) => (cfg.types as readonly string[]).includes(d.document_type)));
         setReceipts(all.filter((d) => d.document_type === cfg.receiptType));
+        setLoaded(true);
       }),
     [s.id, cfg],
   );
@@ -687,7 +713,7 @@ function InvoiceGroup({
             ` · ${tax.length ? `${tax.length} tax invoice${tax.length > 1 ? "s" : ""}` : `${docs.length} proforma${docs.length > 1 ? "s" : ""}`} counted`}
         </span>
       </div>
-      {docs.length === 0 && <p className="field-note">{cfg.empty}</p>}
+      {docs.length === 0 && <p className="field-note">{loaded ? cfg.empty : "Loading invoices…"}</p>}
       {/* several invoices scroll inside the box instead of stretching it */}
       <div className="invoice-list">
       {docs.map((d) => (

@@ -1835,3 +1835,19 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .be-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 16px; margin: 0; }
 .be-status-grid dt { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--color-text-muted); }
 .be-status-grid dd { margin: 0; font-size: var(--text-sm); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+/* open-overview button: the whole cell is the target (client, 2026-09-30) */
+.grid-open-link { display: flex; align-items: center; justify-content: center; width: calc(100% + 8px); height: 100%; min-height: 28px;
+  margin: 0 -4px; border-radius: var(--radius-sm); font-size: 16px; font-weight: 600; }
+.grid-open-link:hover, .grid-open-link:focus-visible { background: var(--color-accent-soft); color: var(--color-accent-text); }
+/* peek panel: half view <-> full width over the tracker (the tracker stays loaded behind it) */
+.peek-panel.is-full { width: calc(100vw - 216px); animation: none; }
+.sidebar-collapsed .peek-panel.is-full { width: calc(100vw - 52px); }
+.peek-panel { transition: width .16s ease-out; }
+.peek-size { height: 30px; padding: 0 12px; font-size: var(--text-sm); }
+.peek-bar-right { display: flex; align-items: center; gap: 6px; }
+.peek-newtab { font-size: var(--text-xs); color: var(--color-text-muted); text-decoration: none; padding: 4px 6px; border-radius: var(--radius-sm); }
+.peek-newtab:hover { color: var(--color-text); background: var(--color-hover); }
+.peek-panel.is-full > .detail-page { padding: 12px 24px 24px; }
+@media (prefers-reduced-motion: reduce) { .peek-panel { transition: none; } }
+@media (max-width: 900px) { .peek-panel.is-full { width: 100vw; } }

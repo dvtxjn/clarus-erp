@@ -348,7 +348,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     {
       headerName: "",
       colId: "open",
-      width: 34,
+      width: 44, // a whole-cell button: easy to hit (client, 2026-09-30)
       pinned: "left",
       editable: false,
       sortable: false,
@@ -361,7 +361,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
             to={`/shipments/${p.data.id}`}
             className="grid-open-link"
             aria-label={`Open job ${p.data.job}`}
-            title="Open in a side panel (Ctrl / ⌘-click: full page)"
+            title="Open overview (Ctrl / ⌘-click: new tab)"
             onClick={(e) => {
               if (e.metaKey || e.ctrlKey || e.shiftKey) return; // new tab / full page as usual
               e.preventDefault();
@@ -603,13 +603,32 @@ export default function ShipmentGridPage() {
   const statusFilter = (searchParams.get("status") as ShipmentStatus | null) ?? undefined;
   // side panel ("peek"): the shipment opens over the tracker; kept in the URL (?peek=58)
   const peekId = Number(searchParams.get("peek")) || null;
+  // "full" = the same panel widened over the tracker: the tracker stays loaded behind it, so going back to
+  // the half view (or closing) is instant — no reload of the whole page (client, 2026-09-30)
+  const peekFull = searchParams.get("full") === "1";
+  const setPeekFull = useCallback(
+    (full: boolean) =>
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (full) next.set("full", "1");
+          else next.delete("full");
+          return next;
+        },
+        { replace: true },
+      ),
+    [setSearchParams],
+  );
   const setPeek = useCallback(
     (id: number | null) =>
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
           if (id) next.set("peek", String(id));
-          else next.delete("peek");
+          else {
+            next.delete("peek");
+            next.delete("full");
+          }
           return next;
         },
         { replace: true },
@@ -661,8 +680,23 @@ export default function ShipmentGridPage() {
       include_archived: true, // billed (archived) shipments still belong in Cleared
       status: statusFilter,
     });
-    setShipments(data);
-    setTrackerCols(await listTrackerColumns());
+    // unchanged rows keep their old object (same version, same Day): the grid then redraws only real changes
+    setShipments((prev) => {
+      if (!prev) return data;
+      const old = new Map(prev.map((x) => [x.id, x]));
+      let same = prev.length === data.length;
+      const next = data.map((x, i) => {
+        const o = old.get(x.id);
+        const keep = o && o.version === x.version && o.days === x.days && JSON.stringify(o) === JSON.stringify(x) ? o : x;
+        if (keep !== prev[i]) same = false;
+        return keep;
+      });
+      return same ? prev : next;
+    });
+    const cols = await listTrackerColumns();
+    // same columns -> keep the same array: a new one rebuilds every column definition, and the grid snaps
+    // widths back to their defaults for a moment (part of the "twitch", client 2026-09-30)
+    setTrackerCols((prev) => (JSON.stringify(prev) === JSON.stringify(cols) ? prev : cols));
   }, [statusFilter]);
 
   useEffect(() => {
@@ -970,16 +1004,33 @@ export default function ShipmentGridPage() {
     }
   }, [manualKey]);
   // re-fit when the data or the view changes (like Excel keeping columns readable as rows arrive)
+  // ONE fit, once every client section has finished drawing its rows: fitting earlier measured half-drawn
+  // sections, narrowed columns, and a second pass widened them again — the "twitch" (client, 2026-09-30).
   const fitTimer = useRef<number | undefined>(undefined);
-  const scheduleFit = (ms = 300) => {
+  const fitRun = useRef(0);
+  const scheduleFit = (ms = 120) => {
     window.clearTimeout(fitTimer.current);
-    fitTimer.current = window.setTimeout(() => autoFitAll(), ms);
+    const run = ++fitRun.current;
+    fitTimer.current = window.setTimeout(() => {
+      const started = performance.now();
+      let lastSig = "";
+      let stable = 0;
+      const check = () => {
+        if (run !== fitRun.current) return; // a newer change took over
+        const apis = sectionApis();
+        const sig = apis.map((a) => `${a.getDisplayedRowCount()}/${a.getRenderedNodes().length}`).join(",");
+        const drawn = apis.length > 0 && apis.every((a) => a.getRenderedNodes().length >= a.getDisplayedRowCount());
+        stable = sig === lastSig ? stable + 1 : 0;
+        lastSig = sig;
+        if ((drawn && stable >= 3) || performance.now() - started > 3000) autoFitAll();
+        else requestAnimationFrame(check);
+      };
+      requestAnimationFrame(check);
+    }, ms);
   };
   useEffect(() => {
     if (!shipments) return;
-    scheduleFit(350);
-    const again = window.setTimeout(() => autoFitAll(), 1300); // after slow renders settle
-    return () => window.clearTimeout(again);
+    scheduleFit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shipments, tab, view, colView]);
   const saveManual = () => {
@@ -1004,8 +1055,15 @@ export default function ShipmentGridPage() {
       api.autoSizeColumns(ids, true);
       for (const c of api.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, Math.max(need.get(c.colId) ?? 0, c.width ?? 0));
     }
-    const state = ids.map((colId) => ({ colId, width: Math.min(MAX_AUTO_WIDTH, Math.max(40, need.get(colId) ?? 60)) }));
-    header.applyColumnState({ state });
+    const current = new Map(header.getColumnState().map((c) => [c.colId, c.width ?? 0]));
+    // the header grid was just autosized to titles only: compare against what the sections show
+    const shown = new Map((apis[0]?.getColumnState() ?? []).map((c) => [c.colId, c.width ?? 0]));
+    const state = ids
+      .map((colId) => ({ colId, width: Math.min(MAX_AUTO_WIDTH, Math.max(40, need.get(colId) ?? 60)) }))
+      // ignore 1–3 px differences (font rounding): no visible nudge for nothing
+      .filter((c) => Math.abs(c.width - (shown.get(c.colId) ?? current.get(c.colId) ?? 0)) > 3 || !shown.size);
+    const keep = ids.filter((id) => !state.some((c) => c.colId === id)).map((colId) => ({ colId, width: shown.get(colId) ?? current.get(colId) }));
+    header.applyColumnState({ state: [...state, ...keep] });
     apis.forEach((api) => api.applyColumnState({ state }));
     fitting.current = false;
     saveColumnState();
@@ -1066,7 +1124,7 @@ export default function ShipmentGridPage() {
     sectionApis().forEach((api) => api.resetColumnState());
     setQuickFilter("");
     syncHidden();
-    window.setTimeout(autoFitAll, 50);
+    scheduleFit(50);
   }
 
   // --- undo / redo (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y) ---
@@ -1658,8 +1716,8 @@ export default function ShipmentGridPage() {
         </SettledStack>
       )}
       {peekId && (
-        <aside className="peek-panel" aria-label="Shipment">
-          <ShipmentDetail key={peekId} shipmentId={peekId} onClose={() => setPeek(null)} />
+        <aside className={`peek-panel${peekFull ? " is-full" : ""}`} aria-label="Shipment">
+          <ShipmentDetail key={peekId} shipmentId={peekId} onClose={() => setPeek(null)} full={peekFull} onFull={setPeekFull} />
         </aside>
       )}
     </div>
