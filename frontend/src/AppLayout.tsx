@@ -1,6 +1,6 @@
 import ClarusLogo from "./ClarusLogo";
 import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
 import { ACCENTS, THEMES, savedAccent, savedTheme, setAccent, setTheme, type AccentId, type ThemeId } from "./accent";
@@ -32,8 +32,20 @@ function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICO
   );
 }
 
+// browser tab title per page, e.g. "Shipments · Clarus ERP"
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: "Dashboard", shipments: "Shipments", invoices: "Invoicing", rates: "Rates",
+  users: "Users", deleted: "Recently deleted", settings: "Settings",
+};
+
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const [section, id] = pathname.split("/").filter(Boolean);
+    const name = section === "shipments" && id ? "Shipment" : PAGE_TITLES[section ?? ""];
+    document.title = name ? `${name} · Clarus ERP` : "Clarus ERP";
+  }, [pathname]);
   const [accent, pickAccent] = useState<AccentId>(savedAccent);
   const [theme, pickTheme] = useState<ThemeId>(savedTheme);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
@@ -65,10 +77,25 @@ export default function AppLayout() {
     return () => window.clearInterval(id);
   }, [user?.role]);
 
+  // browser chrome (mobile address bar) follows the theme background
+  useEffect(() => {
+    const bg = getComputedStyle(document.documentElement).getPropertyValue("--color-bg").trim();
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "theme-color";
+      document.head.appendChild(meta);
+    }
+    if (bg) meta.content = bg;
+  }, [theme]);
+
   const initials = (user?.full_name || user?.email || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
 
   return (
     <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}`}>
+      <a className="skip-link" href="#main">
+        Skip to content
+      </a>
       <aside className="app-sidebar">
         <div className="app-brand">
           <span className="app-brand-logo">
@@ -84,7 +111,7 @@ export default function AppLayout() {
             {icon(<><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M6 2.5v11" /></>)}
           </button>
         </div>
-        <nav className="app-nav">
+        <nav className="app-nav" aria-label="Main">
           <Item to="/dashboard" label="Dashboard" i="dashboard" />
           <Item to="/shipments" label="Shipments" i="shipments" />
           {/* Invoicing is admin-only (client, 2026-09-29) */}
@@ -126,6 +153,7 @@ export default function AppLayout() {
                 key={a.id}
                 type="button"
                 className={a.id === accent ? "on" : ""}
+                aria-pressed={a.id === accent}
                 style={{ background: a.color }}
                 aria-label={a.label}
                 title={a.label}
@@ -137,7 +165,7 @@ export default function AppLayout() {
             ))}
           </div>
           <div className="app-user">
-            <span className="app-avatar">{initials}</span>
+            <span className="app-avatar" aria-hidden="true">{initials}</span>
             <span className="app-user-text">
               <span className="app-user-name">{user?.full_name}</span>
               <span className="app-user-role">{user?.role.replace("_", " ")}</span>
@@ -148,7 +176,7 @@ export default function AppLayout() {
           </button>
         </div>
       </aside>
-      <main className="app-main">
+      <main className="app-main" id="main" tabIndex={-1}>
         {sandbox.sandbox && (
           <div className="sandbox-banner" role="note">
             <strong>Sandbox</strong> — sample data to try the ERP. Nothing here is real; changes stay in the sandbox.

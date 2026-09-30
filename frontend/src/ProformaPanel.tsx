@@ -536,7 +536,7 @@ function ProformaVersion({
             )}
           </div>
 
-          {error && <div className="invoice-error">{error}</div>}
+          {error && <div role="alert" className="invoice-error">{error}</div>}
           {draft && (proforma.suppressed?.length ?? 0) > 0 && (
             <div className="removed-lines">
               <span>Removed from this proforma (not updated automatically):</span>

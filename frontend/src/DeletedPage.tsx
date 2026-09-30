@@ -52,7 +52,7 @@ export default function DeletedPage() {
           it back exactly as it was. Issued invoices can't be deleted (cancel them instead).
         </p>
       </div>
-      {msg && <div className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
+      {msg && <div role="status" className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
       {items === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : items.length === 0 ? (

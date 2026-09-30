@@ -88,7 +88,7 @@ export default function UsersPage() {
         </div>
         <button onClick={() => setAdding((a) => !a)}>{adding ? "Cancel" : "+ Add user"}</button>
       </div>
-      {msg && <div className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
+      {msg && <div role="status" className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
       {requests.length > 0 && (
         <div className="backup-banner">
           <strong>Password reset requested:</strong> {requests.map((u) => u.email).join(", ")}

@@ -111,7 +111,7 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
           </button>
         )}
       </div>
-      {error && <div className="invoice-error">{error}</div>}
+      {error && <div role="alert" className="invoice-error">{error}</div>}
       {items.length === 0 && <p className="tracker-subtitle">No final invoices yet.</p>}
 
       {/* the pair from this proforma: one number, issued together, one PDF or two (client, 2026-09-30) */}
@@ -149,7 +149,7 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
   function card(inv: FinalInvoice) {
     return (
         <div key={inv.id} className={`final-card final-${inv.status}`}>
-          <div className="final-card-head" onClick={() => setOpenId(openId === inv.id ? null : inv.id)}>
+          <button type="button" className="final-card-head" aria-expanded={openId === inv.id} onClick={() => setOpenId(openId === inv.id ? null : inv.id)}>
             <span className="final-kind">{inv.kind === "tax" ? "Tax Invoice" : "Reimbursement Invoice"}</span>
             <span className="final-number">{inv.number ?? "Draft"}</span>
             <span className={`final-status s-${inv.status}`}>{inv.status}</span>
@@ -159,8 +159,8 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
             ) : (
               <strong className="final-amount">₹{inr(inv.totals.net_payable)}</strong>
             )}
-            <span className="final-toggle">{openId === inv.id ? "▾" : "▸"}</span>
-          </div>
+            <span className="final-toggle" aria-hidden="true">{openId === inv.id ? "▾" : "▸"}</span>
+          </button>
           {openId === inv.id && (
             <FinalInvoiceEditor
               inv={inv}
@@ -352,7 +352,7 @@ function FinalInvoiceEditor({
                 <td className="num">{inr(inv.lines[i]?.total)}</td>
                 {editable && (
                   <td>
-                    <button type="button" className="link-button link-danger" onClick={() => setF({ ...f, lines: f.lines.filter((_, j) => j !== i) })}>✕</button>
+                    <button type="button" className="link-button link-danger" aria-label="Remove line" onClick={() => setF({ ...f, lines: f.lines.filter((_, j) => j !== i) })}>✕</button>
                   </td>
                 )}
               </tr>
@@ -400,7 +400,7 @@ function FinalInvoiceEditor({
         </div>
       </div>
 
-      {msg && <div className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      {msg && <div role="status" className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
       <div className="final-actions">
         {(draft || inv.status === "issued") && (
           <button disabled={!dirty || saving} onClick={() => save()}>
