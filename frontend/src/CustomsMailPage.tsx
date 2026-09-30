@@ -218,7 +218,7 @@ export default function CustomsMailPage() {
                       ) : m.kind === "otp" ? (
                         m.detail?.otp_expired ? "Expired" : "Admin only"
                       ) : (
-                        m.summary
+                        <Says text={m.summary} />
                       )}
                       {m.resolved_at && m.attention && <span className="customs-done">Done{m.resolved_note ? ` · ${m.resolved_note}` : ""}</span>}
                     </td>
@@ -242,5 +242,19 @@ export default function CustomsMailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** The mail's text in a fixed-width cell: short ones as they are, long ones cut to one line that opens on click. */
+function Says({ text }: { text: string | null | undefined }) {
+  const t = (text ?? "").trim();
+  if (!t) return <>—</>;
+  const firstLine = t.split("\n")[0];
+  if (t.length <= 90 && firstLine === t) return <div className="customs-says-box">{t}</div>;
+  return (
+    <details className="customs-says-box">
+      <summary title="Show the whole text">{firstLine.length > 90 ? `${firstLine.slice(0, 90)}…` : firstLine}</summary>
+      <div className="customs-says-full">{t}</div>
+    </details>
   );
 }
