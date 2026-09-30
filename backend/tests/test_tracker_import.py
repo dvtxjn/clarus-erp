@@ -50,3 +50,24 @@ def test_tracker_csv_reimport(client, admin_headers):
     _post(client, h, "apply", data2)
     assert client.get(f"/shipments/{b}", headers=h).json()["is_billed"] is True
     assert client.get(f"/shipments/{gone}", headers=h).json()["missing_from_sheet_at"] is None
+
+
+def test_hmm_mbl_with_or_without_hdmu_is_one_shipment(client, admin_headers):
+    """The sheet may write an HMM MBL with the carrier prefix one day and without it before (client, 2026-09-30)."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "BHMA99154200", "port": "INMUN1"}, headers=h).json()["id"]
+    data = _csv("990,HDMUBHMA99154200,,,c,Divine,INMUN1,,,,1,,,,,,,,,,,")
+    p = _post(client, h, "preview", data).json()
+    assert not p["new"] and any(u["shipment_id"] == sid and u["matched_by"] == "MBL" for u in p["updated"])
+    _post(client, h, "apply", data)
+    s = client.get(f"/shipments/{sid}", headers=h).json()
+    assert s["job"] == "990" and s["mbl"] == "HDMUBHMA99154200"
+
+
+def test_hbl_typed_first_is_swapped(client, admin_headers):
+    """'CJHRUSF0418/275957617': CJHR… is a Chartering RORO HBL (client's rule), so the Maersk number is the MBL."""
+    h = admin_headers
+    data = _csv("991,CJHRUSF9918/279957617,,,c,Divine,INMUN1,,,,1,,,,,,,,,,,")
+    _post(client, h, "apply", data)
+    s = next(x for x in client.get("/shipments", headers=h).json() if x["job"] == "991")
+    assert (s["mbl"], s["hbl"]) == ("279957617", "CJHRUSF9918")

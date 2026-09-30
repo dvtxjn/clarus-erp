@@ -64,6 +64,28 @@ def _key(v: Optional[str]) -> str:
     return re.sub(r"\s+", "", v or "").upper()
 
 
+def mbl_keys(v: Optional[str]) -> set[str]:
+    """Every spelling of one MBL the sheet may use: HMM MBLs are typed with or without the carrier's
+    'HDMU' prefix (BHMA05154200 = HDMUBHMA05154200 — client, 2026-09-30), so both match the same shipment."""
+    k = _key(v)
+    if not k:
+        return set()
+    out = {k}
+    if k.startswith("HDMUBHMA"):
+        out.add(k[4:])
+    elif k.startswith("BHMA"):
+        out.add("HDMU" + k)
+    return out
+
+
+def _is_hbl_format(v: Optional[str]) -> bool:
+    """A number whose format is a house BL, never an MBL (client's rules in app/liners.py, e.g. CJHR…)."""
+    from app import liners
+
+    hit = liners.identify(v)
+    return bool(hit and hit.get("note") and "HBL" in hit["note"])
+
+
 def split_mbl(cell: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     """'274483845/QDDR2607499' -> ('274483845', 'QDDR2607499')."""
     parts = [p.strip() for p in (_clean(cell) or "").split("/") if p.strip()]
@@ -98,6 +120,8 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
         r = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
         mbl, hbl = split_mbl(r.get("mbl"))
         mbl, fta = split_fta(mbl)
+        if mbl and hbl and _is_hbl_format(mbl) and not _is_hbl_format(hbl):
+            mbl, hbl = hbl, mbl  # typed "HBL/MBL" (e.g. CJHRUSF0418/275957617): the HBL went first
         if "hbl" in r and _clean(r["hbl"]):
             hbl = _clean(r["hbl"])
         if not mbl and not hbl:
@@ -151,7 +175,7 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
     by_mbl, by_hbl, by_be, by_job = {}, {}, {}, {}
     for s in ships:
         m, h = split_mbl(s.mbl)
-        for k in {_key(m), _key(s.mbl)} - {""}:
+        for k in mbl_keys(m) | mbl_keys(s.mbl):
             by_mbl.setdefault(k, s)
         for k in {_key(s.hbl), _key(h)} - {""}:
             by_hbl.setdefault(k, s)
@@ -163,10 +187,11 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
     new, updated, unchanged, seen, deleted = [], [], 0, set(), []
     for r in rows:
         s, how = None, None
-        for how_, table, k in (("MBL", by_mbl, _key(r["mbl"])), ("HBL", by_hbl, _key(r.get("hbl"))),
-                               ("HBL", by_mbl, _key(r.get("hbl")))):
-            if k and k in table and table[k].id not in seen:
-                s, how = table[k], how_
+        for how_, table, keys in (("MBL", by_mbl, mbl_keys(r["mbl"])), ("HBL", by_hbl, {_key(r.get("hbl"))} - {""}),
+                                  ("HBL", by_mbl, mbl_keys(r.get("hbl")))):
+            hit = next((table[k] for k in sorted(keys) if k in table and table[k].id not in seen), None)
+            if hit is not None:
+                s, how = hit, how_
                 break
         if s is None:
             for how_, table, k in (("BE No", by_be, _key(r.get("be_no"))), ("Job", by_job, _key(r.get("job")))):
