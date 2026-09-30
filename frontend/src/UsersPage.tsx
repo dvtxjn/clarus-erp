@@ -97,8 +97,8 @@ export default function UsersPage() {
       {adding && (
         <form className="org-form" onSubmit={add}>
           <label>
-            <span>Email *</span>
-            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <span>Username or email *</span>
+            <input required autoCapitalize="none" spellCheck={false} placeholder="e.g. samidha…" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </label>
           <label>
             <span>Name *</span>
@@ -127,7 +127,7 @@ export default function UsersPage() {
         <div className="tracker-grid-wrap">
         <table className="rates-table">
           <thead>
-            <tr><th>Name</th><th>Email</th><th>Role</th><th>Last login</th><th>Status</th><th /></tr>
+            <tr><th>Name</th><th>Login</th><th>Role</th><th>Last login</th><th>Status</th><th /></tr>
           </thead>
           <tbody>
             {users.map((u) => (

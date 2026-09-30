@@ -23,7 +23,7 @@ def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db
     user = db.query(User).filter(func.lower(User.email) == form_data.username.strip().lower()).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         ratelimit.failed(form_data.username)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
     ratelimit.succeeded(form_data.username)
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()

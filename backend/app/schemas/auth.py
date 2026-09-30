@@ -1,8 +1,14 @@
 from datetime import datetime
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StringConstraints
 from app.core.enums import UserRole
+
+
+# The login is a username (e.g. "samidha") or an e-mail: the admin sets every password and
+# "forgot password" only flags the account for the admin, so nothing is ever mailed to it.
+Login = Annotated[str, BeforeValidator(lambda v: v.strip().lower() if isinstance(v, str) else v),
+                  StringConstraints(min_length=3, max_length=64, pattern=r"^[a-z0-9][a-z0-9._@+-]*$")]
 
 
 class Token(BaseModel):
@@ -13,7 +19,7 @@ class Token(BaseModel):
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    email: EmailStr
+    email: str  # the login: username or e-mail
     full_name: str
     role: UserRole
     can_access_billing: bool
@@ -23,7 +29,7 @@ class UserOut(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: Login
     password: str = Field(min_length=12)
     full_name: str = Field(min_length=1)
     role: UserRole = UserRole.IMPORT_MANAGER

@@ -51,7 +51,7 @@ export default function LoginPage() {
       const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
       setError(typeof detail === "string" && err && axios.isAxiosError(err) && err.response?.status !== 401
         ? detail // locked out / too many attempts / switched off
-        : "Incorrect email or password.");
+        : "Incorrect username or password.");
     } finally {
       setSubmitting(false);
     }
@@ -71,10 +71,14 @@ export default function LoginPage() {
           </div>
         )}
 
-        <label htmlFor="email">Email</label>
+        <label htmlFor="email">Username or email</label>
         <input
           id="email"
-          type="email"
+          name="username"
+          type="text"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
