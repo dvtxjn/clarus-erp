@@ -1,3 +1,4 @@
+import { tabKeys } from "./tabKeys";
 import { fmtDay } from "./dates";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -61,7 +62,7 @@ export default function InvoicesPage() {
         <h1>Invoicing</h1>
         <span className="tracker-subtitle">Every shipment's proformas and final invoices in one place</span>
       </div>
-      <div className="detail-tabs" role="tablist" aria-label="Invoicing sections">
+      <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Invoicing sections">
         <button role="tab" aria-selected={section === "proformas"} className={section === "proformas" ? "tab active" : "tab"} onClick={() => setParams({ section: "proformas" })}>
           Proformas
         </button>

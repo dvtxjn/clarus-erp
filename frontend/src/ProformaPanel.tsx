@@ -1,3 +1,4 @@
+import { tabKeys } from "./tabKeys";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -754,7 +755,7 @@ function ProformaVersion({
         </div>
       </aside>
       <section className="pf-right">
-        <div className="pf-pane-tabs" role="tablist">
+        <div className="pf-pane-tabs" role="tablist" onKeyDown={tabKeys}>
           <button type="button" role="tab" aria-selected={pane === "proforma"} className={pane === "proforma" ? "on" : ""} onClick={() => setPane("proforma")}>
             Proforma
           </button>

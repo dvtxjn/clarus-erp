@@ -58,6 +58,7 @@ export default function DeletedPage() {
       ) : items.length === 0 ? (
         <div className="tracker-empty">Nothing has been deleted.</div>
       ) : (
+        <div className="tracker-grid-wrap">
         <table className="rates-table">
           <thead>
             <tr>
@@ -98,6 +99,7 @@ export default function DeletedPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

@@ -1,3 +1,4 @@
+import { tabKeys } from "./tabKeys";
 import CustomsTimeline from "./CustomsTimeline";
 import { nextStep } from "./clearanceFlow";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -184,7 +185,7 @@ export function ShipmentDetail({
         </div>
       )}
 
-      <div className="detail-tabs" role="tablist" aria-label="Shipment sections">
+      <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections">
         <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
           Overview
         </button>

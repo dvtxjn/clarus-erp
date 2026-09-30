@@ -1801,7 +1801,7 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .check-chip.is-on:hover:not(:disabled) { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-fg); }
 
 /* Customs mail (ICEGATE mails) — page + shipment timeline */
-.customs-drop { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); cursor: pointer; color: var(--color-text-muted); font-size: var(--text-sm); }
+.customs-drop { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; gap: 10px; padding: 14px 16px; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); cursor: pointer; color: var(--color-text-muted); font-size: var(--text-sm); }
 .customs-drop:hover, .customs-drop:focus-within { border-color: var(--color-accent); color: var(--color-text); }
 .customs-drop input { max-width: 220px; font-size: var(--text-xs); }
 .customs-drop.is-busy { opacity: .7; cursor: progress; }
@@ -1928,3 +1928,7 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .next-step.is-blocked .next-step-label { color: var(--warn-fg, #b45309); }
 .next-step-detail { color: var(--color-text-muted); min-width: 0; overflow-wrap: anywhere; }
 .next-step-also { color: var(--color-text-muted); font-size: 12px; }
+/* stacked on a phone, the row flex-basis above would become a height: size the header cards to their content */
+@media (max-width: 720px) {
+  .key-ids .key-id-keys, .key-ids .key-id-flags { flex-basis: auto; }
+}

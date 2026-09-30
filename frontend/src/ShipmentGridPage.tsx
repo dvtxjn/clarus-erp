@@ -1,3 +1,4 @@
+import { tabKeys } from "./tabKeys";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
@@ -1450,7 +1451,7 @@ export default function ShipmentGridPage() {
         {message && <div role="status" className={`grid-toast grid-toast-${message.kind}`}>{message.text}</div>}
       </header>
 
-      <div className="tracker-tabs" role="tablist" aria-label="Tracker section">
+      <div className="tracker-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Tracker section">
         {(Object.keys(TABS) as Tab[]).map((t) => (
           <button
             key={t}
@@ -1491,7 +1492,7 @@ export default function ShipmentGridPage() {
             </select>
           </label>
         )}
-        <div className="view-switch" role="tablist" aria-label="Columns shown">
+        <div className="view-switch" role="tablist" onKeyDown={tabKeys} aria-label="Columns shown">
           {(Object.keys(COLUMN_VIEWS) as (keyof typeof COLUMN_VIEWS)[]).map((v) => (
             <button
               key={v}

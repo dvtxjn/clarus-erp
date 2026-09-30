@@ -1,3 +1,4 @@
+import { tabKeys } from "./tabKeys";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { listShipments } from "./api";
@@ -52,7 +53,7 @@ export default function MobileShipmentList() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
-      <div className="m-seg" role="tablist" aria-label="Shipments">
+      <div className="m-seg" role="tablist" onKeyDown={tabKeys} aria-label="Shipments">
         {(["ongoing", "cleared"] as const).map((t) => (
           <button
             key={t}

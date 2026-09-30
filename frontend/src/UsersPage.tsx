@@ -124,6 +124,7 @@ export default function UsersPage() {
       {users === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : (
+        <div className="tracker-grid-wrap">
         <table className="rates-table">
           <thead>
             <tr><th>Name</th><th>Email</th><th>Role</th><th>Last login</th><th>Status</th><th /></tr>
@@ -168,6 +169,7 @@ export default function UsersPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );
