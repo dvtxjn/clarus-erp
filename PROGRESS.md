@@ -887,3 +887,14 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
 - Plan: daily morning job: login (OTP via the mailbox reader) -> challans -> DutyChallan rows -> logout. Password in
   Secret Manager (client types it). Needs the mailbox reader live first.
 - Next from client: BE status page flow + links.
+- BE status (logged in): page #/enquiries/document-status/ds-bill-of-entry (pick location from the dropdown, date from
+  the calendar). Data: POST enquiry/enquiryatices/BETrack_Ices_action_Internal {icegateId, roleId, location, beNo, beDt}
+  -> ONE reply with every tab: beDetailsModel (iec, typ H, firstCheck, sec48, appraisingGroup, totalAssessableValue,
+  totalDuty), currentStatusModel (appraisement SYSTEM = no human; currentQueue e.g. SUP = with the Superintendent,
+  N.A. once OOC; queryRaised Q / queryReply text / replyDate; apprDate = assessed; assessDate; pymtDate; examDate;
+  oocDate), paymentDetailsModel (challaNo, dutyAmt, interestAmt, totalDuty, dutyPaid, modeOfPymt), beAmendmentModel
+  (date, status), edocValidityModel (assessment copy / "GatePass OOC Copy on Clearance" / clearance copy).
+  Public variant publicEnquiries/BETrack_Ices_action_Public needs its page's auth (not usable) -> use the login.
+  Compared running (job 140: SUP, unpaid) vs cleared (job 181: query+reply, paid EPAYMENT 29-09 16:51, OOC 29-09 20:50).
+  Plan: "ICEGATE status" column + Duty Paid / OOC with exact times, refreshed every few hours for live BEs.
+  Open question: tracker Duty Amount holds duty + interest (181: 252294 + 415) — keep them separate?
