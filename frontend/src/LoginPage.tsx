@@ -46,7 +46,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      navigate("/dashboard");
+      navigate("/shipments");
     } catch (err) {
       const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
       setError(typeof detail === "string" && err && axios.isAxiosError(err) && err.response?.status !== 401

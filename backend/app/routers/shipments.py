@@ -40,6 +40,7 @@ def list_shipments(
     is_stuck: Optional[bool] = Query(None),
     include_archived: bool = Query(False, description="Include billed/archived shipments"),
     search: Optional[str] = Query(None, description="Free-text match on job/mbl/hbl/be_no/client/consignee"),
+    cleared: Optional[bool] = Query(None, description="true = only fully cleared, false = only ongoing"),
 ):
     """
     Core grid-view endpoint (spec §2.5). Port scoping (spec §2.4) is applied
@@ -75,7 +76,23 @@ def list_shipments(
             | (Shipment.consignee.ilike(like))
         )
 
-    return q.order_by(Shipment.eta.asc().nullslast()).all()
+    if cleared is True:
+        q = q.filter(Shipment.cleared_date.isnot(None))
+    rows = q.order_by(Shipment.eta.asc().nullslast()).all()
+    if cleared is not None:
+        # "fully cleared" also needs the five checks, which only the model knows
+        rows = [s for s in rows if s.is_fully_cleared == cleared]
+    return rows
+
+
+@router.get("/cleared-count")
+def cleared_count(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """How many shipments sit in Cleared — the tracker shows it without loading them."""
+    q = db.query(Shipment).filter(Shipment.cleared_date.isnot(None))
+    allowed_ports = get_user_allowed_ports(current_user)
+    if allowed_ports is not None:
+        q = q.filter(Shipment.port.in_(allowed_ports))
+    return {"count": sum(1 for s in q if s.is_fully_cleared)}
 
 
 def _containers(s: Shipment) -> int:

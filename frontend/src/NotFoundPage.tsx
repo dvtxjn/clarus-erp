@@ -10,8 +10,8 @@ export default function NotFoundPage() {
         Nothing lives at <code translate="no">{pathname}</code>. The link may be old, or the shipment may have been deleted.
       </p>
       <div className="not-found-links">
-        <Link to="/dashboard">Dashboard</Link>
         <Link to="/shipments">Shipments</Link>
+        <Link to="/dashboard">Dashboard</Link>
       </div>
     </div>
   );

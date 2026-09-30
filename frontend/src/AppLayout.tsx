@@ -118,8 +118,9 @@ export default function AppLayout() {
           </button>
         </div>
         <nav className="app-nav" aria-label="Main">
-          <Item to="/dashboard" label="Dashboard" i="dashboard" />
+          {/* the tracker is the main screen (client, 2026-10-01); the dashboard comes second */}
           <Item to="/shipments" label="Shipments" i="shipments" />
+          <Item to="/dashboard" label="Dashboard" i="dashboard" />
           <Item to="/customs-mail" label="Customs mail" i="mail" />
           {/* Invoicing is admin-only (client, 2026-09-29) */}
           {user?.role === "admin" && (
@@ -186,8 +187,8 @@ export default function AppLayout() {
       </aside>
       {/* phones: bottom tabs instead of the sidebar (thumb reach); the rest sits under "More" */}
       <nav className="m-tabbar" aria-label="Main">
-        <NavLink to="/dashboard">{ICONS.dashboard}<span>Dashboard</span></NavLink>
         <NavLink to="/shipments">{ICONS.shipments}<span>Shipments</span></NavLink>
+        <NavLink to="/dashboard">{ICONS.dashboard}<span>Dashboard</span></NavLink>
         {user?.role === "admin" && <NavLink to="/invoices">{ICONS.invoices}<span>Invoicing</span></NavLink>}
         <button type="button" className={moreOpen ? "active" : ""} aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
           {icon(<><circle cx="3.5" cy="8" r="1.1" /><circle cx="8" cy="8" r="1.1" /><circle cx="12.5" cy="8" r="1.1" /></>)}

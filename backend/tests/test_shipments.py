@@ -96,3 +96,17 @@ def test_hss_proformas_one_per_party_and_rename(client, admin_headers):
     normal = client.post("/shipments", json={"mbl": "HSS3", "consignee": "Divine"}, headers=h).json()["id"]
     p = client.post(f"/shipments/{normal}/proformas", headers=h).json()
     assert p["bill_to"] == "Divine" and p["bill_to_role"] is None
+
+
+def test_cleared_loads_separately(client, admin_headers):
+    h = admin_headers
+    done = client.post("/shipments", json={"mbl": "CLR-DONE", "cleared_date": "2026-09-10"}, headers=h).json()["id"]
+    client.patch(f"/shipments/{done}", json={"duty_paid": True, "cfs_inv_received": True, "line_paid": True,
+                                             "ooc": True, "do": True}, headers=h)
+    gap = client.post("/shipments", json={"mbl": "CLR-GAP", "cleared_date": "2026-09-10"}, headers=h).json()["id"]
+    live = client.post("/shipments", json={"mbl": "CLR-LIVE"}, headers=h).json()["id"]
+    ongoing = {x["id"] for x in client.get("/shipments?include_archived=true&cleared=false", headers=h).json()}
+    cleared = {x["id"] for x in client.get("/shipments?include_archived=true&cleared=true", headers=h).json()}
+    assert {gap, live} <= ongoing and done not in ongoing  # a Cleared Date with a check missing stays Ongoing
+    assert done in cleared and not {gap, live} & cleared
+    assert client.get("/shipments/cleared-count", headers=h).json()["count"] == len(cleared)

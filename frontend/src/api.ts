@@ -72,6 +72,12 @@ export interface ShipmentFilters {
   is_stuck?: boolean;
   include_archived?: boolean;
   search?: string;
+  cleared?: boolean; // true = only fully cleared, false = only ongoing
+}
+
+export async function clearedShipmentCount(): Promise<number> {
+  const { data } = await client.get("/shipments/cleared-count");
+  return data.count;
 }
 
 export async function listShipments(filters: ShipmentFilters = {}): Promise<Shipment[]> {

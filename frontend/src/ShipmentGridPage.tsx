@@ -28,6 +28,7 @@ import {
   createShipment,
   deleteTrackerColumn,
   listShipments,
+  clearedShipmentCount,
   listTrackerColumns,
   removeBuiltinColumn,
   renameClient,
@@ -63,19 +64,14 @@ const COLUMN_STATE_KEY = "tracker.columnState.v7"; // v7: widths auto-fit like E
 // Excel-style widths (client, 2026-09-30): every column fits its longest value (or its title); a width
 // dragged by hand is kept. Auto-fit stops here — longer text shows "…", full value on hover / formula bar.
 const MAX_AUTO_WIDTH = 360;
-const TAB_KEY = "tracker.tab";
 // Ongoing = no Cleared Date yet (live tracking). Cleared = has a Cleared Date;
 // removing the date sends the shipment back to Ongoing.
 const TABS = { ongoing: "Ongoing", cleared: "Cleared" } as const;
 type Tab = keyof typeof TABS;
 
+// The tracker always opens on Ongoing (client, 2026-10-01); Cleared only from a ?tab=cleared link.
 function loadTab(fromUrl: string | null): Tab {
-  if (fromUrl === "ongoing" || fromUrl === "cleared") return fromUrl;
-  try {
-    return localStorage.getItem(TAB_KEY) === "cleared" ? "cleared" : "ongoing";
-  } catch {
-    return "ongoing";
-  }
+  return fromUrl === "cleared" ? "cleared" : "ongoing";
 }
 
 /** "2026-09" -> "September 2026" */
@@ -680,11 +676,21 @@ export default function ShipmentGridPage() {
     [ports, tab, trackerCols, view],
   );
 
+  // Only the open tab's rows are loaded: Cleared (the long history) is fetched when it's clicked.
+  const [clearedCount, setClearedCount] = useState<number | null>(null);
+  const [ongoingCount, setOngoingCount] = useState<number | null>(null);
+  const latest = useRef(0);
   const refresh = useCallback(async () => {
-    const data = await listShipments({
-      include_archived: true, // billed (archived) shipments still belong in Cleared
-      status: statusFilter,
-    });
+    const call = ++latest.current;
+    const [data] = await Promise.all([
+      listShipments({
+        include_archived: true, // billed (archived) shipments still belong in Cleared
+        status: statusFilter,
+        cleared: tab === "cleared",
+      }),
+      tab === "ongoing" ? clearedShipmentCount().then(setClearedCount, () => {}) : null,
+    ]);
+    if (call !== latest.current) return; // the tab changed meanwhile: that load's rows don't belong here
     // unchanged rows keep their old object (same version, same Day): the grid then redraws only real changes
     setShipments((prev) => {
       if (!prev) return data;
@@ -702,7 +708,7 @@ export default function ShipmentGridPage() {
     // same columns -> keep the same array: a new one rebuilds every column definition, and the grid snaps
     // widths back to their defaults for a moment (part of the "twitch", client 2026-09-30)
     setTrackerCols((prev) => (JSON.stringify(prev) === JSON.stringify(cols) ? prev : cols));
-  }, [statusFilter]);
+  }, [statusFilter, tab]);
 
   useEffect(() => {
     refresh();
@@ -890,13 +896,10 @@ export default function ShipmentGridPage() {
   }, [message]);
 
   function changeTab(t: Tab) {
+    if (t === tab) return;
+    setShipments(null); // the other tab's rows load now
     setTab(t);
     setVisibleCounts({});
-    try {
-      localStorage.setItem(TAB_KEY, t);
-    } catch {
-      /* ignore */
-    }
   }
 
   // Ongoing vs Cleared is decided only by the Cleared Date (billing doesn't hide a shipment)
@@ -912,6 +915,11 @@ export default function ShipmentGridPage() {
     });
   }, [allOngoing, chips]);
   const cleared = useMemo(() => (shipments ?? []).filter((s) => s.is_fully_cleared), [shipments]);
+  useEffect(() => {
+    if (shipments && tab === "ongoing") setOngoingCount(ongoing.length);
+    if (shipments && tab === "cleared") setClearedCount(cleared.length);
+  }, [shipments, tab, ongoing.length, cleared.length]);
+  const tabCount = (t: Tab) => (t === "ongoing" ? ongoingCount : clearedCount);
 
   function changeView(v: ViewMode) {
     setView(v);
@@ -1458,11 +1466,12 @@ export default function ShipmentGridPage() {
             key={t}
             role="tab"
             aria-selected={tab === t}
-            className={tab === t ? "tracker-tab active" : "tracker-tab"}
+            className={`tracker-tab tracker-tab-${t}${tab === t ? " active" : ""}`}
             onClick={() => changeTab(t)}
+            title={t === "cleared" && tab !== t ? "Loads when opened" : undefined}
           >
             {TABS[t]}
-            {shipments && <span className="tracker-tab-count">{t === "ongoing" ? ongoing.length : cleared.length}</span>}
+            {tabCount(t) !== null && <span className="tracker-tab-count">{tabCount(t)}</span>}
           </button>
         ))}
       </div>

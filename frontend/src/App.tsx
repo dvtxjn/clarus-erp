@@ -34,7 +34,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 /** Invoicing and Recently deleted are admin-only (the API refuses everyone else too). */
 function AdminRoute({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  if (user?.role !== "admin") return <Navigate to="/dashboard" replace />;
+  if (user?.role !== "admin") return <Navigate to="/shipments" replace />;
   return <>{children}</>;
 }
 
@@ -63,7 +63,7 @@ export default function App() {
             <Route path="/deleted" element={<AdminRoute><DeletedPage /></AdminRoute>} />
             <Route path="/history" element={<AdminRoute><HistoryPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to="/shipments" replace />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>

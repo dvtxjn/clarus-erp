@@ -1,7 +1,7 @@
 import { tabKeys } from "./tabKeys";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { listShipments } from "./api";
+import { clearedShipmentCount, listShipments } from "./api";
 import { useAuth } from "./AuthContext";
 import { formatPort, usePorts } from "./ports";
 import { SHIPMENT_STATUS_LABELS, type Shipment } from "./types";
@@ -22,11 +22,19 @@ export default function MobileShipmentList() {
   const ports = usePorts();
   const isAdmin = useAuth().user?.role === "admin";
 
+  const [clearedCount, setClearedCount] = useState<number | null>(null);
+  // only the open tab loads; Cleared (the long history) waits until it's tapped
   useEffect(() => {
-    listShipments({ include_archived: true })
-      .then(setRows)
-      .catch(() => setFailed(true));
-  }, []);
+    let live = true;
+    setRows(null);
+    listShipments({ include_archived: true, cleared: tab === "cleared" })
+      .then((r) => live && setRows(r))
+      .catch(() => live && setFailed(true));
+    if (tab === "ongoing") clearedShipmentCount().then((n) => live && setClearedCount(n), () => {});
+    return () => {
+      live = false;
+    };
+  }, [tab]);
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -38,7 +46,13 @@ export default function MobileShipmentList() {
           [s.job, s.mbl, s.hbl, s.be_no, s.client, s.consignee].some((v) => (v ?? "").toLowerCase().includes(needle)),
       );
   }, [rows, tab, q]);
-  const count = (t: "ongoing" | "cleared") => (rows ?? []).filter((s) => (t === "cleared" ? s.is_fully_cleared : !s.is_fully_cleared)).length;
+  const [ongoingCount, setOngoingCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!rows) return;
+    if (tab === "ongoing") setOngoingCount(rows.filter((s) => !s.is_fully_cleared).length);
+    else setClearedCount(rows.filter((s) => s.is_fully_cleared).length);
+  }, [rows, tab]);
+  const count = (t: "ongoing" | "cleared") => (t === "ongoing" ? ongoingCount : clearedCount) ?? "";
 
   return (
     <div className="m-page">
@@ -63,7 +77,7 @@ export default function MobileShipmentList() {
             className={tab === t ? "on" : ""}
             onClick={() => setParams(t === "ongoing" ? {} : { tab: t })}
           >
-            {t === "ongoing" ? "Ongoing" : "Cleared"} <span className="chip-count">{rows ? count(t) : ""}</span>
+            {t === "ongoing" ? "Ongoing" : "Cleared"} <span className="chip-count">{count(t)}</span>
           </button>
         ))}
       </div>
