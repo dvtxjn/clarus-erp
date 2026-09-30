@@ -1851,3 +1851,5 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .peek-panel.is-full > .detail-page { padding: 12px 24px 24px; }
 @media (prefers-reduced-motion: reduce) { .peek-panel { transition: none; } }
 @media (max-width: 900px) { .peek-panel.is-full { width: 100vw; } }
+.auth-notice { font-size: var(--text-sm); padding: 8px 10px; border-radius: var(--radius); background: var(--info-bg); color: var(--info-fg); }
+.idle-backdrop { z-index: calc(var(--z-modal) + 5); }

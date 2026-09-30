@@ -1,3 +1,4 @@
+import IdleLogout from "./IdleLogout";
 import ClarusLogo from "./ClarusLogo";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -244,6 +245,7 @@ export default function AppLayout() {
         {/* collapsed: page tools stay in the page itself */}
         <SidebarSlotContext.Provider value={collapsed ? null : slot}>
           <Outlet />
+          <IdleLogout />
         </SidebarSlotContext.Provider>
       </main>
     </div>

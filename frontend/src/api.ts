@@ -37,6 +37,14 @@ client.interceptors.request.use((config) => {
   }
   return config;
 });
+// the login ran out (12 h) or was revoked: back to the login page, not a screen where saves quietly fail
+client.interceptors.response.use(undefined, (err) => {
+  if (axios.isAxiosError(err) && err.response?.status === 401 && !String(err.config?.url ?? "").includes("/auth/login")
+      && localStorage.getItem("access_token")) {
+    window.dispatchEvent(new CustomEvent("auth:ended", { detail: "Your login has expired — please log in again." }));
+  }
+  return Promise.reject(err);
+});
 
 export async function login(email: string, password: string): Promise<string> {
   const form = new URLSearchParams();

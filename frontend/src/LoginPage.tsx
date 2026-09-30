@@ -11,6 +11,16 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // why they're here: idle logout or an expired login (set by AuthContext.endSession)
+  const [notice] = useState<string | null>(() => {
+    try {
+      const r = sessionStorage.getItem("logout_reason");
+      sessionStorage.removeItem("logout_reason");
+      return r;
+    } catch {
+      return null;
+    }
+  });
   const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const [resetNote, setResetNote] = useState<string | null>(null);
@@ -80,6 +90,7 @@ export default function LoginPage() {
           required
         />
 
+        {notice && !error && <div className="auth-notice" role="status">{notice}</div>}
         {error && <div className="auth-error">{error}</div>}
 
         <button type="submit" disabled={submitting}>
