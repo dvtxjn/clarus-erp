@@ -119,3 +119,41 @@ def test_old_mail_is_history_only(client, admin_headers):
     tl = client.get(f"/shipments/{sid}/icegate-mails", headers=h).json()
     assert tl and "timeline only" in tl[0]["notes"][0]
     assert not [x for x in client.get("/icegate-mails?attention=true", headers=h).json() if x["job_no"] == "978"]
+
+
+def test_feed_filters_hide_history_by_default(client, admin_headers):
+    """Client, 2026-09-30: after importing years of old mails, the feed shows live shipments by default;
+    old mails / shipments no longer in the tracker are under History. Type, port and dates filter too."""
+    h = admin_headers
+    live_id = client.post("/shipments", json={"mbl": "FEEDLIVE1", "job": "5961", "port": "INMUN1"}, headers=h).json()["id"]
+    gone_id = client.post("/shipments", json={"mbl": "FEEDGONE1", "job": "5962", "port": "INNSA1"}, headers=h).json()["id"]
+    mails = [mail("Job number 5961_CACHI01_Success", "ok", "devfilingtest@icegate.gov.in",
+                  [("1.ack", ack("INMUN1", "5961", "88705961", "25092026"))], date="Fri, 25 Sep 2026 11:00:00 +0530"),
+             mail("Job number 5962_CACHI01_Success", "ok", "devfilingtest@icegate.gov.in",
+                  [("1.ack", ack("INNSA1", "5962", "88705962", "24092026"))], date="Thu, 24 Sep 2026 11:00:00 +0530"),
+             mail("Job number 5963_CACHI01_Failed", "Failed", "devfilingtest@icegate.gov.in", [("1.nak", nak("INNSA1", "5963"))],
+                  date="Wed, 10 Jun 2026 11:05:00 +0530")]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for i, m in enumerate(mails):
+            z.writestr(f"{i}.eml", m)
+    client.post("/icegate-mails/import", files=[("files", ("feed.zip", buf.getvalue(), "application/zip"))], headers=h)
+    from app.core.database import SessionLocal
+    from app.models.shipment import Shipment
+
+    db = SessionLocal()
+    db.get(Shipment, gone_id).is_archived = True  # the job left the tracker
+    db.commit()
+    db.close()
+
+    def jobs(qs=""):
+        return {x["job_no"] for x in client.get(f"/icegate-mails{qs}", headers=h).json()} & {"5961", "5962", "5963"}
+
+    assert jobs() == {"5961"}                               # live only by default
+    assert jobs("?scope=history") == {"5962", "5963"}        # archived shipment + old unmatched mail
+    assert jobs("?scope=all") == {"5961", "5962", "5963"}
+    assert jobs("?scope=all&kind=be_nak") == {"5963"}
+    assert jobs("?scope=all&port=INNSA1") == {"5962", "5963"}
+    assert jobs("?scope=all&date_from=2026-09-25&date_to=2026-09-25") == {"5961"}
+    assert any(k["kind"] == "be_query" for k in client.get("/icegate-mails/kinds", headers=h).json())
+    assert live_id

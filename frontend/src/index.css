@@ -1786,6 +1786,10 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .customs-drop.is-busy { opacity: .7; cursor: progress; }
 .customs-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .customs-bar input[type="search"] { flex: 1; min-width: 200px; max-width: 320px; }
+.customs-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.customs-filters label { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-xs); color: var(--color-text-muted); }
+.customs-filters select, .customs-filters input { height: 30px; font-size: var(--text-sm); max-width: 200px; }
+.customs-table tr.is-history td { color: var(--color-text-muted); }
 .customs-table td { vertical-align: top; }
 .customs-table tr.is-open td { background: var(--bad-bg); }
 .customs-says { width: 320px; max-width: 320px; }

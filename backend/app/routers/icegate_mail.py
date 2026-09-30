@@ -35,6 +35,8 @@ class MailOut(BaseModel):
     shipment_mbl: Optional[str] = None
     shipment_be_no: Optional[str] = None
     client: Optional[str] = None
+    port_of_shipment: Optional[str] = None
+    live: bool = True  # on a live tracker shipment (or recent and not matched yet); False = history
     document_id: Optional[int] = None
     attention: bool
     resolved_at: Optional[datetime] = None
@@ -58,6 +60,8 @@ def _out(m: IcegateMail, s: Optional[Shipment], user: Optional[User] = None) -> 
         o.detail = d
     if s:
         o.shipment_job, o.shipment_mbl, o.shipment_be_no, o.client = s.job, s.mbl, s.be_no, s.client
+        o.port_of_shipment = s.port
+    o.live = (not s.is_archived) if s is not None else (m.shipment_id is None and not mail_apply.is_history(m))
     return o
 
 
@@ -79,16 +83,54 @@ async def import_mails(files: list[UploadFile] = File(...), db: Session = Depend
     return mail_apply.import_mails(db, raws, user)
 
 
+@router.get("/icegate-mails/kinds")
+def mail_kinds(_user: User = Depends(get_current_user)):
+    """The mail types, for the Type filter."""
+    from app.icegate_mail.parse import LABELS
+
+    return [{"kind": k, "label": v} for k, v in LABELS.items()] + [{"kind": "other", "label": "Other"}]
+
+
 @router.get("/icegate-mails", response_model=list[MailOut])
 def list_mails(attention: bool = Query(False, description="Open attention items only"),
                unmatched: bool = Query(False), limit: int = Query(300, le=2000),
+               scope: str = Query("live", pattern="^(live|history|all)$",
+                                  description="live = on a live tracker shipment, or recent and not matched yet; "
+                                              "history = old mails / shipments no longer in the tracker"),
+               kind: Optional[str] = Query(None, description="comma-separated kinds, e.g. be_query,out_of_charge"),
+               port: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """The feed, newest first. Port-scoped users see their ports' mails (unmatched ones: admin only)."""
+    """The feed, newest first, filtered on the server (before the limit). Port-scoped users see their ports'
+    mails (unmatched ones: admin only)."""
+    from sqlalchemy import and_, or_
+
+    def when(dt: datetime) -> datetime:  # UTC; SQLite (dev / tests) keeps it without a zone
+        dt = dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=None) if db.bind.dialect.name == "sqlite" else dt
+
     q = db.query(IcegateMail)
     if attention:
         q = q.filter(IcegateMail.attention.is_(True), IcegateMail.resolved_at.is_(None))
     if unmatched:
         q = q.filter(IcegateMail.shipment_id.is_(None))
+    if scope != "all":
+        live_ids = [i for (i,) in db.query(Shipment.id).filter(Shipment.is_archived.is_(False))]  # deleted: never live
+        recent = datetime.now(timezone.utc) - timedelta(days=mail_apply.HISTORY_DAYS)
+        # (shipment_id IS NOT NULL first: NOT on "NULL IN (…)" would drop unmatched mails from History)
+        live = or_(and_(IcegateMail.shipment_id.isnot(None), IcegateMail.shipment_id.in_(live_ids)),
+                   and_(IcegateMail.shipment_id.is_(None), IcegateMail.received_at.isnot(None),
+                        IcegateMail.received_at >= when(recent)))
+        q = q.filter(live if scope == "live" else ~live)
+    if kind:
+        q = q.filter(IcegateMail.kind.in_([k.strip() for k in kind.split(",") if k.strip()]))
+    if port:
+        port_ids = [i for (i,) in db.query(Shipment.id).filter(Shipment.port == port.upper())]
+        q = q.filter(or_(IcegateMail.port == port.upper(), IcegateMail.shipment_id.in_(port_ids)))
+    ist = timezone(timedelta(hours=5, minutes=30))  # dates are office (India) days
+    if date_from:
+        q = q.filter(IcegateMail.received_at >= when(datetime.combine(date_from, datetime.min.time(), ist)))
+    if date_to:
+        q = q.filter(IcegateMail.received_at < when(datetime.combine(date_to + timedelta(days=1), datetime.min.time(), ist)))
     rows = q.order_by(IcegateMail.received_at.desc().nullslast(), IcegateMail.id.desc()).limit(limit).all()
     ships = {s.id: s for s in db.query(Shipment).filter(Shipment.id.in_({m.shipment_id for m in rows if m.shipment_id}))}
     allowed = get_user_allowed_ports(user)

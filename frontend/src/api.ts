@@ -926,6 +926,8 @@ export async function runSheetsMirror(): Promise<SheetsMirror> {
 
 // ICEGATE mails (customs mail feed, shipment timeline)
 export interface IcegateMail {
+  live: boolean; // on a live tracker shipment (or recent, not matched yet)
+  port_of_shipment: string | null;
   id: number;
   received_at: string | null;
   kind: string;
@@ -956,8 +958,21 @@ export interface MailImportResult {
   matched: number;
   attention: number;
 }
-export async function listIcegateMails(params: { attention?: boolean; unmatched?: boolean } = {}): Promise<IcegateMail[]> {
+export interface MailFilters {
+  attention?: boolean;
+  unmatched?: boolean;
+  scope?: "live" | "history" | "all"; // live = on a live tracker shipment (default); history = old / gone
+  kind?: string; // comma-separated
+  port?: string;
+  date_from?: string;
+  date_to?: string;
+}
+export async function listIcegateMails(params: MailFilters = {}): Promise<IcegateMail[]> {
   const { data } = await client.get("/icegate-mails", { params });
+  return data;
+}
+export async function icegateMailKinds(): Promise<{ kind: string; label: string }[]> {
+  const { data } = await client.get("/icegate-mails/kinds");
   return data;
 }
 export async function shipmentIcegateMails(shipmentId: number): Promise<IcegateMail[]> {

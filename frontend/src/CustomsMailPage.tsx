@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
+  icegateMailKinds,
   importIcegateMails,
   linkIcegateMail,
   listIcegateMails,
@@ -11,6 +12,7 @@ import {
 import { useAuth } from "./AuthContext";
 import { istTime } from "./customsMail";
 import IcegateLoginPanel from "./IcegateLoginPanel";
+import { formatPort, usePorts } from "./ports";
 
 type View = "all" | "attention" | "unmatched";
 
@@ -30,15 +32,45 @@ export default function CustomsMailPage() {
   const [params, setParams] = useSearchParams();
   const view = (params.get("view") as View) || "all";
   const [q, setQ] = useState(params.get("q") ?? "");
+  // filters live in the URL (shareable, survive a reload); scope defaults to live shipments — the old
+  // inbox brought years of mails for jobs no longer in the tracker (client, 2026-09-30)
+  const scope = (params.get("scope") as "live" | "history" | "all") || "live";
+  const kind = params.get("kind") ?? "";
+  const port = params.get("port") ?? "";
+  const from = params.get("from") ?? "";
+  const to = params.get("to") ?? "";
+  const clientF = params.get("client") ?? "";
+  const [kinds, setKinds] = useState<{ kind: string; label: string }[]>([]);
+  const ports = usePorts();
   const [rows, setRows] = useState<IcegateMail[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
-    listIcegateMails({ attention: view === "attention", unmatched: view === "unmatched" })
+    listIcegateMails({
+      attention: view === "attention",
+      unmatched: view === "unmatched",
+      scope,
+      kind: kind || undefined,
+      port: port || undefined,
+      date_from: from || undefined,
+      date_to: to || undefined,
+    })
       .then(setRows)
       .catch(() => setRows([]));
-  }, [view]);
+  }, [view, scope, kind, port, from, to]);
+
+  useEffect(() => {
+    icegateMailKinds().then(setKinds).catch(() => setKinds([]));
+  }, []);
+
+  function setFilter(key: string, value: string) {
+    const p = new URLSearchParams(params);
+    if (value) p.set(key, value);
+    else p.delete(key);
+    setParams(p, { replace: true });
+  }
+  const filtered = !!(kind || port || from || to || clientF || scope !== "live");
 
   useEffect(() => {
     load();
@@ -99,15 +131,21 @@ export default function CustomsMailPage() {
     }
   }
 
+  const clients = useMemo(
+    () => Array.from(new Set((rows ?? []).map((m) => m.client).filter((c): c is string => !!c))).sort(),
+    [rows],
+  );
+
   const shown = useMemo(() => {
     const t = q.trim().toUpperCase();
-    if (!rows || !t) return rows;
-    return rows.filter((m) =>
+    const byClient = clientF ? (rows ?? []).filter((m) => m.client === clientF) : rows;
+    if (!byClient || !t) return byClient;
+    return byClient.filter((m) =>
       [m.be_no, m.job_no, m.shipment_job, m.mbl, m.shipment_mbl, m.client, m.label, m.summary].some((v) =>
         (v ?? "").toUpperCase().includes(t),
       ),
     );
-  }, [rows, q]);
+  }, [rows, q, clientF]);
 
   return (
     <div className="rates-page customs-page">
@@ -165,12 +203,88 @@ export default function CustomsMailPage() {
           spellCheck={false}
         />
       </div>
+      <div className="customs-filters">
+        <label>
+          <span>Shipments</span>
+          <select value={scope} onChange={(e) => setFilter("scope", e.target.value === "live" ? "" : e.target.value)}>
+            <option value="live">In the tracker now</option>
+            <option value="history">History (old / gone)</option>
+            <option value="all">Everything</option>
+          </select>
+        </label>
+        <label>
+          <span>Type</span>
+          <select value={kind} onChange={(e) => setFilter("kind", e.target.value)}>
+            <option value="">All types</option>
+            {kinds.map((k) => (
+              <option key={k.kind} value={k.kind}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Port</span>
+          <select value={port} onChange={(e) => setFilter("port", e.target.value)}>
+            <option value="">All ports</option>
+            {ports.map((p) => (
+              <option key={p.code} value={p.code}>
+                {formatPort(p.code, ports)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Client</span>
+          <select value={clientF} onChange={(e) => setFilter("client", e.target.value)}>
+            <option value="">All clients</option>
+            {clients.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>From</span>
+          <input type="date" value={from} onChange={(e) => setFilter("from", e.target.value)} />
+        </label>
+        <label>
+          <span>To</span>
+          <input type="date" value={to} onChange={(e) => setFilter("to", e.target.value)} />
+        </label>
+        {filtered && (
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              const p = new URLSearchParams(params);
+              ["scope", "kind", "port", "from", "to", "client"].forEach((k) => p.delete(k));
+              setParams(p, { replace: true });
+            }}
+          >
+            Clear filters
+          </button>
+        )}
+        {rows && (
+          <span className="field-note">
+            {shown?.length ?? 0} mail{shown?.length === 1 ? "" : "s"}
+            {rows.length >= 300 ? " (newest 300 — narrow the filters to see older)" : ""}
+          </span>
+        )}
+      </div>
 
       {shown === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : shown.length === 0 ? (
         <div className="tracker-empty">
-          {view === "attention" ? "Nothing needs attention." : view === "unmatched" ? "Every mail is on its shipment." : "No mails yet."}
+          {filtered
+            ? "No mails match these filters."
+            : view === "attention"
+              ? "Nothing needs attention."
+              : view === "unmatched"
+                ? "Every mail is on its shipment."
+                : "No mails for shipments in the tracker — see History for older ones."}
         </div>
       ) : (
         <div className="tracker-grid-wrap">
@@ -192,7 +306,7 @@ export default function CustomsMailPage() {
                 const open = m.attention && !m.resolved_at;
                 const otp = m.kind === "otp" ? (m.detail?.otp as string | undefined) : undefined;
                 return (
-                  <tr key={m.id} className={open ? "is-open" : undefined}>
+                  <tr key={m.id} className={[open ? "is-open" : "", m.live ? "" : "is-history"].join(" ").trim() || undefined}>
                     <td className="num">{istTime(m.received_at)}</td>
                     <td>
                       {m.label}
