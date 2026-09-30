@@ -775,3 +775,49 @@ The client will pick features they like from other software and feed them in. Re
 - 📝 Receipt agent — PARKED (client will build later). Bank credit e-mails arrive in the company Gmail; the client
   can set up forwarding / mailbox reading when we start.
 - Day column for inland stays per container on the Overview (containers arrive on different days).
+
+## 🔎 LiveImpex scouting (2026-09-30) — the client's filing software (Softlink Global)
+- Web app at s1.liveimpex.in (login via main.liveimpex.in; the login opens the app window itself — needs pop-ups
+  allowed). **Filing stays in LiveImpex** — the ERP doesn't file. Scouted view-only (menus, lists; nothing saved).
+  Client may refer to it again. Client finds its UI informative but ugly (colour-only rows, flat lists, key data
+  buried in "Remarks" strings) — take the information, not the design.
+- **Sections:** My Impex (Dashboard, My Assignments, Alert, Import/Export Process, Messages, Email Log, Alert
+  Configuration), Transactions (TradeCHAIN Inbox, Custom Clearing, ICEGATE Communicator, SCMTR/E-Way Bill, Billing:
+  Receipts, Data Export, Advance Search, E-Invoice; Exchange Rate), Reports (Custom Clearing: Import/Export, Pending /
+  Completed Jobs, Licence Expiry, Licence Utilization, Import Licence Utilization, Licence List, Exchange Rate
+  History, B/E & S/B data, Quotation; E-Way Bill Register; Billing: Register, Cover Letter, Outstanding Bills,
+  Unbilled Jobs; MIS: Company / Customer / Salesperson / Branch Performance, Job Count by Branch / User / Business
+  Dimension, Shipment & Job Registration, Jobs Last Executed, Target vs Actual), Directories (Organizations — KYC
+  print, Import GSTIN, bulk upload, lower TDS info; Organization Group, Charge Master, Ports, CFS/Yard, Currencies,
+  Countries, Document Types, Notes), Administration (Users, Employee Master, User Groups, Document Signing Setup,
+  Alerts & Reminders, Report Scheduler [paid upgrade in their edition], Email Template, IceGate Accounts, Customer
+  Notification → EMail, Logs, Locked Transactions, LogiLENS → Mappings, Macros), Tools (Document Signing).
+- **Not opened yet** (second pass if wanted, ~60–100k tokens): My Assignments, Alerts & Reminders, Customer
+  Notification, Alert Configuration, Import/Export Process, report contents, organisation detail / KYC fields.
+- **ICEGATE Communicator** (the key find): ICEGATE's e-mails to the mailbox of the ICEGATE ID, fetched ("Check
+  Mail") and listed per job — 845 since 1 Aug. Columns: Date, Transaction No (LiveImpex job, e.g. IMP/0175/26-27),
+  ICEGATE ID, Sender (Icegate INNSA1 / INMUN1 / INDWN6), Remarks, Transaction, Organization, View / Download
+  (the mail's PDF), Query Reply, Error Codes. Event types (count): Submit B/E 100, Submit B/E (Amendment) 33,
+  **B/E Ack 171** ("BENo=… BEDate=… APP.GROUP=…"), **B/E Neg Ack 29** ("Reason=(496) …", "COO supporting document
+  not available for FTA Notn…"), **B/E Qry 31** ("QueryNo=1 QueryDt=… Query=EIR AND TYRE EPR PLS"), Processed B/E 130,
+  **Examination Order 112**, **Out of Charge 112** ("Duty details from OOC PDF ChallanNo=… PaidOn=… TotAmount=…"),
+  **Gate Pass 113**; exports: S/B Ack / Neg Ack, Assessed / LEO / eGatepass SB copy. Also "(SKIPPED-… already
+  processed)" duplicates.
+
+### 📝 Roadmap ideas from LiveImpex (client to rank)
+1. **ICEGATE mail reader** (with the receipt agent — same mailbox work): read the ICEGATE-ID mailbox read-only;
+   Ack → BE No/date + BE Filed; Processed B/E → BE Assessed + assessed copy; Examination Order → under
+   examination; OOC → duty paid (challan, paid on, amount) + OOC done + OOC copy; Gate Pass → gatepass/cleared +
+   copy (PDFs through the existing extraction). **Neg Ack and Query → "Needs attention"** with the reason / query
+   text. Match by BE No after the Ack, by MBL before (confirm on real mails). UI: per-shipment **customs timeline**
+   on the Overview + a calm feed page (status labels not colour-only, BE+BL, filters, duplicates hidden).
+   **Needs from the client:** which mailbox gets ICEGATE mails; 3–4 sample mails (Ack, Neg Ack, Query, OOC).
+2. **Customer notifications** (e-mail / WhatsApp) on IGM filed, BE filed, duty paid, OOC, cleared + the container
+   image — better than their template e-mail.
+3. **Licence expiry + utilisation** alerts/reports (we store licences, don't warn yet).
+4. **MIS reports** (P3): customer performance, jobs/containers/billing per client per month, job count per staff,
+   target vs actual; **scheduled e-mailed reports** (paid upgrade for them).
+5. **My Assignments**: shipments/tasks per staff member, "my work" list.
+6. **Organisation KYC**: fill from GSTIN, KYC documents per client, **lower-TDS certificates** (feeds payments TDS).
+7. Bill **cover letter**; **e-mail log + templates**; **quotations** → proforma.
+   Skip: filing, eSanchit, SCMTR/E-way bill, TradeCHAIN exchange, exchange-rate tables, DSC signing.
