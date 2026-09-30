@@ -442,9 +442,9 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           </label>
         </section>
       </div>
-      {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD — at the bottom,
-          its length varies with the number of containers (client, 2026-09-30) */}
-      {inland && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} portLabel={formatPort(s.port, ports) || s.port!} onRefreshed={onChange} />}
+      {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
+          arrival at the FPOD; sea port: from the INW. At the bottom, its length varies (client, 2026-09-30) */}
+      {s.port && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} />}
     </div>
   );
 }

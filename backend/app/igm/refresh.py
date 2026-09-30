@@ -3,7 +3,9 @@ Read everything ICEGATE has for one shipment and put it where it belongs (client
 
 - Sea IGM (MBL + port; for inland shipments the port is the gateway the ICD BL status names, e.g. INMUN1)
   → the IGM details on the shipment (app/igm/apply.py).
-- Inland only — ICD BL status (MBL only) → the containers' arrival at the FPOD (shipment_containers), and
+- Containers (every shipment): the sea IGM's container list first (the primary source, client); inland
+  shipments then get each container's arrival at the FPOD from the ICD BL status (shipment_containers).
+- Inland only — ICD BL status (MBL only) → the containers' arrival at the FPOD, and
   shipment.icegate["icd"]: only what the IGM details don't already hold (the ICD's own IGM, SMTP, BE
   location, importer…). Values both sources carry are compared: equal → left out; different → listed
   in shipment.icegate["differences"].
@@ -49,7 +51,7 @@ def _num_equal(a: str, b: str) -> bool:
 
 def refresh(db: Session, s: Shipment, user_id: Optional[int]) -> dict:
     """Fetch + write. Returns a summary for the page. Does not commit."""
-    from app.routers.containers import merge_icd  # late: the router imports app.igm
+    from app.routers.containers import merge_icd, merge_sea  # late: the router imports app.igm
 
     inland = (s.port or "").upper() not in alerts.SEA_PORTS
     summary: dict = {"inland": inland, "sea_found": False, "icd_found": False, "changed": {}, "notes": []}
@@ -63,18 +65,22 @@ def refresh(db: Session, s: Shipment, user_id: Optional[int]) -> dict:
     record: dict = {"fetched_at": datetime.now().isoformat(timespec="minutes")}
 
     location = s.port
-    icd_bl = None
+    icd_bl = got = None
     if inland:
         got = icd.fetch(mbl)
         summary["icd_found"] = got["found"]
         if got["found"]:
             icd_bl = {k: _dmy(v) for k, v in got["bls"][0].items()}
-            location = icd_bl.get("gateway_port") or location
-            added, updated, kept = merge_icd(db, s.id, got["containers"], user_id)
-            summary["containers"] = {"added": added, "updated": updated, "kept_manual": kept}
+            location = icd_bl.get("gateway_port") or location  # the sea IGM is filed at the gateway
 
     sea_data = sea.fetch(mbl, location) if location else {"status": "IGM Not Filed"}
     summary["sea_found"] = sea_data.get("status") == "IGM Filed"
+    # containers: the sea IGM's list first, then the ICD's arrivals on top (inland)
+    boxes = {"added": merge_sea(db, s.id, sea_data.get("containers") or [], user_id), "updated": 0, "kept_manual": 0}
+    if got and got["found"]:
+        added, boxes["updated"], boxes["kept_manual"] = merge_icd(db, s.id, got["containers"], user_id)
+        boxes["added"] += added
+    summary["containers"] = boxes
     if summary["sea_found"]:
         if inland:
             record["gateway_igm"] = {"port": location, "no": sea_data.get("igm_no"), "date": sea_data.get("igm_date")}

@@ -2,7 +2,8 @@
 ICEGATE, automatically (client, 2026-09-30): Cloud Scheduler calls POST /internal/jobs/icegate every ~6 hours.
 
 Which shipments (live = not archived, no Cleared Date):
-- sea ports: no inward date yet and the ETA within 4 days (or past) — the client's sheet rule
+- sea ports: no inward date yet and the ETA within 4 days (or past) — the client's sheet rule — or inward
+  but no containers on it yet (the container list comes from the sea IGM)
 - inland (ICD): ETA within 4 days (or past) and not every container has arrived at the ICD yet
 Each is read like the "Fetch from ICEGATE" button (app/igm/refresh.py), committed one by one, a pause between
 them. The last run is kept in app_settings["icegate_last_run"] for the Settings page.
@@ -37,11 +38,11 @@ def due(db: Session, today: Optional[date] = None) -> list[Shipment]:
     for s in live:
         if not s.eta or s.eta > horizon:
             continue
+        boxes = db.query(ShipmentContainer).filter(ShipmentContainer.shipment_id == s.id).all()
         if (s.port or "").upper() in alerts.SEA_PORTS:
-            if alerts.parse_inw(s.inw) is None:
+            if alerts.parse_inw(s.inw) is None or not boxes:
                 picked.append(s)
         else:
-            boxes = db.query(ShipmentContainer).filter(ShipmentContainer.shipment_id == s.id).all()
             if not boxes or any(c.arrival_date is None for c in boxes):
                 picked.append(s)
     return picked

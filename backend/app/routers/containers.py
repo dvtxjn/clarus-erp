@@ -1,8 +1,11 @@
 """
-Containers of a shipment and their arrival at the FPOD (client, 2026-09-30): for inland shipments the free
-days run per container from its arrival at the ICD. Fetched from ICEGATE's ICD BL status on command, or
-typed in; every change is audited, removal is a soft delete.
+Containers of every shipment (client, 2026-09-30). The container list comes first from the sea IGM (all
+shipments, sea ports and inland); for inland shipments the ICD BL status then adds each container's arrival
+at the FPOD, where its free days start. At a sea port the free days start at the inward date (INW), so a
+container there shows the INW as its arrival unless one is typed. Every change is audited, removal is a
+soft delete.
 """
+import re
 from datetime import date, timedelta
 from typing import Optional
 
@@ -34,6 +37,7 @@ class ContainerOut(BaseModel):
     tracking_status: Optional[str] = None
     source: str
     is_manual: bool
+    arrival_from_inw: bool = False  # sea port, nothing typed: the shipment's inward date stands in
     # free days at the FPOD: day N counted from the arrival (arrival = day 1). free_days = this container's
     # free days (typed when it differs from the standard 14; free_days_typed), last_free_day = arrival + free_days - 1
     free_days: Optional[int] = None
@@ -79,15 +83,18 @@ def _shipment(db: Session, shipment_id: int, user: User) -> Shipment:
     return s
 
 
-def _out(c: ShipmentContainer, port: Optional[str], today: Optional[date] = None) -> ContainerOut:
+def _out(c: ShipmentContainer, s: Shipment, today: Optional[date] = None) -> ContainerOut:
     o = ContainerOut.model_validate(c)
     today = today or date.today()
-    # typed for this container, else the ICD's standard (Panipat 21, others 14)
-    o.free_days = c.free_days if c.free_days is not None else alerts.icd_free_days(port)
+    # typed for this container, else the port's standard (Panipat 21, others 14)
+    o.free_days = c.free_days if c.free_days is not None else alerts.icd_free_days(s.port)
     o.free_days_typed = c.free_days is not None
-    if c.arrival_date:
-        o.day = (today - c.arrival_date).days + 1 if today >= c.arrival_date else None
-        o.last_free_day = c.arrival_date + timedelta(days=o.free_days - 1)
+    if o.arrival_date is None and (s.port or "").upper() in alerts.SEA_PORTS:
+        o.arrival_date = alerts.parse_inw(s.inw)  # sea port: free days from the INW
+        o.arrival_from_inw = o.arrival_date is not None
+    if o.arrival_date:
+        o.day = (today - o.arrival_date).days + 1 if today >= o.arrival_date else None
+        o.last_free_day = o.arrival_date + timedelta(days=o.free_days - 1)
         o.days_left = (o.last_free_day - today).days
     return o
 
@@ -104,7 +111,7 @@ def _norm(no: str) -> str:
 @router.get("", response_model=list[ContainerOut])
 def list_containers(shipment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     s = _shipment(db, shipment_id, user)
-    return [_out(c, s.port) for c in _list(db, shipment_id)]
+    return [_out(c, s) for c in _list(db, shipment_id)]
 
 
 @router.post("", response_model=ContainerOut, status_code=201)
@@ -122,7 +129,7 @@ def add_container(shipment_id: int, payload: ContainerIn, db: Session = Depends(
     db.flush()
     record_change(db, "shipment_containers", c.id, "container_no", None, no, user.id)
     db.commit()
-    return _out(c, s.port)
+    return _out(c, s)
 
 
 @router.patch("/{container_id}", response_model=ContainerOut)
@@ -140,7 +147,7 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
         changes["free_days"] = None
     free_until = changes.pop("free_until", None)
     if free_until is not None:
-        arrival = changes.get("arrival_date", c.arrival_date)
+        arrival = changes.get("arrival_date", c.arrival_date) or _out(c, s).arrival_date
         if arrival is None:
             raise HTTPException(status_code=400, detail="Enter the arrival date first, or type the days free instead")
         if free_until < arrival:
@@ -161,7 +168,7 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
         if field == "arrival_date":
             c.is_manual = True  # typed by hand: an ICEGATE refresh keeps it
     db.commit()
-    return _out(c, s.port)
+    return _out(c, s)
 
 
 @router.delete("/{container_id}", status_code=204)
@@ -174,6 +181,31 @@ def remove_container(shipment_id: int, container_id: int, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Container not found")
     soft_delete(db, c, user.id)
     db.commit()
+
+
+def merge_sea(db: Session, shipment_id: int, found: list[dict], user_id: Optional[int]) -> int:
+    """The sea IGM's container list — the primary source for which containers a shipment has (client):
+    missing ones are added (type FCL / LCL filled where empty). Arrivals are left to the ICD / the INW.
+    Returns how many were added."""
+    have = {c.container_no: c for c in _list(db, shipment_id)}
+    added = 0
+    for x in found:
+        m = re.search(r"[A-Z]{4}\d{7}", _norm(x.get("container") or ""))  # the cell may carry more than the number
+        if not m:
+            continue
+        no = m.group()
+        c = have.get(no)
+        if c is None:
+            c = ShipmentContainer(shipment_id=shipment_id, container_no=no, status=x.get("status"),
+                                  source="icegate", is_manual=False)
+            db.add(c)
+            db.flush()
+            record_change(db, "shipment_containers", c.id, "container_no", None, no, user_id)
+            have[no] = c
+            added += 1
+        elif x.get("status") and not c.status:
+            c.status = x["status"]
+    return added
 
 
 def merge_icd(db: Session, shipment_id: int, found: list[dict], user_id: Optional[int]) -> tuple[int, int, int]:
@@ -218,10 +250,10 @@ def refresh_from_icegate(shipment_id: int, db: Session = Depends(get_db), user: 
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="ICEGATE didn't answer — try again in a minute")
     if not data["found"]:
-        return RefreshOut(found=False, containers=[_out(c, s.port) for c in _list(db, shipment_id)])
+        return RefreshOut(found=False, containers=[_out(c, s) for c in _list(db, shipment_id)])
     added, updated, kept = merge_icd(db, shipment_id, data["containers"], user.id)
     db.commit()
     bl = data["bls"][0]
     return RefreshOut(found=True, added=added, updated=updated, kept_manual=kept,
                       bl={k: (v.isoformat() if isinstance(v, date) else v) for k, v in bl.items()},
-                      containers=[_out(c, s.port) for c in _list(db, shipment_id)])
+                      containers=[_out(c, s) for c in _list(db, shipment_id)])

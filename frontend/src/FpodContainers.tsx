@@ -19,17 +19,20 @@ const errText = (e: unknown) =>
 type Patch = Parameters<typeof editContainer>[2];
 
 /**
- * Inland shipments (client, 2026-09-30): every container, its arrival at the FPOD (ICD) and its own free
- * days (standard 14, or typed — as days or as a "free until" date). Fetched from ICEGATE's ICD BL status
- * (MBL only) on command, or typed; a typed arrival survives a refresh. A typed Status covers containers
- * that haven't arrived ("On rail"). "Copy as image" puts the table on the clipboard for the client.
+ * Every shipment's containers (client, 2026-09-30): the list comes from the sea IGM; inland shipments add
+ * each container's arrival at the FPOD (ICD BL status), where its free days start; at a sea port they start
+ * at the INW. Own free days per container (standard, or typed — as days or as a "free until" date); a typed
+ * arrival survives a refresh. A typed Status covers containers that haven't arrived ("On rail").
+ * "Copy as image" puts the table on the clipboard for the client.
  */
 export default function FpodContainers({
   shipment,
+  inland,
   portLabel,
   onRefreshed,
 }: {
   shipment: Shipment;
+  inland: boolean;
   portLabel: string;
   onRefreshed: (s: Shipment) => void;
 }) {
@@ -46,14 +49,14 @@ export default function FpodContainers({
     listContainers(shipmentId).then(setRows).catch(() => setRows([]));
   }, [shipmentId]);
 
-  // the same full read as "Fetch from ICEGATE" in the IGM details (sea IGM + ICD BL status + arrivals)
+  // the same full read as "Fetch from ICEGATE" in the IGM details (sea IGM containers + ICD BL status arrivals)
   async function fetchIcegate() {
     setBusy(true);
     setMsg(null);
     try {
       const { summary, shipment: fresh } = await refreshIcegate(shipmentId);
-      if (!summary.icd_found) {
-        setMsg({ ok: false, text: `ICEGATE has nothing at an ICD for MBL ${shipment.mbl} yet (check it's the full MBL, e.g. HMM: HDMU…).` });
+      if (!summary.sea_found && !summary.icd_found) {
+        setMsg({ ok: false, text: `ICEGATE has no IGM for MBL ${shipment.mbl} yet (check it's the full MBL, e.g. HMM: HDMU…).` });
         return;
       }
       onRefreshed(fresh); // reloads this list with the new arrivals
@@ -101,7 +104,7 @@ export default function FpodContainers({
 
   async function copyImage() {
     if (!rows?.length) return;
-    const blob = tableImage(shipment, portLabel, rows);
+    const blob = tableImage(shipment, portLabel, rows, inland);
     try {
       // the promise goes straight into the ClipboardItem so Safari keeps the click's permission
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
@@ -119,14 +122,17 @@ export default function FpodContainers({
 
   const tone = (c: ShipmentContainer) => (c.days_left == null ? "" : c.days_left < 0 ? " fpod-over" : c.days_left <= 3 ? " fpod-soon" : "");
   const arrived = (rows ?? []).filter((c) => c.arrival_date).length;
+  const standard = rows?.find((c) => !c.free_days_typed)?.free_days ?? STANDARD_FREE_DAYS; // Panipat 21
 
   return (
     <section className="detail-section detail-wide fpod">
       <div className="fpod-head">
-        <h3>Containers at FPOD · {portLabel}</h3>
+        <h3>{inland ? "Containers at FPOD" : "Containers"} · {portLabel}</h3>
         <span className="field-note">
-          {rows ? `${rows.length} container${rows.length === 1 ? "" : "s"} · ${arrived} arrived · ` : ""}
-          free days count from each container’s arrival (standard {STANDARD_FREE_DAYS})
+          {rows ? `${rows.length} container${rows.length === 1 ? "" : "s"} · ${inland ? `${arrived} arrived · ` : ""}` : ""}
+          {inland
+            ? `free days count from each container’s arrival (standard ${standard})`
+            : `free days count from the inward date (standard ${standard})`}
         </span>
         <span className="fpod-actions">
           <button type="button" className="btn-secondary" onClick={copyImage} disabled={!rows?.length}>
@@ -165,7 +171,7 @@ export default function FpodContainers({
       {rows === null ? (
         <p className="field-note">Loading containers…</p>
       ) : rows.length === 0 ? (
-        <p className="field-note">No containers yet: Fetch from ICEGATE (needs only the MBL), or add them by hand.</p>
+        <p className="field-note">No containers yet: Fetch from ICEGATE (reads the IGM with the MBL), or add them by hand.</p>
       ) : (
         <table className="tracker-grid fpod-table">
           <thead>
@@ -173,7 +179,7 @@ export default function FpodContainers({
               <th>Container</th>
               <th>Type</th>
               <th>Status</th>
-              <th>Arrived at FPOD</th>
+              <th>{inland ? "Arrived at FPOD" : "Inward (INW)"}</th>
               <th className="num">Days free</th>
               <th>Free until</th>
               <th className="num">Day</th>
@@ -190,7 +196,7 @@ export default function FpodContainers({
                   <input
                     className="fpod-cell fpod-status"
                     aria-label={`Status of ${c.container_no}`}
-                    placeholder={c.arrival_date ? "Arrived" : "e.g. On rail…"}
+                    placeholder={c.arrival_date ? "Arrived" : inland ? "e.g. On rail…" : "e.g. At CFS…"}
                     defaultValue={c.tracking_status ?? ""}
                     onBlur={(e) => e.target.value.trim() !== (c.tracking_status ?? "") && save(c, { tracking_status: e.target.value }, "status")}
                   />
@@ -198,8 +204,9 @@ export default function FpodContainers({
                 <td>
                   <input
                     type="date"
-                    className="fpod-cell"
+                    className={`fpod-cell${c.arrival_from_inw ? " is-inw" : ""}`}
                     aria-label={`Arrival of ${c.container_no}`}
+                    title={c.arrival_from_inw ? "The shipment's inward date — type a date to set this container's own" : ""}
                     defaultValue={c.arrival_date ?? ""}
                     onBlur={(e) =>
                       e.target.value !== (c.arrival_date ?? "") &&
@@ -256,13 +263,13 @@ export default function FpodContainers({
 }
 
 /** The table drawn as a clean PNG (always light, for the client): shipment line on top, one row per container. */
-function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[]): Promise<Blob> {
+function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], inland: boolean): Promise<Blob> {
   const scale = 2;
   const cols = [
     { label: "Container", w: 150, get: (c: ShipmentContainer) => c.container_no },
     { label: "Type", w: 56, get: (c: ShipmentContainer) => c.status ?? "—" },
     { label: "Status", w: 170, get: (c: ShipmentContainer) => c.tracking_status ?? (c.arrival_date ? "Arrived" : "Not arrived yet") },
-    { label: "Arrived at FPOD", w: 120, get: (c: ShipmentContainer) => fmt(c.arrival_date) },
+    { label: inland ? "Arrived at FPOD" : "Inward (INW)", w: 120, get: (c: ShipmentContainer) => fmt(c.arrival_date) },
     { label: "Days free", w: 76, get: (c: ShipmentContainer) => String(c.free_days) },
     { label: "Free until", w: 120, get: (c: ShipmentContainer) => fmt(c.last_free_day) },
     { label: "Day", w: 110, get: (c: ShipmentContainer) => (c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} (${-c.days_left} over)` : `Day ${c.day}`) },

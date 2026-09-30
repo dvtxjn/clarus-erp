@@ -1853,3 +1853,4 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 @media (max-width: 900px) { .peek-panel.is-full { width: 100vw; } }
 .auth-notice { font-size: var(--text-sm); padding: 8px 10px; border-radius: var(--radius); background: var(--info-bg); color: var(--info-fg); }
 .idle-backdrop { z-index: calc(var(--z-modal) + 5); }
+.fpod-cell.is-inw { color: var(--color-text-muted); font-style: italic; }

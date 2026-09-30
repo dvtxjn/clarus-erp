@@ -16,6 +16,8 @@ def test_due_rules(client, admin_headers):
     soon, later, past = (today + timedelta(days=2)).isoformat(), (today + timedelta(days=10)).isoformat(), (today - timedelta(days=3)).isoformat()
     sea_due = make(client, admin_headers, mbl="DUE-SEA-1", port="INMUN1", eta=soon)
     sea_in = make(client, admin_headers, mbl="DUE-SEA-2", port="INMUN1", eta=past, inw="01-Sep-2026")
+    client.post(f"/shipments/{sea_in}/containers", json={"container_no": "SEAI1234567"}, headers=admin_headers)
+    sea_nobox = make(client, admin_headers, mbl="DUE-SEA-4", port="INNSA1", eta=past, inw="01-Sep-2026")  # inward, no containers yet
     sea_far = make(client, admin_headers, mbl="DUE-SEA-3", port="INNSA1", eta=later)
     icd_new = make(client, admin_headers, mbl="DUE-ICD-1", port="INDWN6", eta=past)
     icd_done = make(client, admin_headers, mbl="DUE-ICD-2", port="INDWN6", eta=past)
@@ -29,5 +31,5 @@ def test_due_rules(client, admin_headers):
         ids = {s.id for s in batch.due(db)}
     finally:
         db.close()
-    assert sea_due in ids and icd_new in ids and icd_half in ids
+    assert sea_due in ids and sea_nobox in ids and icd_new in ids and icd_half in ids
     assert sea_in not in ids and sea_far not in ids and icd_done not in ids

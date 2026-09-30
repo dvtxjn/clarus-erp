@@ -822,6 +822,7 @@ export interface ShipmentContainer {
   tracking_status: string | null; // typed, e.g. "On rail"
   source: "icegate" | "manual";
   is_manual: boolean;
+  arrival_from_inw: boolean; // sea port, nothing typed: the shipment's INW stands in as the arrival
   free_days: number; // this container's free days (typed, or the standard 14)
   free_days_typed: boolean;
   day: number | null;

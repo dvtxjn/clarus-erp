@@ -112,3 +112,39 @@ def test_other_icds_default_to_14(client, admin_headers):
     c = client.post(f"/shipments/{sid}/containers", json={"container_no": "GARH1234567", "arrival_date": "2026-09-21"},
                     headers=admin_headers).json()
     assert c["free_days"] == 14 and c["last_free_day"] == "2026-10-04"
+
+
+def test_sea_port_containers_from_the_igm_free_days_from_inw(client, admin_headers, monkeypatch):
+    """Sea ports too (client): the container list comes from the sea IGM; free days from the INW."""
+    from app.igm import sea
+
+    igm = {"status": "IGM Filed", "igm_no": "2345678", "igm_date": "10-Sep-2026", "inw_date": "12-Sep-2026",
+           "containers": [{"container": "MSKU1234567", "status": "FCL"}, {"container": "TGHU7654321", "status": "FCL"},
+                          {"container": "N.A.", "status": None}]}
+    monkeypatch.setattr(sea, "fetch", lambda mbl, port: igm)
+    sid = client.post("/shipments", json={"mbl": "SEACONT0001", "port": "INNSA1"}, headers=admin_headers).json()["id"]
+    r = client.post(f"/shipments/{sid}/icegate/refresh", headers=admin_headers)
+    assert r.status_code == 200 and r.json()["summary"]["containers"]["added"] == 2
+    rows = {c["container_no"]: c for c in client.get(f"/shipments/{sid}/containers", headers=admin_headers).json()}
+    assert set(rows) == {"MSKU1234567", "TGHU7654321"}
+    c = rows["MSKU1234567"]
+    # INW 12 Sep = day 1, 14 free days -> last free day 25 Sep; not stored, follows the INW
+    assert c["arrival_from_inw"] and c["arrival_date"] == "2026-09-12" and c["last_free_day"] == "2026-09-25"
+    # a second read adds nothing
+    assert client.post(f"/shipments/{sid}/icegate/refresh", headers=admin_headers).json()["summary"]["containers"]["added"] == 0
+
+
+def test_inland_list_from_sea_igm_arrivals_from_icd(client, admin_headers, inland, monkeypatch):
+    from app.igm import sea
+
+    real_fetch = icd.fetch
+    monkeypatch.setattr(icd, "fetch", lambda mbl: real_fetch(mbl, client=fake_icegate()))
+    # the IGM knows one container the ICD hasn't reported yet
+    monkeypatch.setattr(sea, "fetch", lambda mbl, port: {"status": "IGM Filed", "igm_no": "1", "containers": [
+        {"container": "MRKU5032093", "status": "FCL"}, {"container": "ABCU1111111", "status": "FCL"}]})
+    r = client.post(f"/shipments/{inland}/icegate/refresh", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    rows = {c["container_no"]: c for c in client.get(f"/shipments/{inland}/containers", headers=admin_headers).json()}
+    assert set(rows) == {"MRKU5032093", "MRSU4711430", "TCNU4951934", "ABCU1111111"}
+    assert rows["MRKU5032093"]["arrival_date"] == "2026-09-21" and not rows["MRKU5032093"]["arrival_from_inw"]
+    assert rows["ABCU1111111"]["arrival_date"] is None  # inland: no INW stand-in
