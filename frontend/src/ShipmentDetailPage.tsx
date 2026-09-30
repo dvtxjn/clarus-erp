@@ -6,9 +6,13 @@ import { useSaveShipment } from "./useSaveShipment";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
 import ProformaPanel from "./ProformaPanel";
+import FpodContainers from "./FpodContainers";
 import { formatPort, usePorts } from "./ports";
 
 type Tab = "overview" | "documents" | "proforma";
+
+// sea ports: free days start at the POD inward; every other port is inland (ICD) — client, 2026-09-30
+const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -236,6 +240,8 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           </div>
         </div>
       </section>
+      {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD (client, 2026-09-30) */}
+      {s.port && !SEA_PORTS.has(s.port) && <FpodContainers shipmentId={s.id} portLabel={formatPort(s.port, ports) || s.port} />}
       <div className="detail-col">
         <section className="detail-section">
           <h3>Customs duty</h3>

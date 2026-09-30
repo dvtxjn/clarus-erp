@@ -801,3 +801,50 @@ export async function downloadStatement(party: string): Promise<void> {
 function client_get(path: string, params: Record<string, unknown>) {
   return client.get(path, { params });
 }
+
+
+/** Containers of a shipment + arrival at the FPOD (inland free days). */
+export interface ShipmentContainer {
+  id: number;
+  container_no: string;
+  status: string | null;
+  arrival_date: string | null;
+  arrival_status: string | null;
+  source: "icegate" | "manual";
+  is_manual: boolean;
+  day: number | null;
+  last_free_day: string | null;
+}
+export interface IcdRefresh {
+  found: boolean;
+  added: number;
+  updated: number;
+  kept_manual: number;
+  bl: { igm_no: string | null; igm_date: string | null; gateway_port: string | null; inward_date: string | null; smtp_no: string | null; smtp_date: string | null; icd: string | null } | null;
+  containers: ShipmentContainer[];
+}
+
+export async function listContainers(shipmentId: number): Promise<ShipmentContainer[]> {
+  const { data } = await client.get(`/shipments/${shipmentId}/containers`);
+  return data;
+}
+export async function addContainer(shipmentId: number, body: { container_no: string; arrival_date?: string | null }): Promise<ShipmentContainer> {
+  const { data } = await client.post(`/shipments/${shipmentId}/containers`, body);
+  return data;
+}
+export async function editContainer(
+  shipmentId: number,
+  id: number,
+  body: { container_no?: string; arrival_date?: string | null; clear_arrival?: boolean },
+): Promise<ShipmentContainer> {
+  const { data } = await client.patch(`/shipments/${shipmentId}/containers/${id}`, body);
+  return data;
+}
+export async function removeContainer(shipmentId: number, id: number): Promise<void> {
+  await client.delete(`/shipments/${shipmentId}/containers/${id}`);
+}
+/** On command: ICEGATE ICD BL status (MBL only) → containers + arrival at the ICD. */
+export async function refreshContainersFromIcegate(shipmentId: number): Promise<IcdRefresh> {
+  const { data } = await client.post(`/shipments/${shipmentId}/containers/refresh-icd`);
+  return data;
+}

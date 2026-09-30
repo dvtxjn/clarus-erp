@@ -92,6 +92,11 @@ def deadline_alert(s, today: date) -> Optional[dict]:
             "due": due.isoformat(), "text": text}
 
 
+def last_free_day(start: date) -> date:
+    """Free days are counted inclusively: the start day is day 1."""
+    return start + timedelta(days=FREE_DAYS - 1)
+
+
 def free_days_alert(s, today: date) -> Optional[dict]:
     if (s.port or "").upper() not in SEA_PORTS:
         return None                                # inland: free days start at the FPOD (later)

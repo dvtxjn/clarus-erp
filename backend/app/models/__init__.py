@@ -19,3 +19,4 @@ from app.models.storage import DriveFolder, StoredFile  # noqa: F401
 from app.models.backup import BackupRun  # noqa: F401
 from app.models.settings import AppSetting  # noqa: F401
 from app.models.payment import Payment, PaymentAllocation  # noqa: F401
+from app.models.container import ShipmentContainer  # noqa: F401
