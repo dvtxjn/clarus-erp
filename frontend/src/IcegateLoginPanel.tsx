@@ -119,6 +119,11 @@ export default function IcegateLoginPanel({ isAdmin }: { isAdmin: boolean }) {
             {busy === "run" ? "Reading…" : "Read BE status now"}
           </button>
         )}
+        {l.ready && (
+          <button type="button" className="btn-secondary" disabled={!!busy} onClick={() => act("challans", () => runIcegateLookup("challans"), "Duty challans read.")}>
+            {busy === "challans" ? "Reading…" : "Read duty challans now"}
+          </button>
+        )}
       </form>
       {msg && (
         <div role="status" aria-live="polite" className={`grid-toast ${msg.ok ? "grid-toast-ok" : "grid-toast-error"}`}>
