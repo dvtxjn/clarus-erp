@@ -170,7 +170,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   cfs_receipt: "CFS Receipt",
   assessed_bill_of_entry: "Assessed Bill of Entry",
   ooc_bill_of_entry: "OOC Bill of Entry",
-  gatepass_bill_of_entry: "Gatepass Bill of Entry",
+  gatepass_bill_of_entry: "OOC Gatepass (e-Gatepass)",
   bl_copy: "BL Copy",
   hbl_copy: "HBL Copy",
   commercial_invoice: "Commercial Invoice",

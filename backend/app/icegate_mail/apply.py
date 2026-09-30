@@ -116,20 +116,13 @@ def _apply(db: Session, m: IcegateMail, s: Shipment, user: Optional[User]) -> li
             m.document_id = dup.id
             notes.append("PDF already on the shipment")
         else:
-            data, cleared_before = m.pdf, s.cleared_date
+            data = m.pdf
             db.flush()
             doc = _store_document(db, s, doc_type, m.pdf_name, lambda f: f.write(data), user)
-            s = db.get(Shipment, s.id)
-            if cleared_before is None and s.cleared_date is not None and m.received_at:
-                # gate pass: cleared on the day the mail came (IST), not the day it was read
-                day = _ts(m.received_at).astimezone(IST).date()
-                if day != s.cleared_date:
-                    record_change(db, "shipments", s.id, "cleared_date", s.cleared_date, day, uid)
-                    s.cleared_date = day
             m.document_id = doc.id
             notes.extend((doc.extraction or {}).get("notes") or [])
             notes.append({"ASSESSED_BILL_OF_ENTRY": "Assessed BE copy added", "OOC_BILL_OF_ENTRY": "OOC copy added",
-                          "GATEPASS_BILL_OF_ENTRY": "Gate pass copy added"}[doc_type.name])
+                          "GATEPASS_BILL_OF_ENTRY": "OOC gate pass added"}[doc_type.name])
         m.pdf = None
     return notes
 

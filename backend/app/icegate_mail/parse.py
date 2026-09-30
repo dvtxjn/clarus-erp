@@ -44,7 +44,7 @@ LABELS = {
     "be_query": "B/E Query",
     "supplementary": "Supplementary filing",
     "out_of_charge": "Out of Charge",
-    "gate_pass": "Gate Pass",
+    "gate_pass": "OOC Gate Pass",
     "esanchit": "eSANCHIT upload",
     "filing_failed": "Filing failed",
     "otp": "ICEGATE login OTP",
@@ -186,7 +186,7 @@ def parse(raw: bytes) -> Optional[dict]:
             pm = re.match(r"\d{7}\d{8}([A-Z]{3}[A-Z0-9]{3})BE", pdf[0])  # BE no + date + port + "BE"
             ev["port"] = pm.group(1) if pm else None
         ev["summary"] = {"processed_be": "Assessed BE copy received", "out_of_charge": "Out of charge — OOC copy received",
-                         "gate_pass": "Gate pass copy received"}[ev["kind"]]
+                         "gate_pass": "OOC gate pass (e-Gatepass) received"}[ev["kind"]]
     elif s.startswith("bill of entry examination instructions"):
         m = re.search(r"Bill of Entry No\s*(\d+)\s*dated\s*(\d{2}/\d{2}/\d{4})\s*filed at\s*([A-Z0-9]{6})", body, re.I)
         ev["kind"] = "exam_order"

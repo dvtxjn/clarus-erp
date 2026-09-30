@@ -15,7 +15,7 @@ Two layers:
                     is paid), OOC date, examination yes/no, status OOC Done
    - CFS tax invoice -> CFS Inv = yes
    - DO letter   -> DO = yes
-   - Gatepass BE -> status Cleared + Cleared Date (moves to the Cleared tab)
+   - Gatepass BE (ICEGATE e-Gatepass = the OOC gate pass) -> OOC = yes, Duty Paid = yes (not Cleared)
 Status only ever moves forward here, never back.
 """
 from __future__ import annotations
@@ -220,9 +220,10 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
     elif t in (DocumentType.DO_LETTER, DocumentType.DO_EMPTY_LETTER):
         sync.set("do", True)
     elif t == DocumentType.GATEPASS_BILL_OF_ENTRY:
-        sync.advance(ShipmentStatus.CLEARED)
-        if shipment.cleared_date is None:
-            sync.set("cleared_date", date.today())
+        # ICEGATE's e-Gatepass copy is the OOC gate pass: it proves OOC only. Clearing out (the other,
+        # physical gate pass) is a separate, later step — client, 2026-09-30
+        sync.set("ooc", True)
+        sync.set("duty_paid", True)
 
     # Any evidence the document filled in (BE no, duty amount, OOC...) moves the status on
     if any(f in EVIDENCE_FIELDS for f in sync.updated):

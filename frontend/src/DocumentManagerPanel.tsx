@@ -44,7 +44,7 @@ const SHORT_LABELS: Partial<Record<DocumentType, string>> = {
   cfs_receipt: "Receipt",
   assessed_bill_of_entry: "Assessed BE",
   ooc_bill_of_entry: "OOC BE",
-  gatepass_bill_of_entry: "Gatepass BE",
+  gatepass_bill_of_entry: "OOC Gatepass",
   fta_certificate_of_origin: "FTA COO",
   certificate_of_origin: "Certificate of Origin",
 };
