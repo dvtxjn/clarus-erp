@@ -7,13 +7,30 @@ from app.core.database import SessionLocal
 
 class FakeSheets:
     def __init__(self):
-        self.tabs, self.writes = [], []
+        self.tabs, self.writes, self.batches = [], [], []
 
     def ensure_tab(self, title):
         self.tabs.append(title)
+        return 7
 
     def write(self, rng, rows):
         self.writes.append((rng, rows))
+
+    def batch(self, requests):
+        self.batches.append(requests)
+
+
+def grid_of(fake):
+    """The written grid as plain values (tick boxes -> True/False)."""
+    cells = fake.batches[0][0]["updateCells"]["rows"]
+    out = []
+    for r in cells:
+        row = []
+        for c in r["values"]:
+            v = c.get("userEnteredValue", {})
+            row.append(v.get("boolValue", v.get("stringValue", "")))
+        out.append(row)
+    return out
 
 
 def test_link_parsing():
@@ -47,11 +64,15 @@ def test_mirror_writes_live_rows_and_blanks_leftovers(client, admin_headers):
         fake = FakeSheets()
         st = sheets_mirror.mirror(db, fake)
         assert st["last_error"] is None
-        rng, rows = fake.writes[0]
-        assert rows[0][:2] == ["Client", "Job"]
-        assert "Assessable" not in " ".join(rows[0])  # no invoice figures
-        mbls = [r[3] for r in rows]
+        rows = grid_of(fake)
+        assert rows[0][:3] == ["Job", "mbl", "be description"] and "duty paid?" in rows[0]  # the office tracker's columns
+        assert "Assessable" not in " ".join(map(str, rows[0]))  # no invoice figures
+        mbls = [r[1] for r in rows]
         assert "MIRROR-1" in mbls and "MIRROR-2" in mbls
+        duty = rows[0].index("duty paid?")
+        assert all(isinstance(r[duty], bool) for r in rows[1:] if r[1])  # tick boxes
+        req = fake.batches[0]
+        assert req[1]["updateSheetProperties"]["properties"]["gridProperties"]["frozenColumnCount"] == 2
         first = st["rows"]
 
         # one shipment archived: the sheet keeps its size, the leftover row is written blank
@@ -61,9 +82,9 @@ def test_mirror_writes_live_rows_and_blanks_leftovers(client, admin_headers):
         db.commit()
         fake2 = FakeSheets()
         sheets_mirror.mirror(db, fake2)
-        rng2, rows2 = fake2.writes[0]
-        assert len(rows2) == first and rows2[-1] == [""] * len(rows2[-1])
-        assert "MIRROR-2" not in [r[3] for r in rows2]
+        rows2 = grid_of(fake2)
+        assert len(rows2) == first and all(v == "" for v in rows2[-1])
+        assert "MIRROR-2" not in [r[1] for r in rows2]
     finally:
         db.close()
 

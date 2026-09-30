@@ -7,13 +7,16 @@ office still sees every live shipment. Written every 15 minutes by the ERP's ser
 - Never deletes: rows that are no longer live are blanked by writing empty cells over them; a missing
   tab is added, never removed. Requests that delete anything are refused before they are sent.
 - No invoice / billing figures go to the sheet (invoicing is admin-only).
+- Laid out like the office's own Google Sheets tracker (client, 2026-09-30): same columns and order, frozen
+  Job / MBL, dark green header with filters, rows by client, tick boxes for Duty / CFS Inv / Line / OOC / DO,
+  coloured POD, HSS consignee in green, Cleared Date in bold.
 """
 from __future__ import annotations
 
 import json
 import re
 import time
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -27,18 +30,50 @@ SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 TAB = "Tracker"
 KEY = "sheets_mirror"  # app_settings: {"sheet_id", "last_run", "last_error", "rows", "cols"}
 
-# (header, shipment attribute) — the tracker's working columns; no invoice amounts
-COLUMNS: list[tuple[str, str]] = [
-    ("Client", "client"), ("Job", "job"), ("Consignee", "consignee"), ("MBL", "mbl"), ("HBL", "hbl"),
-    ("BE No", "be_no"), ("BE Date", "be_dt"), ("Description", "be_description"), ("Port", "port"),
-    ("POD", "pod"), ("ETA", "eta"), ("INW", "inw"), ("Day", "day"), ("Licence", "license"),
-    ("Container", "container"), ("Cont", "cont"), ("Gross Wt", "gross_wt"), ("CFS", "cfs"),
-    ("Container Status", "container_status"), ("Shipping Line", "shipping_line"), ("IGM", "igm"),
-    ("IGM Date", "igm_date"), ("Line No", "line_no"), ("Status", "status"), ("Duty Paid", "duty_paid"),
-    ("CFS Inv Received", "cfs_inv_received"), ("Line Paid", "line_paid"), ("OOC", "ooc"), ("DO", "do"),
-    ("OOC Date", "ooc_date"), ("Cleared Date", "cleared_date"), ("Delivery Status", "delivery_status"),
-    ("Remark", "remark"), ("Remarks", "remarks"), ("Stuck", "is_stuck"),
+TAB = "Tracker"
+
+GREEN_HEAD = {"red": 0.24, "green": 0.42, "blue": 0.31}
+WHITE = {"red": 1, "green": 1, "blue": 1}
+POD_COLOURS = {  # like the office tracker's POD chips
+    "INMUN1": ({"red": 0.85, "green": 0.92, "blue": 0.83}, None),
+    "INNSA1": ({"red": 0.81, "green": 0.89, "blue": 0.96}, None),
+    "INDWN6": ({"red": 0.07, "green": 0.33, "blue": 0.63}, WHITE),
+}
+HSS_GREEN = {"red": 0.72, "green": 0.88, "blue": 0.73}
+
+
+def _dmy(v) -> str:
+    return v.strftime("%d-%b-%Y") if v else ""
+
+
+def _mbl(s) -> str:
+    """As the sheet writes it: MBL/HBL, then the FTA number."""
+    out = s.mbl or ""
+    if s.hbl:
+        out += f"/{s.hbl}"
+    if s.fta_info:
+        out += f"-{s.fta_info}"
+    return out
+
+
+# (header, value, kind) in the office tracker's order. kind: text | check | date | cleared | pod | consignee
+COLUMNS: list[tuple[str, object, str]] = [
+    ("Job", lambda s: s.job or "", "text"), ("mbl", _mbl, "text"), ("be description", lambda s: s.be_description or "", "text"),
+    ("eta", lambda s: _dmy(s.eta), "date"), ("inw", lambda s: s.inw or "", "text"), ("day", lambda s: s.days or "", "text"),
+    ("License", lambda s: s.license or "", "text"), ("client", lambda s: s.client or "", "text"),
+    ("consignee", lambda s: s.consignee or "", "consignee"), ("pod", lambda s: s.pod or s.port or "", "pod"),
+    ("cntr status", lambda s: s.container_status or "", "text"), ("cfs", lambda s: s.cfs or "", "text"),
+    ("be no", lambda s: s.be_no or "", "text"), ("be dt", lambda s: _dmy(s.be_dt), "date"),
+    ("cntr", lambda s: s.container or "", "text"), ("gross wt", lambda s: s.gross_wt or "", "text"),
+    ("remark", lambda s: s.remark or "", "text"), ("POC", lambda s: s.poc or "", "text"),
+    ("remarks", lambda s: s.remarks or "", "text"), ("Cleared Date", lambda s: _dmy(s.cleared_date), "cleared"),
+    ("duty paid?", lambda s: bool(s.duty_paid), "check"), ("cfs inv?", lambda s: bool(s.cfs_inv_received), "check"),
+    ("line paid?", lambda s: bool(s.line_paid), "check"), ("ooc?", lambda s: bool(s.ooc), "check"),
+    ("do?", lambda s: bool(s.do), "check"), ("igm", lambda s: s.igm or "", "text"),
+    ("Delivery", lambda s: s.delivery_status or "", "text"),
 ]
+FIELD_OF = {"be description": "be_description", "cntr status": "container_status", "cntr": "container",
+            "gross wt": "gross_wt", "poc": "poc", "cleared date": "cleared_date", "delivery": "delivery_status"}
 
 
 class SheetsError(Exception):
@@ -93,45 +128,72 @@ class SheetsClient:
             raise SheetsError(f"Google Sheets {r.status_code}: {r.text[:200]}")
         return r.json() if r.content else {}
 
-    def ensure_tab(self, title: str) -> None:
-        meta = self._req("GET", "", params={"fields": "sheets.properties.title"})
-        if title not in [s["properties"]["title"] for s in meta.get("sheets", [])]:
-            self._req("POST", ":batchUpdate", json={"requests": [{"addSheet": {"properties": {"title": title}}}]})
+    def ensure_tab(self, title: str) -> int:
+        """The tab's sheetId (added when missing)."""
+        meta = self._req("GET", "", params={"fields": "sheets.properties(title,sheetId)"})
+        for sh in meta.get("sheets", []):
+            if sh["properties"]["title"] == title:
+                return sh["properties"]["sheetId"]
+        r = self._req("POST", ":batchUpdate", json={"requests": [{"addSheet": {"properties": {"title": title}}}]})
+        return r["replies"][0]["addSheet"]["properties"]["sheetId"]
+
+    def batch(self, requests: list[dict]) -> None:
+        self._req("POST", ":batchUpdate", json={"requests": requests})
 
     def write(self, rng: str, rows: list[list]) -> None:
         self._req("PUT", f"/values/{rng}", params={"valueInputOption": "RAW"}, json={"range": rng, "values": rows})
 
 
-def _cell(v) -> str:
-    if v is None:
-        return ""
-    if isinstance(v, bool):
-        return "✓" if v else ""
-    if isinstance(v, (date, datetime)):
-        return v.strftime("%d/%m/%Y")
-    if hasattr(v, "value"):  # enum
-        return str(v.value).replace("_", " ").upper()
-    return str(v)
-
-
-def build_rows(db: Session) -> list[list[str]]:
-    """Header + one row per live (not archived, not deleted) shipment, by client then job. Custom tracker
-    columns are added at the end."""
+def build_rows(db: Session) -> tuple[list[str], list[list[tuple]]]:
+    """(headers, rows) — every live (not archived, not deleted) shipment, grouped by client, then by ETA
+    (like the office tracker). Each cell is (value, kind, shipment). Custom tracker columns go at the end."""
     from app.models.shipment import Shipment
     from app.models.tracker_column import TrackerColumn
 
     removed = {c.key for c in db.query(TrackerColumn).filter(TrackerColumn.is_removed.is_(True))}
-    cols = [c for c in COLUMNS if c[1] not in removed]
+    cols = [c for c in COLUMNS if FIELD_OF.get(c[0].lower(), c[0].lower()) not in removed]
     custom = db.query(TrackerColumn).filter(TrackerColumn.is_custom.is_(True), TrackerColumn.is_removed.is_(False)).all()
-    q = db.query(Shipment).filter(Shipment.is_archived.is_(False))
-    if hasattr(Shipment, "deleted_at"):
-        q = q.filter(Shipment.deleted_at.is_(None))
-    ships = sorted(q.all(), key=lambda s: ((s.client or "").lower(), s.job or ""))
-    rows = [[h for h, _ in cols] + [c.label for c in custom]]
+    ships = db.query(Shipment).filter(Shipment.is_archived.is_(False)).all()
+    ships.sort(key=lambda s: ((s.client or "~").lower(), s.eta or date.max, s.job or ""))
+    headers = [h for h, _, _ in cols] + [c.label for c in custom]
+    rows = []
     for s in ships:
         cf = s.custom_fields or {}
-        rows.append([_cell(getattr(s, a)) for _, a in cols] + [_cell(cf.get(c.key)) for c in custom])
-    return rows
+        rows.append([(fn(s), kind, s) for _, fn, kind in cols] + [("" if cf.get(c.key) is None else str(cf.get(c.key)), "text", s) for c in custom])
+    return headers, rows
+
+
+def _cell(value, kind: str, s=None) -> dict:
+    """One Google Sheets cell: value + look (+ a tick box for the Yes/No columns)."""
+    fmt: dict = {"verticalAlignment": "MIDDLE", "textFormat": {"fontSize": 10}}
+    cell: dict = {}
+    if kind == "check":
+        cell["userEnteredValue"] = {"boolValue": bool(value)}
+        cell["dataValidation"] = {"condition": {"type": "BOOLEAN"}}
+        fmt["horizontalAlignment"] = "CENTER"
+    else:
+        cell["userEnteredValue"] = {"stringValue": str(value or "")}
+    if kind == "cleared":
+        fmt["textFormat"]["bold"] = True
+    if kind == "pod":
+        code = (getattr(s, "port", None) or str(value)[:6]).upper()
+        if code in POD_COLOURS:
+            bg, fg = POD_COLOURS[code]
+            fmt["backgroundColor"] = bg
+            if fg:
+                fmt["textFormat"]["foregroundColor"] = fg
+    if kind == "consignee" and s is not None and getattr(s, "is_hss", False):
+        fmt["backgroundColor"] = HSS_GREEN
+    if kind in ("date", "cleared"):
+        fmt["horizontalAlignment"] = "CENTER"
+    cell["userEnteredFormat"] = fmt
+    return cell
+
+
+def _header_cell(title: str) -> dict:
+    return {"userEnteredValue": {"stringValue": title},
+            "userEnteredFormat": {"backgroundColor": GREEN_HEAD, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE",
+                                  "wrapStrategy": "WRAP", "textFormat": {"bold": True, "foregroundColor": WHITE, "fontSize": 10}}}
 
 
 def _col(n: int) -> str:
@@ -159,16 +221,28 @@ def mirror(db: Session, client: Optional[SheetsClient] = None) -> dict:
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     try:
         c = client or SheetsClient(st["sheet_id"])
-        data = build_rows(db)
-        width = max(len(data[0]), st.get("cols") or 0)
-        height = max(len(data), st.get("rows") or 0)  # blank out rows left over from last time
-        grid = [r + [""] * (width - len(r)) for r in data] + [[""] * width for _ in range(height - len(data))]
-        c.ensure_tab(TAB)
-        c.write(f"{TAB}!A1:{_col(width)}{height}", grid)
+        headers, rows = build_rows(db)
+        width = max(len(headers), st.get("cols") or 0)
+        height = max(len(rows) + 1, st.get("rows") or 0)  # rows left over from last time are blanked
+        grid = [{"values": [_header_cell(h) for h in headers] + [{} for _ in range(width - len(headers))]}]
+        for r in rows:
+            grid.append({"values": [_cell(v, k, s) for v, k, s in r] + [{} for _ in range(width - len(r))]})
+        grid += [{"values": [{} for _ in range(width)]} for _ in range(height - len(grid))]
+        gid = c.ensure_tab(TAB)
+        c.batch([
+            {"updateCells": {"range": {"sheetId": gid, "startRowIndex": 0, "startColumnIndex": 0,
+                                       "endRowIndex": height, "endColumnIndex": width},
+                             "rows": grid, "fields": "userEnteredValue,userEnteredFormat,dataValidation"}},
+            {"updateSheetProperties": {"properties": {"sheetId": gid, "gridProperties": {"frozenRowCount": 1, "frozenColumnCount": 2}},
+                                       "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"}},
+            {"setBasicFilter": {"filter": {"range": {"sheetId": gid, "startRowIndex": 0, "endRowIndex": len(rows) + 1,
+                                                     "startColumnIndex": 0, "endColumnIndex": len(headers)}}}},
+        ])
         c.ensure_tab("About")
         c.write("About!A1:B3", [["Copy of the Clarus ERP tracker — view only. Changes here are overwritten.", ""],
-                                ["Last updated (UTC)", now], ["Live shipments", str(len(data) - 1)]])
-        st.update(last_run=now, last_error=None, rows=len(data), cols=len(data[0]))
+                                ["Last updated (India time)", datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%d-%b-%Y %H:%M")],
+                                ["Live shipments", str(len(rows))]])
+        st.update(last_run=now, last_error=None, rows=len(rows) + 1, cols=len(headers))
     except (SheetsError, httpx.HTTPError, KeyError, ValueError) as e:
         st.update(last_run=now, last_error=str(e)[:300])
     row.value = st
