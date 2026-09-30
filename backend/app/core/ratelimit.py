@@ -1,6 +1,7 @@
 """
 Login throttling (launch Phase 9):
-  - at most 5 login attempts a minute per (IP address, email)          -> 429
+  - at most 20 login attempts a minute per (IP address, email) — the office shares one IP and
+    several people may sign in with the same ID at once (client, 2026-09-30) -> 429
   - 10 wrong passwords for one email within 15 minutes locks that email
     for 15 minutes, whatever the IP                                     -> 429
 A successful login clears the email's failures. In memory (one app instance); a restart
@@ -14,7 +15,7 @@ from collections import defaultdict, deque
 
 from fastapi import HTTPException, Request
 
-PER_MINUTE = 5
+PER_MINUTE = 20
 LOCK_AFTER = 10
 LOCK_WINDOW = 15 * 60
 LOCK_FOR = 15 * 60

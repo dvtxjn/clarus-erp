@@ -24,11 +24,12 @@ def test_check_or_exit_stops_the_app(monkeypatch, client):
     production.check_or_exit()  # development: never stops
 
 
-def test_login_throttle_and_lockout(client):
+def test_login_throttle_and_lockout(client, monkeypatch):
+    from app.core import ratelimit
+    monkeypatch.setattr(ratelimit, "PER_MINUTE", 5)  # the rule itself, at a small number (live: 20)
     bad = {"username": "admin@example.com", "password": "wrong-password"}
     codes = [client.post("/auth/login", data=bad).status_code for _ in range(6)]
     assert codes[:5] == [401] * 5 and codes[5] == 429  # 6th attempt in a minute
-    from app.core import ratelimit
     ratelimit._attempts.clear()  # a minute later ...
     for _ in range(5):
         client.post("/auth/login", data=bad)
