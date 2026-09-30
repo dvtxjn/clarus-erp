@@ -122,6 +122,29 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return data;
 }
 
+export type AlertKind = "deadline" | "free_days" | "documents";
+export interface ShipmentAlert {
+  kind: AlertKind;
+  severity: "overdue" | "urgent" | "soon";
+  days_left: number;
+  due: string | null;
+  text: string;
+  shipment_id: number;
+  job: string | null;
+  mbl: string | null;
+  be_no: string | null;
+  client: string | null;
+  consignee: string | null;
+  port: string | null;
+  missing?: string[];
+}
+
+/** Dashboard "Needs attention": "d" deadlines, free days at the POD, documents before BE filing. */
+export async function getAlerts(): Promise<ShipmentAlert[]> {
+  const { data } = await client.get("/shipments/alerts");
+  return data;
+}
+
 export async function listHsCodes(): Promise<HSCode[]> {
   const { data } = await client.get("/hs-codes");
   return data;
@@ -369,6 +392,14 @@ export async function downloadInvoice(proformaId: number, fmt: "xlsx" | "pdf"): 
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** The proforma PDF as a File (phone: share it to WhatsApp / mail from the share sheet). */
+export async function getInvoicePdfFile(proformaId: number): Promise<File> {
+  const res = await client.get(`/proformas/${proformaId}/invoice.pdf`, { responseType: "blob" });
+  const header = res.headers["x-filename"];
+  const name = header ? decodeURIComponent(header) : `proforma-${proformaId}.pdf`;
+  return new File([res.data], name, { type: "application/pdf" });
 }
 
 export async function updateProformaStatus(proformaId: number, status: ProformaStatus): Promise<Proforma> {

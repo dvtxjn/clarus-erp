@@ -214,6 +214,20 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
             <EditField label="Shipping Line" field="shipping_line" s={s} onChange={onChange} />
         </div>
+        {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30).
+            Filled from ICEGATE's Sea IGM enquiry (MBL + port) or typed in. */}
+        <div className="amount-block-title detail-subhead">IGM details</div>
+        <div className="field-grid">
+            <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
+            <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
+            <EditField label="Voyage" field="voyage" s={s} onChange={onChange} />
+            <EditField label="Cont (IGM)" field="cont" s={s} onChange={onChange} />
+            <EditField label="MBL Date" field="mbl_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.mbl_date)} />
+            <EditField label="HBL Date" field="hbl_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.hbl_date)} />
+            <EditField label="GW (IGM)" field="gw" s={s} onChange={onChange} />
+            <EditField label="Total Pkg" field="total_pkg" s={s} onChange={onChange} />
+            <EditField label="Pkg Code" field="pkg_code" s={s} onChange={onChange} />
+        </div>
         <div className="detail-wide-foot">
           <HssEditor shipment={s} onChange={onChange} />
           <div className="detail-remarks">

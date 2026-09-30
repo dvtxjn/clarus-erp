@@ -736,3 +736,21 @@ The client will pick features they like from other software and feed them in. Re
 - NEXT (in order): P1 alerts ("d" deadlines, free days incl. Delhi FPOD, missing documents), P1 phone proforma, P5 FPOD
   day count. Later: receipt agent. Skipped for now: Tally (with the accountant), reports, change history. P6: smaller
   items + housekeeping.
+
+## ✅ P1 Alerts — dashboard "Needs attention" (2026-09-30, branch `feature/alerts`)
+- `GET /shipments/alerts` (app/alerts.py, pure functions + tests/test_alerts.py). Live shipments (no Cleared Date), port-scoped.
+- **deadline**: ETA marked "d" → move to CFS by ETA − 4 days; warns 3 days ahead.
+- **free_days**: 14 free days at the POD, INW = day 1; warns from 3 days left, "over" after. **Sea ports only
+  (INMUN1, INNSA1)** — inland (Panipat INDWN6, Garhi INGHR6, …): INW is the sea-port inward, free days start at the
+  FPOD after rail → wait for the client's **FPOD inward sheet** (P5).
+- **documents**: BE not filed, ETA ≤ 7 days or already inward, basic checklist documents (non-optional) missing.
+- Dashboard card lists them (Overdue / Urgent / Soon), filter by kind, every row shows Job, client, BL and BE.
+- Overview: **IGM details** block (IGM date, line no, voyage, cont, MBL/HBL date, GW, pkgs, pkg code) — internal
+  fields, kept OFF the tracker (their tracker columns stay removed).
+
+## 📝 Auto IGM (client, 2026-09-30) — to plan
+- Client's earlier script `playwright_igm_v2.py` (repo root, NOT committed — has an old Sheet ID / key path):
+  ICEGATE public Sea IGM enquiry by **MBL + port code** → IGM no/date, INW, line no, voyage, GW (+unit), pkgs,
+  pkg code, containers; remarks on HBL / container-count / non-KGS mismatches. Only rows without INW, ETA ≤ 4 days.
+- ERP version: read shipments from the ERP (no Google Sheet), write the fields above, run **every ~6 h** (Cloud
+  Scheduler → job endpoint). **FPOD IGM** (a second IGM for inland) — later.

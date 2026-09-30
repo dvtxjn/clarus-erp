@@ -12,6 +12,7 @@ import {
   updateProformaLineItem,
   fillProformaFromShipment,
   getInvoice,
+  getInvoicePdfFile,
   downloadInvoice,
   listOrganizations,
   restoreProformaLine,
@@ -20,7 +21,8 @@ import { useSaveShipment } from "./useSaveShipment";
 import { OrganizationForm } from "./DailyUpdates";
 import FinalInvoicesPanel from "./FinalInvoicesPanel";
 import { useConfirm } from "./ConfirmDialog";
-import type { Proforma, ChargeMasterEntry, Shipment, ChargeCategory, InvoiceView, Organization } from "./types";
+import type { Proforma, ChargeMasterEntry, Shipment, ChargeCategory, InvoiceView, InvoiceLine, Organization } from "./types";
+import { usePhone } from "./usePhone";
 
 export default function ProformaPanel({
   shipment,
@@ -373,6 +375,9 @@ function ProformaVersion({
   const confirm = useConfirm();
   const draft = proforma.status === "draft";
   const [pane, setPane] = useState<"proforma" | "final">("proforma");
+  const phone = usePhone();
+  const [preview, setPreview] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   // The invoice layout is rebuilt server-side after every change
   useEffect(() => {
@@ -487,57 +492,43 @@ function ProformaVersion({
   const saveLine = (lineId: number, changes: Parameters<typeof updateProformaLineItem>[2]) =>
     run(() => updateProformaLineItem(proforma.id, lineId, changes));
 
-  return (
-    // split pane (client, 2026-09-30): everything you do on the left, one uniform column;
-    // the invoice on the right — or the final invoices made from it
-    <div className="proforma-version pf-split">
-      <aside className="pf-left">
-        {side}
-          <div className="invoice-actions">
-            {draft && (
-              <button
-                onClick={handleFill}
-                disabled={busy}
-                title="Add Agency, Examination, Customs Duty (+ challan interest), Stamp Duty, CFS, Royalty (HSS) and shipping line from what the shipment knows; refreshes Customs / Stamp Duty"
-              >
-                Fill / refresh from shipment
-              </button>
-            )}
-            <button className="btn-secondary" onClick={() => handleDownload("xlsx")} disabled={!!downloading}>
-              {downloading === "xlsx" ? "Preparing…" : "Download Excel"}
-            </button>
-            <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading}>
-              {downloading === "pdf" ? "Preparing…" : "Download PDF"}
-            </button>
-            {draft && proforma.line_items.length > 0 && (
-              <button
-                onClick={async () => {
-                  if (
-                    invoice?.customs_duty?.source === "be" &&
-                    !(await confirm({
-                      title: "No duty challan",
-                      message:
-                        "There's no duty challan or OOC copy for this BE, so the interest is unknown and Customs Duty is only the BE amount. Upload the challan and Fill / refresh first, or mark as sent anyway?",
-                      confirmLabel: "Mark as sent anyway",
-                    }))
-                  )
-                    return;
-                  run(() => updateProformaStatus(proforma.id, "sent")).catch(() => {});
-                }}
-              >
-                Mark as Sent
-              </button>
-            )}
-            {draft && (
-              <span className="field-note">
-                Click any shaded cell to edit it. Draft lines update themselves when documents or the challan change — except
-                ones you've edited (marked ✎).
-              </span>
-            )}
-          </div>
+  async function markSent() {
+    if (
+      invoice?.customs_duty?.source === "be" &&
+      !(await confirm({
+        title: "No duty challan",
+        message:
+          "There's no duty challan or OOC copy for this BE, so the interest is unknown and Customs Duty is only the BE amount. Upload the challan and Fill / refresh first, or mark as sent anyway?",
+        confirmLabel: "Mark as sent anyway",
+      }))
+    )
+      return;
+    run(() => updateProformaStatus(proforma.id, "sent")).catch(() => {});
+  }
 
-          {error && <div role="alert" className="invoice-error">{error}</div>}
-          {draft && (proforma.suppressed?.length ?? 0) > 0 && (
+  // phone: hand the PDF to the share sheet (WhatsApp, mail…); desktops / no share support: download it
+  async function sharePdf() {
+    setSharing(true);
+    setError(null);
+    try {
+      const file = await getInvoicePdfFile(proforma.id);
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: file.name });
+        } catch (e) {
+          if ((e as DOMException)?.name !== "AbortError") await downloadInvoice(proforma.id, "pdf"); // share refused: download
+        }
+      } else {
+        await downloadInvoice(proforma.id, "pdf");
+      }
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  const removedBlock = draft && (proforma.suppressed?.length ?? 0) > 0 && (
             <div className="removed-lines">
               <span>Removed from this proforma (not updated automatically):</span>
               {proforma.suppressed!.map((key) => (
@@ -549,8 +540,8 @@ function ProformaVersion({
                 </span>
               ))}
             </div>
-          )}
-          {fillResult && (
+          );
+  const fillBlock = fillResult && (
             <div className="fill-result">
               <div>
                 <strong>Added:</strong> {fillResult.added.length ? fillResult.added.join(", ") : "nothing new"}
@@ -571,11 +562,10 @@ function ProformaVersion({
                 Dismiss
               </button>
             </div>
-          )}
-
-          {draft && (
+          );
+  const addForm = draft && (
             <form className="add-shipment-form" onSubmit={handleAdd}>
-              <select value={chargeId} onChange={(e) => selectCharge(e.target.value ? Number(e.target.value) : "")}>
+              <select aria-label="Charge" value={chargeId} onChange={(e) => selectCharge(e.target.value ? Number(e.target.value) : "")}>
                 <option value="">Select charge…</option>
                 {pickable.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -586,6 +576,7 @@ function ProformaVersion({
               </select>
               <input
                 id="proforma-rate"
+                aria-label="Rate"
                 placeholder="Rate"
                 type="number"
                 step="0.01"
@@ -594,6 +585,7 @@ function ProformaVersion({
                 required
               />
               <input
+                aria-label="Quantity"
                 placeholder="Qty"
                 type="number"
                 step="0.01"
@@ -637,7 +629,122 @@ function ProformaVersion({
                 </button>
               )}
             </form>
+          );
+  const sheet = (editable: boolean) =>
+    invoice && (
+      <InvoiceSheet
+        invoice={invoice}
+        editable={editable}
+        onSave={saveLine}
+        onSaveProforma={(changes) => run(() => updateProforma(proforma.id, changes))}
+        onRemove={(id) => run(() => removeProformaLineItem(proforma.id, id)).catch(() => {})}
+      />
+    );
+
+  if (phone) {
+    // phone (client, 2026-09-30): one column — total, big actions, the charge lines as a tappable list;
+    // the A4 page is a read-only preview; the PDF goes out through the phone's share sheet
+    return (
+      <div className="proforma-version m-proforma">
+        {side}
+        <div className="m-total">
+          <span className="m-total-label">{invoice?.grand_total_label ?? "Grand total"}</span>
+          <strong>{invoice ? `₹${inr(invoice.grand_total)}` : "…"}</strong>
+          <span className={`final-status s-${proforma.status === "sent" ? "issued" : "draft"}`}>{proforma.status}</span>
+        </div>
+        <div className="m-actions">
+          <button onClick={sharePdf} disabled={sharing}>
+            {sharing ? "Preparing PDF…" : "Share PDF"}
+          </button>
+          <button className="btn-secondary" onClick={() => setPreview(true)} disabled={!invoice}>
+            Preview
+          </button>
+          {draft && (
+            <button className="btn-secondary" onClick={handleFill} disabled={busy}>
+              Fill / refresh
+            </button>
           )}
+          {draft && proforma.line_items.length > 0 && (
+            <button className="btn-secondary" onClick={markSent}>
+              Mark as sent
+            </button>
+          )}
+        </div>
+        {error && <div role="alert" className="invoice-error">{error}</div>}
+        {invoice && <DutyNotice invoice={invoice} />}
+        {removedBlock}
+        {fillBlock}
+        {invoice ? (
+          <PhoneLines
+            invoice={invoice}
+            editable={draft}
+            onSave={saveLine}
+            onRemove={(id) => run(() => removeProformaLineItem(proforma.id, id))}
+          />
+        ) : (
+          <p className="field-note">Loading the proforma…</p>
+        )}
+        {addForm}
+        <details className="m-finals">
+          <summary>Final invoices (tax + reimbursement)</summary>
+          {finals}
+        </details>
+        {preview && (
+          <div className="m-preview" role="dialog" aria-modal="true" aria-label="Proforma preview">
+            <div className="m-preview-bar">
+              <button type="button" className="btn-secondary" onClick={() => setPreview(false)}>
+                Close
+              </button>
+              <button type="button" onClick={sharePdf} disabled={sharing}>
+                {sharing ? "Preparing PDF…" : "Share PDF"}
+              </button>
+            </div>
+            <InvoicePreview>{sheet(false)}</InvoicePreview>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    // split pane (client, 2026-09-30): everything you do on the left, one uniform column;
+    // the invoice on the right — or the final invoices made from it
+    <div className="proforma-version pf-split">
+      <aside className="pf-left">
+        {side}
+          <div className="invoice-actions">
+            {draft && (
+              <button
+                onClick={handleFill}
+                disabled={busy}
+                title="Add Agency, Examination, Customs Duty (+ challan interest), Stamp Duty, CFS, Royalty (HSS) and shipping line from what the shipment knows; refreshes Customs / Stamp Duty"
+              >
+                Fill / refresh from shipment
+              </button>
+            )}
+            <button className="btn-secondary" onClick={() => handleDownload("xlsx")} disabled={!!downloading}>
+              {downloading === "xlsx" ? "Preparing…" : "Download Excel"}
+            </button>
+            <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading}>
+              {downloading === "pdf" ? "Preparing…" : "Download PDF"}
+            </button>
+            {draft && proforma.line_items.length > 0 && (
+              <button onClick={markSent}>
+                Mark as Sent
+              </button>
+            )}
+            {draft && (
+              <span className="field-note">
+                Click any shaded cell to edit it. Draft lines update themselves when documents or the challan change — except
+                ones you've edited (marked ✎).
+              </span>
+            )}
+          </div>
+
+          {error && <div role="alert" className="invoice-error">{error}</div>}
+          {removedBlock}
+          {fillBlock}
+          {addForm}
 
         <div className="pf-finals-link">
           <span>Final invoices (tax + reimbursement)</span>
@@ -661,17 +768,7 @@ function ProformaVersion({
       <InvoicePreview>
           {invoice && <DutyNotice invoice={invoice} />}
 
-          {!invoice ? (
-            <div className="tracker-empty">Loading invoice…</div>
-          ) : (
-            <InvoiceSheet
-              invoice={invoice}
-              editable={draft}
-              onSave={saveLine}
-              onSaveProforma={(changes) => run(() => updateProforma(proforma.id, changes))}
-              onRemove={(id) => run(() => removeProformaLineItem(proforma.id, id)).catch(() => {})}
-            />
-          )}
+          {!invoice ? <div className="tracker-empty">Loading invoice…</div> : sheet(draft)}
       </InvoicePreview>
         )}
       </section>
@@ -1181,6 +1278,149 @@ function InvoicePreview({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Phone: the proforma's charge lines as a list (the A4 cells are too small to tap).
+ * Tap a line to change its description, rate or quantity, or remove it (drafts only).
+ */
+function PhoneLines({
+  invoice,
+  editable,
+  onSave,
+  onRemove,
+}: {
+  invoice: InvoiceView;
+  editable: boolean;
+  onSave: (lineId: number, changes: { description?: string; rate?: number; quantity?: number }) => Promise<void>;
+  onRemove: (lineId: number) => Promise<void>;
+}) {
+  const [open, setOpen] = useState<InvoiceLine | null>(null);
+  return (
+    <div className="m-lines">
+      {/* empty sections are noise on a small screen */}
+      {invoice.sections.every((sec) => sec.lines.length === 0) && (
+        <p className="field-note">No charges yet: use Fill / refresh, or add one below.</p>
+      )}
+      {invoice.sections.filter((sec) => sec.lines.length > 0).map((sec) => (
+        <section key={sec.category} className="m-lines-section">
+          <header>
+            <span>
+              {sec.title}
+              {!sec.counts_in_total && <span className="m-lines-note"> · not in total</span>}
+            </span>
+            <strong>₹{inr(sec.subtotal)}</strong>
+          </header>
+          {(
+            <ul>
+              {sec.lines.map((l) => (
+                <li key={l.id}>
+                  <button type="button" className="m-line" disabled={!editable} onClick={() => setOpen(l)}>
+                    <span className="m-line-desc">
+                      {l.description || "—"}
+                      {l.is_manual && <span className="inv-manual" aria-label="edited by hand" />}
+                    </span>
+                    <span className="m-line-calc">
+                      {Number(l.quantity) !== 1 && `${Number(l.quantity).toLocaleString("en-IN")} × `}₹{inr(l.rate)}
+                      {Number(l.gst_amount) > 0 && ` + GST ₹${inr(l.gst_amount)}`}
+                    </span>
+                    <strong className="m-line-total">₹{inr(l.total)}</strong>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ))}
+      <div className="m-grand">
+        <span>{invoice.grand_total_label}</span>
+        <strong>₹{inr(invoice.grand_total)}</strong>
+      </div>
+      {open && <LineSheet line={open} onClose={() => setOpen(null)} onSave={onSave} onRemove={onRemove} />}
+    </div>
+  );
+}
+
+function LineSheet({
+  line,
+  onClose,
+  onSave,
+  onRemove,
+}: {
+  line: InvoiceLine;
+  onClose: () => void;
+  onSave: (lineId: number, changes: { description?: string; rate?: number; quantity?: number }) => Promise<void>;
+  onRemove: (lineId: number) => Promise<void>;
+}) {
+  const [description, setDescription] = useState(line.description ?? "");
+  const [rate, setRate] = useState(String(Number(line.rate)));
+  const [quantity, setQuantity] = useState(String(Number(line.quantity)));
+  const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    const changes: { description?: string; rate?: number; quantity?: number } = {};
+    if (description.trim() !== (line.description ?? "")) changes.description = description.trim();
+    if (Number(rate) !== Number(line.rate)) changes.rate = Number(rate);
+    if (Number(quantity) !== Number(line.quantity)) changes.quantity = Number(quantity);
+    if (!Object.keys(changes).length) return onClose();
+    setBusy(true);
+    try {
+      await onSave(line.id, changes);
+      onClose();
+    } catch {
+      setBusy(false); // the error shows above the lines
+    }
+  }
+
+  async function remove() {
+    if (!(await confirm({ title: "Remove this line?", message: `${line.description ?? "This charge"} comes off the proforma.`, confirmLabel: "Remove", danger: true })))
+      return;
+    setBusy(true);
+    try {
+      await onRemove(line.id);
+      onClose();
+    } catch {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="m-sheet-backdrop m-sheet-open" onClick={onClose}>
+      <form className="m-sheet" role="dialog" aria-modal="true" aria-label="Edit line" onClick={(e) => e.stopPropagation()} onSubmit={save}>
+        <label className="m-field">
+          Description
+          <input value={description} onChange={(e) => setDescription(e.target.value)} autoComplete="off" />
+        </label>
+        <div className="m-field-row">
+          <label className="m-field">
+            Rate (₹)
+            <input type="number" inputMode="decimal" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} required />
+          </label>
+          <label className="m-field">
+            Quantity
+            <input type="number" inputMode="decimal" step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
+          </label>
+        </div>
+        <p className="field-note">
+          Amount ₹{inr((Number(rate) || 0) * (Number(quantity) || 0))} · GST{" "}
+          {line.gst_is_actual ? `₹${inr(line.gst_amount)} (actual, from the invoice)` : `${Number(line.gst_rate)}%`}
+        </p>
+        <div className="m-sheet-actions">
+          <button type="button" className="btn-secondary link-danger" onClick={remove} disabled={busy}>
+            Remove
+          </button>
+          <button type="button" className="btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" disabled={busy}>
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import LoginPage from "./LoginPage";
 import AppLayout from "./AppLayout";
 import DashboardPage from "./DashboardPage";
 import ShipmentGridPage from "./ShipmentGridPage";
+import MobileShipmentList from "./MobileShipmentList";
+import { usePhone } from "./usePhone";
 import ShipmentDetailPage from "./ShipmentDetailPage";
 import RatesPage from "./RatesPage";
 import DeletedPage from "./DeletedPage";
@@ -13,6 +15,11 @@ import UsersPage from "./UsersPage";
 import InvoicesPage from "./InvoicesPage";
 import SettingsPage from "./SettingsPage";
 import { UploadQueueProvider } from "./uploadQueue";
+
+/** The tracker grid on a desk, shipment cards on a phone. */
+function ShipmentsRoute() {
+  return usePhone() ? <MobileShipmentList /> : <ShipmentGridPage />;
+}
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -44,7 +51,7 @@ export default function App() {
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/shipments" element={<ShipmentGridPage />} />
+            <Route path="/shipments" element={<ShipmentsRoute />} />
             <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
             <Route path="/invoices" element={<AdminRoute><InvoicesPage /></AdminRoute>} />
             <Route path="/rates" element={<AdminRoute><RatesPage /></AdminRoute>} />

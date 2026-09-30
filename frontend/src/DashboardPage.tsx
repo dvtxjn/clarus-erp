@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDashboardSummary } from "./api";
 import DailyUpdates from "./DailyUpdates";
+import NeedsAttention from "./NeedsAttention";
 import { useAuth } from "./AuthContext";
 import { formatPort, usePorts } from "./ports";
 import { SHIPMENT_STATUS_LABELS, type DashboardSummary, type ShipmentStatus } from "./types";
@@ -122,6 +123,8 @@ export default function DashboardPage() {
               )}
             </Link>
           </div>
+
+          <NeedsAttention />
 
           <div className="dash-pair">
             <section className="dash-card">

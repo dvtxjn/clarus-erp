@@ -9,7 +9,10 @@ from app.core.locking import locked_shipment_or_404
 from app.core.deps import get_current_user, require_admin, require_billing_access, get_user_allowed_ports
 from app.core.enums import ShipmentStatus, UserRole
 from app.invoice.autofill import refresh_draft_proformas
+from app import alerts
 from app.models.audit import AuditLogEntry
+from app.models.document import ShipmentDocument
+from app.routers.documents import COMBINED_DOCUMENTS
 from app.models.shipment import Shipment
 from app.models.soft_delete import soft_delete
 from app.models.tracker_column import TrackerColumn
@@ -183,6 +186,36 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
             for s in upcoming
         ],
     }
+
+
+@router.get("/alerts")
+def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Dashboard "Needs attention": "d" deadlines, free days at the POD, documents missing
+    before the BE is filed (app/alerts.py). Live shipments only, same port scoping as the grid."""
+    q = db.query(Shipment).filter(Shipment.is_archived.is_(False), Shipment.cleared_date.is_(None))
+    allowed_ports = get_user_allowed_ports(current_user)
+    if allowed_ports is not None:
+        q = q.filter(Shipment.port.in_(allowed_ports))
+    live = q.all()
+    uploaded: dict[int, set] = {s.id: set() for s in live}
+    if live:
+        for shipment_id, doc_type in db.query(ShipmentDocument.shipment_id, ShipmentDocument.document_type).filter(
+            ShipmentDocument.shipment_id.in_(list(uploaded))
+        ):
+            uploaded[shipment_id].add(doc_type)
+            uploaded[shipment_id].update(COMBINED_DOCUMENTS.get(doc_type, ()))
+    today = date.today()
+    found = []
+    for s in live:
+        required = [(rd.document_type, rd.optional) for rd in (s.hs_code.required_documents if s.hs_code else [])]
+        for alert in (
+            alerts.deadline_alert(s, today),
+            alerts.free_days_alert(s, today),
+            alerts.documents_alert(s, required, uploaded[s.id], today),
+        ):
+            if alert:
+                found.append(alert)
+    return alerts.sort_alerts(found)
 
 
 @router.post("/rename-value", response_model=ClientRenameOut)
