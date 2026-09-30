@@ -481,7 +481,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 }
 .grid-toast-ok { color: var(--ok-fg); border-color: var(--ok-border); background: var(--ok-bg); }
 .grid-toast-error { color: var(--bad-fg); border-color: var(--bad-border); background: var(--bad-bg); }
-.add-shipment-form select { padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius); }
+.add-shipment-form select { max-width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: var(--radius); }
 
 .view-switch { display: inline-flex; border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
 .view-switch-btn {
@@ -1312,6 +1312,11 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .pf-left .version-tabs .tab.active { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-accent-text); }
 .pf-left .proforma-toolbar-actions, .pf-left .invoice-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .pf-left .proforma-toolbar-actions > button, .pf-left .invoice-actions > button { width: 100%; }
+/* long labels ("+ Buyer invoice (Mahrishi Recyclers)") wrap and the button grows, never clip (client, 2026-09-30) */
+.pf-left .proforma-toolbar-actions > button, .pf-left .invoice-actions > button {
+  height: auto; min-height: 30px; line-height: 1.3; padding: 5px 10px; white-space: normal; overflow-wrap: anywhere; min-width: 0;
+}
+.m-proforma .proforma-toolbar-actions > button { min-width: 0; white-space: normal; overflow-wrap: anywhere; height: auto; min-height: 44px; }
 .pf-left .invoice-actions .field-note { flex-basis: 100%; font-size: 12px; }
 .pf-left .add-shipment-form { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, .7fr) minmax(0, 1.3fr); gap: 6px; }
 .pf-left .add-shipment-form > * { min-width: 0; width: 100%; }
@@ -1380,6 +1385,32 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .inv-register thead th { white-space: normal; vertical-align: bottom; }
 .inv-register td.inv-ship > span { color: var(--color-text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .inv-register td.inv-wrap { white-space: normal; min-width: 110px; max-width: 170px; overflow-wrap: anywhere; }
+/* click an invoice → preview, then on to the shipment or the invoice inside it (client, 2026-09-30) */
+.inv-register tr.inv-row { cursor: pointer; }
+.inv-register tr.inv-row:hover td { background: var(--color-hover); }
+.inv-register tr.inv-row.is-picked:hover td { background: var(--color-accent-soft); }
+.inv-peek-open { background: none; border: none; box-shadow: none; padding: 0; font: inherit; color: var(--color-accent-text); text-align: left; cursor: pointer; }
+.inv-peek-open:hover:not(:disabled) { background: none; text-decoration: underline; }
+.inv-register .inv-peek-open.inv-no { font-weight: 600; }
+.inv-peek { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
+  width: min(980px, 100%); height: min(92vh, 1200px); display: flex; flex-direction: column; overflow: hidden; overscroll-behavior: contain; }
+.inv-peek-bar { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; border-bottom: 1px solid var(--color-border); flex-wrap: wrap; }
+.inv-peek-bar h2 { margin: 0; font-size: 14px; flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+.inv-peek-actions { display: flex; align-items: center; gap: 8px; }
+.btn-link { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: var(--radius); font-size: 13px; font-weight: 500;
+  text-decoration: none; background: var(--color-accent); color: var(--on-accent); border: 1px solid var(--color-accent); white-space: nowrap; }
+.btn-link:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+.btn-link.btn-secondary { background: var(--color-surface); color: var(--color-text); border-color: var(--color-border); }
+.btn-link.btn-secondary:hover { background: var(--color-subtle); border-color: var(--color-text-muted); }
+.inv-peek-body { flex: 1; min-height: 0; background: var(--color-subtle); display: flex; }
+.inv-peek-body iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+.inv-peek-body .tracker-empty { margin: auto; }
+@media (max-width: 720px) {
+  .inv-peek-backdrop { padding: 0; }
+  .inv-peek { height: 100dvh; border-radius: 0; border: 0; }
+  .inv-peek-actions { width: 100%; }
+  .inv-peek-actions .btn-link { flex: 1; justify-content: center; height: 44px; }
+}
 .inline-check { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
 
 /* Page not found */

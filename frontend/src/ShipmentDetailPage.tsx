@@ -4,7 +4,7 @@ import { nextStep } from "./clearanceFlow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
-import { useParams, useSearchParams, Link } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getShipment, listDocuments, refreshIcegate, setCostInclusion } from "./api";
 import { useSaveShipment } from "./useSaveShipment";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
@@ -47,8 +47,32 @@ export default function ShipmentDetailPage() {
   const [params, setParams] = useSearchParams();
   const fromUrl = params.get("tab") as Tab | null;
   const tab: Tab = fromUrl && TABS.includes(fromUrl) ? fromUrl : "overview";
-  const setTab = (t: Tab) => setParams(t === "overview" ? {} : { tab: t });
+  // switching tabs replaces the entry, so Back leaves the shipment instead of stepping through its tabs
+  const setTab = (t: Tab) => setParams(t === "overview" ? {} : { tab: t }, { replace: true });
   return <ShipmentDetail shipmentId={Number(id)} tab={tab} onTab={setTab} />;
+}
+
+/**
+ * Back goes where you came from — the Invoicing page, Dashboard, a search… — not always the
+ * tracker (client, 2026-09-30). Opened fresh (new tab, bookmark) there's nowhere to go back to,
+ * so it falls back to the tracker. Still a real link, for ⌘/middle-click.
+ */
+function BackLink() {
+  const navigate = useNavigate();
+  const canGoBack = (window.history.state?.idx ?? 0) > 0;
+  return (
+    <Link
+      to="/shipments"
+      className="back-link"
+      onClick={(e) => {
+        if (!canGoBack || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        navigate(-1);
+      }}
+    >
+      {canGoBack ? "← Back" : "← Shipment Tracker"}
+    </Link>
+  );
 }
 
 /**
@@ -125,9 +149,7 @@ export function ShipmentDetail({
           </span>
         </div>
       ) : (
-        <Link to="/shipments" className="back-link">
-          ← Back to Shipment Tracker
-        </Link>
+        <BackLink />
       )}
 
       <header className="detail-header">

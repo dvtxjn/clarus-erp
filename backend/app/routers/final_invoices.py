@@ -109,7 +109,7 @@ def _register_row(inv: FinalInvoice, settled: Optional[dict] = None) -> dict:
     return {
         "id": inv.id, "kind": inv.kind, "status": inv.status, "number": inv.number, "seq": inv.seq, "fy": inv.fy,
         "invoice_date": d["invoice_date"], "customer": d["customer"].get("name") or "", "gstin": d["customer"].get("gstin") or "",
-        "shipment_id": inv.shipment_id, "job": s.job if s else None, "mbl": s.mbl if s else None,
+        "shipment_id": inv.shipment_id, "proforma_id": inv.proforma_id, "job": s.job if s else None, "mbl": s.mbl if s else None,
         "be_no": (inv.header or {}).get("be_no"), "not_applicable": d["not_applicable"],
         "taxable": d["totals"]["sub_taxable"], "non_gst": d["totals"]["sub_non_gst"], "gst": d["totals"]["gst"],
         "net_payable": d["totals"]["net_payable"], "irn": inv.irn,

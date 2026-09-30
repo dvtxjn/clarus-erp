@@ -237,6 +237,13 @@ export async function downloadFinalInvoice(id: number): Promise<void> {
   await downloadBlob(`/final-invoices/${id}.pdf`, `invoice-${id}.pdf`);
 }
 
+/** One invoice's PDF as a local URL, for the preview on the Invoicing page (revoke it when done). */
+export async function invoicePdfUrl(kind: "final" | "proforma", id: number): Promise<string> {
+  const path = kind === "final" ? `/final-invoices/${id}.pdf` : `/proformas/${id}/invoice.pdf`;
+  const res = await client.get(path, { responseType: "blob" });
+  return URL.createObjectURL(res.data);
+}
+
 async function downloadBlob(path: string, fallback: string): Promise<void> {
   const res = await client.get(path, { responseType: "blob" });
   const header = res.headers["x-filename"];
@@ -696,6 +703,7 @@ export interface RegisterRow {
   customer: string;
   gstin: string;
   shipment_id: number;
+  proforma_id: number | null;
   job: string | null;
   mbl: string | null;
   be_no: string | null;

@@ -1,8 +1,9 @@
 import { tabKeys } from "./tabKeys";
 import { fmtDay } from "./dates";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Receivables from "./Receivables";
+import InvoicePeek, { type PeekTarget } from "./InvoicePeek";
 import {
   downloadInvoiceRegister,
   downloadInvoicesPdf,
@@ -22,6 +23,13 @@ import {
  */
 const inr = (v: string | number) => Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const date = fmtDay;
+
+/** A click anywhere on a row previews that invoice — except on its checkbox or links. */
+const rowClick = (open: () => void) => (e: MouseEvent) => {
+  if ((e.target as HTMLElement).closest("a, button, input, label")) return;
+  if (window.getSelection()?.toString()) return;
+  open();
+};
 
 /** "Any month" + the last 24 months, newest first (a native month box renders as dashes when empty). */
 function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -91,6 +99,8 @@ function FinalRegister() {
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [peek, setPeek] = useState<PeekTarget | null>(null);
+  const closePeek = useCallback(() => setPeek(null), []);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -120,6 +130,14 @@ function FinalRegister() {
       return n;
     });
   const all = rows ?? [];
+  const openFinal = (r: RegisterRow) =>
+    setPeek({
+      kind: "final",
+      id: r.id,
+      title: `${r.kind === "tax" ? "Tax" : "Reimbursement"} invoice ${r.number ?? "(draft)"} · ${r.customer}`,
+      shipmentId: r.shipment_id,
+      proformaId: r.proforma_id,
+    });
   const chosen = picked.size ? all.filter((r) => picked.has(r.id)) : all;
 
   async function run(what: string, fn: () => Promise<void>) {
@@ -174,6 +192,7 @@ function FinalRegister() {
       </div>
       {error && <div className="auth-error">{error}</div>}
 
+      {peek && <InvoicePeek target={peek} onClose={closePeek} />}
       <div className="tracker-grid-wrap">
         <table className="tracker-grid inv-register">
           <thead>
@@ -214,12 +233,18 @@ function FinalRegister() {
               </tr>
             )}
             {all.map((r) => (
-              <tr key={r.id} className={picked.has(r.id) ? "is-picked" : ""}>
+              <tr
+                key={r.id}
+                className={`inv-row${picked.has(r.id) ? " is-picked" : ""}`}
+                onClick={rowClick(() => openFinal(r))}
+              >
                 <td>
                   <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Choose ${r.number ?? "draft"}`} />
                 </td>
                 <td>
-                  <span className="inv-no" translate="no">{r.number ?? "Draft"}</span>{" "}
+                  <button type="button" className="inv-no inv-peek-open" translate="no" onClick={() => openFinal(r)} title="Preview">
+                    {r.number ?? "Draft"}
+                  </button>{" "}
                   <span className={`doc-marker ${r.kind === "tax" ? "doc-marker-basic" : "doc-marker-cfs"}`}>
                     {r.kind === "tax" ? "TAX" : "REIMB"}
                   </span>
@@ -283,6 +308,8 @@ function ProformaRegister() {
   const [years, setYears] = useState<string[]>([]);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [peek, setPeek] = useState<PeekTarget | null>(null);
+  const closePeek = useCallback(() => setPeek(null), []);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -302,6 +329,14 @@ function ProformaRegister() {
   // latest version of each proforma only, unless asked (or filtering to Superseded)
   const [oldVersions, setOldVersions] = useState(false);
   const everything = rows ?? [];
+  const openProforma = (r: ProformaRegisterRow) =>
+    setPeek({
+      kind: "proforma",
+      id: r.id,
+      title: `Proforma ${r.name || `v${r.version}`}${r.job ? ` · Job ${r.job}` : ""}${r.bill_to ? ` · ${r.bill_to}` : ""}`,
+      shipmentId: r.shipment_id,
+      proformaId: r.id,
+    });
   const all = oldVersions || f.status === "superseded" ? everything : everything.filter((r) => r.status !== "superseded");
   const hiddenOld = everything.length - all.length;
   const chosen = picked.size ? all.filter((r) => picked.has(r.id)) : all;
@@ -351,6 +386,7 @@ function ProformaRegister() {
         </span>
       </div>
       {error && <div className="auth-error">{error}</div>}
+      {peek && <InvoicePeek target={peek} onClose={closePeek} />}
       <div className="tracker-grid-wrap">
         <table className="tracker-grid inv-register">
           <thead>
@@ -387,7 +423,11 @@ function ProformaRegister() {
               </tr>
             )}
             {all.map((r) => (
-              <tr key={r.id} className={picked.has(r.id) ? "is-picked" : ""}>
+              <tr
+                key={r.id}
+                className={`inv-row${picked.has(r.id) ? " is-picked" : ""}`}
+                onClick={rowClick(() => openProforma(r))}
+              >
                 <td>
                   <input
                     type="checkbox"
@@ -409,7 +449,10 @@ function ProformaRegister() {
                   <span translate="no">BE {r.be_no ?? "—"}</span>
                 </td>
                 <td>
-                  {r.role && <span className={`party-badge party-${r.role}`}>{r.role}</span>} {r.name || `v${r.version}`}
+                  {r.role && <span className={`party-badge party-${r.role}`}>{r.role}</span>}{" "}
+                  <button type="button" className="inv-peek-open" onClick={() => openProforma(r)} title="Preview">
+                    {r.name || `v${r.version}`}
+                  </button>
                 </td>
                 <td>{date(r.date)}</td>
                 <td className="inv-wrap">{r.bill_to ?? "—"}</td>

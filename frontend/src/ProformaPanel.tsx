@@ -1,6 +1,6 @@
 import { tabKeys } from "./tabKeys";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   listProformas,
   createProforma,
@@ -38,6 +38,9 @@ export default function ProformaPanel({
   const [charges, setCharges] = useState<ChargeMasterEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<number | null>(null);
+  // "Go to invoice" from the Invoicing page lands here with ?pf=<proforma>&pane=final
+  const [params] = useSearchParams();
+  const wanted = useRef({ pf: Number(params.get("pf")) || null, final: params.get("pane") === "final" });
 
   function refresh() {
     setLoading(true);
@@ -45,7 +48,10 @@ export default function ProformaPanel({
       .then(([p, c]) => {
         setProformas(p);
         setCharges(c);
-        if (p.length && activeId === null) setActiveId(p[0].id);
+        if (p.length && activeId === null) {
+          const pf = wanted.current.pf;
+          setActiveId(pf && p.some((x) => x.id === pf) ? pf : p[0].id);
+        }
       })
       .finally(() => setLoading(false));
   }
@@ -219,6 +225,7 @@ export default function ProformaPanel({
           containerCount={containerCount(shipment)}
           weightKg={weightKg(shipment)}
           isHss={!!shipment.is_hss}
+          initialPane={wanted.current.final && active.id === wanted.current.pf ? "final" : "proforma"}
           prefillChargeId={prefillChargeId}
           onPrefilled={() => setPrefillChargeId(null)}
           onChange={(updated) => {
@@ -351,6 +358,7 @@ function ProformaVersion({
   containerCount,
   weightKg,
   isHss,
+  initialPane,
   prefillChargeId,
   onPrefilled,
   onChange,
@@ -362,6 +370,7 @@ function ProformaVersion({
   containerCount: number | null;
   weightKg: number | null;
   isHss: boolean;
+  initialPane: "proforma" | "final";
   prefillChargeId: number | null;
   onPrefilled: () => void;
   onChange: (p: Proforma) => void;
@@ -375,7 +384,7 @@ function ProformaVersion({
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
   const confirm = useConfirm();
   const draft = proforma.status === "draft";
-  const [pane, setPane] = useState<"proforma" | "final">("proforma");
+  const [pane, setPane] = useState<"proforma" | "final">(initialPane);
   const phone = usePhone();
   const [preview, setPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
