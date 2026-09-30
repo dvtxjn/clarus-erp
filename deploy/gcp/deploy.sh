@@ -36,4 +36,11 @@ if ! gcloud scheduler jobs describe erp-icegate --location "$REGION" >/dev/null 
   gcloud scheduler jobs create http erp-icegate --location "$REGION" --schedule "20 */6 * * *" --time-zone "Asia/Kolkata" \
     --uri "$URL/internal/jobs/icegate" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 1800s --quiet
 fi
+# Google Sheets copy of the tracker every 15 min (Sheets API on, job created once)
+gcloud services enable sheets.googleapis.com picker.googleapis.com drive.googleapis.com --quiet
+if ! gcloud scheduler jobs describe erp-sheets-mirror --location "$REGION" >/dev/null 2>&1; then
+  TOKEN=$(gcloud secrets versions access latest --secret=job-token)
+  gcloud scheduler jobs create http erp-sheets-mirror --location "$REGION" --schedule "*/15 * * * *" --time-zone "Asia/Kolkata" \
+    --uri "$URL/internal/jobs/sheets-mirror" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 300s --quiet
+fi
 echo "Released: $URL"

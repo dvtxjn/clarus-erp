@@ -53,10 +53,13 @@ def start() -> None:
     from app.igm import batch
 
     asyncio.create_task(_every("icegate", 6 * 3600, batch.run_auto))  # IGM / ICD read-out, every 6 h
+    from app import sheets_mirror
+
+    asyncio.create_task(_every("sheets-mirror", 900, sheets_mirror.run_job))  # view-only Sheets copy, 15 min
 
 
 JOBS = {"backup": "app.backups:backup_if_due", "drive-retry": "app.storage:retry_pending",
-        "icegate": "app.igm.batch:run_auto"}
+        "icegate": "app.igm.batch:run_auto", "sheets-mirror": "app.sheets_mirror:run_job"}
 
 
 def run_named(name: str) -> bool:

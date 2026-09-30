@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
 import { EInvoicing, InvoiceNumbering } from "./RatesPage";
 import IcegateSettings from "./IcegateSettings";
+import SheetsMirrorSettings from "./SheetsMirrorSettings";
 
 /**
  * Settings (client, 2026-09-30, P0): what used to be fixed in the code — company and bank
@@ -90,6 +91,9 @@ export default function SettingsPage() {
       </Section>
       <Section title="ICEGATE" hint="IGM and ICD BL status read automatically; backfill on command.">
         <IcegateSettings />
+      </Section>
+      <Section title="Google Sheets copy" hint="A view-only copy of the tracker, so the office can still see shipments if the ERP is down.">
+        <SheetsMirrorSettings />
       </Section>
       <Section title="Storage & backups" hint="Set on the server — shown here so you can check them.">
         {sys ? (

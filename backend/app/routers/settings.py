@@ -78,3 +78,58 @@ def system_status(db: Session = Depends(get_db), _user: User = Depends(require_a
         "environment": os.getenv("APP_ENV", "development"),
         "public_url": os.getenv("PUBLIC_URL") or None,
     }
+
+
+class MirrorIn(BaseModel):
+    link: str
+
+
+def _mirror_out(db: Session) -> dict:
+    from app import sheets_mirror
+    from app.storage.drive_client import DriveError, load_service_account
+
+    try:
+        email = load_service_account().get("client_email")
+    except (DriveError, OSError, ValueError):
+        email = None
+    row = db.get(AppSetting, sheets_mirror.KEY)
+    st = dict(row.value or {}) if row else {}
+    sid = st.get("sheet_id")
+    return {**st, "link": f"https://docs.google.com/spreadsheets/d/{sid}" if sid else None,
+            "share_with": email, "every_minutes": 15}
+
+
+@router.get("/sheets-mirror")
+def sheets_mirror_status(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Settings → Google Sheets copy of the tracker."""
+    return _mirror_out(db)
+
+
+@router.put("/sheets-mirror")
+def set_sheets_mirror(payload: MirrorIn, db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Paste the sheet link (empty = stop the copy). Writes once straight away so a sharing mistake shows."""
+    from app import sheets_mirror
+
+    sid = sheets_mirror.sheet_id_from(payload.link) if payload.link.strip() else None
+    if payload.link.strip() and not sid:
+        raise HTTPException(status_code=422, detail="That doesn't look like a Google Sheets link")
+    row = db.get(AppSetting, sheets_mirror.KEY)
+    old = dict(row.value or {}) if row else {}
+    if row is None:
+        row = AppSetting(key=sheets_mirror.KEY)
+        db.add(row)
+    # a different sheet starts from a clean slate (no rows to blank)
+    row.value = {"sheet_id": sid} if sid != old.get("sheet_id") else {**old, "sheet_id": sid}
+    record_change(db, "app_settings", 0, sheets_mirror.KEY, old.get("sheet_id"), sid, user.id)
+    db.commit()
+    if sid:
+        sheets_mirror.mirror(db)
+    return _mirror_out(db)
+
+
+@router.post("/sheets-mirror/run")
+def run_sheets_mirror(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    from app import sheets_mirror
+
+    sheets_mirror.mirror(db)
+    return _mirror_out(db)

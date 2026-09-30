@@ -875,3 +875,26 @@ export async function getIcegateStatus(): Promise<IcegateStatus> {
   const { data } = await client.get("/icegate/status");
   return data;
 }
+
+// Settings → Google Sheets copy of the tracker (view-only, every 15 minutes)
+export interface SheetsMirror {
+  sheet_id?: string | null;
+  link: string | null;
+  share_with: string | null;
+  every_minutes: number;
+  last_run?: string | null;
+  last_error?: string | null;
+  rows?: number;
+}
+export async function getSheetsMirror(): Promise<SheetsMirror> {
+  const { data } = await client.get("/sheets-mirror");
+  return data;
+}
+export async function setSheetsMirror(link: string): Promise<SheetsMirror> {
+  const { data } = await client.put("/sheets-mirror", { link });
+  return data;
+}
+export async function runSheetsMirror(): Promise<SheetsMirror> {
+  const { data } = await client.post("/sheets-mirror/run");
+  return data;
+}

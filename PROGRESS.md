@@ -847,3 +847,9 @@ The client will pick features they like from other software and feed them in. Re
 6. **Restore drill**: restore last backup into a scratch DB once, prove it works.
 7. The Sheets mirror (A) as the manual fallback.
 Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
+
+## Google Sheets copy of the tracker (2026-09-30, P0) — built
+- `backend/app/sheets_mirror.py`: service account writes live shipments (no invoice figures) to the "Tracker" tab of one sheet, every 15 min (in-app timer + Cloud Scheduler `erp-sheets-mirror`). Leftover rows are blanked by writing empties; never deletes (client refuses DELETE / :clear / delete* requests).
+- Settings → Google Sheets copy: paste link (admin only), Update now, last run / problem. State in app_settings["sheets_mirror"].
+- deploy.sh enables sheets / picker / drive APIs and creates the scheduler job once.
+- Priorities set: uptime hardening next ("we will get into this"), ICEGATE mail reader P1, rest parked.
