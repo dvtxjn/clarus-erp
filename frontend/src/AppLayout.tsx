@@ -20,6 +20,7 @@ const ICONS = {
   invoices: icon(<><path d="M4 1.5h8v13l-2-1.3-2 1.3-2-1.3-2 1.3z" /><path d="M6 5h4M6 7.5h4M6 10h2.5" /></>),
   deleted: icon(<><path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9" /></>),
   settings: icon(<><circle cx="8" cy="8" r="2.2" /><path d="M8 1.8v1.6M8 12.6v1.6M1.8 8h1.6M12.6 8h1.6M3.6 3.6l1.1 1.1M11.3 11.3l1.1 1.1M3.6 12.4l1.1-1.1M11.3 4.7l1.1-1.1" /></>),
+  mail: icon(<><rect x="1.5" y="3" width="13" height="10" rx="1.5" /><path d="M2 4l6 5 6-5" /></>),
   users: icon(<><circle cx="6" cy="5.5" r="2.5" /><path d="M1.5 13.5c.6-2.4 2.3-3.5 4.5-3.5s3.9 1.1 4.5 3.5M11 3.5a2.2 2.2 0 0 1 0 4.2M12.5 10.3c1 .5 1.7 1.6 2 3.2" /></>),
 };
 
@@ -34,7 +35,7 @@ function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICO
 
 // browser tab title per page, e.g. "Shipments · Clarus ERP"
 const PAGE_TITLES: Record<string, string> = {
-  dashboard: "Dashboard", shipments: "Shipments", invoices: "Invoicing", rates: "Rates",
+  dashboard: "Dashboard", shipments: "Shipments", "customs-mail": "Customs mail", invoices: "Invoicing", rates: "Rates",
   users: "Users", deleted: "Recently deleted", settings: "Settings",
 };
 
@@ -116,6 +117,7 @@ export default function AppLayout() {
         <nav className="app-nav" aria-label="Main">
           <Item to="/dashboard" label="Dashboard" i="dashboard" />
           <Item to="/shipments" label="Shipments" i="shipments" />
+          <Item to="/customs-mail" label="Customs mail" i="mail" />
           {/* Invoicing is admin-only (client, 2026-09-29) */}
           {user?.role === "admin" && (
             <>
@@ -193,6 +195,7 @@ export default function AppLayout() {
           <div className="m-sheet" role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}>
             {user?.role === "admin" && (
               <nav className="m-sheet-links" aria-label="More pages">
+                <NavLink to="/customs-mail">{ICONS.mail}Customs mail</NavLink>
                 <NavLink to="/rates">{ICONS.rates}Rates</NavLink>
                 <NavLink to="/users">{ICONS.users}Users</NavLink>
                 <NavLink to="/deleted">{ICONS.deleted}Recently deleted</NavLink>

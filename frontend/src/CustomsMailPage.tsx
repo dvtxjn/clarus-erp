@@ -1,0 +1,243 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import {
+  importIcegateMails,
+  linkIcegateMail,
+  listIcegateMails,
+  listShipments,
+  resolveIcegateMail,
+  type IcegateMail,
+} from "./api";
+import { useAuth } from "./AuthContext";
+import { istTime } from "./customsMail";
+
+type View = "all" | "attention" | "unmatched";
+
+function errorText(e: unknown): string {
+  const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  return typeof d === "string" ? d : "Something went wrong — try again.";
+}
+
+/**
+ * Customs mail (client, 2026-09-30, P1): every ICEGATE mail read into the ERP — B/E Ack, Neg Ack, Query,
+ * Examination Order, Processed B/E, Out of Charge, Gate Pass, eSANCHIT, login OTPs — matched to shipments.
+ * Until the mailbox is read automatically, the admin drops the mails here (.eml files, or Gmail's zip).
+ */
+export default function CustomsMailPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+  const [params, setParams] = useSearchParams();
+  const view = (params.get("view") as View) || "all";
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [rows, setRows] = useState<IcegateMail[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(() => {
+    listIcegateMails({ attention: view === "attention", unmatched: view === "unmatched" })
+      .then(setRows)
+      .catch(() => setRows([]));
+  }, [view]);
+
+  useEffect(() => {
+    load();
+    const t = window.setInterval(load, 60_000); // OTPs are only useful fresh
+    return () => window.clearInterval(t);
+  }, [load]);
+
+  function setView(v: View) {
+    const p = new URLSearchParams(params);
+    if (v === "all") p.delete("view");
+    else p.set("view", v);
+    setParams(p, { replace: true });
+  }
+
+  async function upload(files: FileList | null) {
+    if (!files?.length) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await importIcegateMails(Array.from(files));
+      setMsg({
+        ok: true,
+        text: `${r.new} new mail${r.new === 1 ? "" : "s"} read${r.duplicates ? ` · ${r.duplicates} already read` : ""}${
+          r.ignored ? ` · ${r.ignored} not from ICEGATE (skipped)` : ""
+        } · ${r.matched} matched to shipments · ${r.attention} need attention`,
+      });
+      load();
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function done(m: IcegateMail) {
+    try {
+      const x = await resolveIcegateMail(m.id);
+      setRows((r) => r?.map((y) => (y.id === x.id ? x : y)) ?? null);
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    }
+  }
+
+  async function linkTo(m: IcegateMail) {
+    const job = window.prompt(`Which job is this mail for?\n${m.label}: ${m.summary ?? ""}`)?.trim();
+    if (!job) return;
+    try {
+      const found = (await listShipments({ search: job, include_archived: true })).filter((s) => s.job === job);
+      if (found.length !== 1) {
+        setMsg({ ok: false, text: found.length ? `More than one shipment has job ${job}.` : `No shipment with job ${job}.` });
+        return;
+      }
+      await linkIcegateMail(m.id, found[0].id);
+      setMsg({ ok: true, text: `Put on job ${job}.` });
+      load();
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    }
+  }
+
+  const shown = useMemo(() => {
+    const t = q.trim().toUpperCase();
+    if (!rows || !t) return rows;
+    return rows.filter((m) =>
+      [m.be_no, m.job_no, m.shipment_job, m.mbl, m.shipment_mbl, m.client, m.label, m.summary].some((v) =>
+        (v ?? "").toUpperCase().includes(t),
+      ),
+    );
+  }, [rows, q]);
+
+  return (
+    <div className="rates-page customs-page">
+      <div>
+        <h1>Customs mail</h1>
+        <p className="field-note">
+          ICEGATE mails, matched to their shipments by BE no, job no or BL. Acks fill the BE no; BE, OOC and gate pass copies are
+          added as documents; queries and rejections go to Needs attention. Times are India time.
+        </p>
+      </div>
+
+      {isAdmin && (
+        <label className={`customs-drop${busy ? " is-busy" : ""}`}>
+          <input
+            type="file"
+            multiple
+            accept=".eml,.zip,message/rfc822,application/zip"
+            disabled={busy}
+            onChange={(e) => {
+              upload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <span>{busy ? "Reading mails…" : "Add mails: choose .eml files or the zip from Gmail (Forward as attachment → Download all)"}</span>
+        </label>
+      )}
+      {msg && (
+        <div role="status" aria-live="polite" className={`grid-toast ${msg.ok ? "grid-toast-ok" : "grid-toast-error"}`}>
+          {msg.text}
+        </div>
+      )}
+
+      <div className="customs-bar">
+        <div className="seg-switch" role="group" aria-label="Show">
+          {(
+            [
+              ["all", "All"],
+              ["attention", "Needs attention"],
+              ...(isAdmin ? [["unmatched", "Not matched"]] : []),
+            ] as [View, string][]
+          ).map(([v, label]) => (
+            <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => setView(v)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="search"
+          aria-label="Search mails"
+          placeholder="BE no, job, BL, client…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          spellCheck={false}
+        />
+      </div>
+
+      {shown === null ? (
+        <div className="tracker-empty">Loading…</div>
+      ) : shown.length === 0 ? (
+        <div className="tracker-empty">
+          {view === "attention" ? "Nothing needs attention." : view === "unmatched" ? "Every mail is on its shipment." : "No mails yet."}
+        </div>
+      ) : (
+        <div className="tracker-grid-wrap">
+          <table className="tracker-grid customs-table">
+            <thead>
+              <tr>
+                <th>Received</th>
+                <th>Type</th>
+                <th>Job</th>
+                <th>BE no</th>
+                <th>BL</th>
+                <th>Client</th>
+                <th>What it says</th>
+                <th aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((m) => {
+                const open = m.attention && !m.resolved_at;
+                const otp = m.kind === "otp" ? (m.detail?.otp as string | undefined) : undefined;
+                return (
+                  <tr key={m.id} className={open ? "is-open" : undefined}>
+                    <td className="num">{istTime(m.received_at)}</td>
+                    <td>
+                      {m.label}
+                      {open && <span className="customs-flag">Needs attention</span>}
+                    </td>
+                    <td>
+                      {m.shipment_id ? (
+                        <Link to={`/shipments/${m.shipment_id}#customs`}>{m.shipment_job ? `Job ${m.shipment_job}` : "Open"}</Link>
+                      ) : m.kind === "otp" ? (
+                        "—"
+                      ) : (
+                        <span className="customs-unmatched">{m.job_no ? `Job ${m.job_no}?` : "Not matched"}</span>
+                      )}
+                    </td>
+                    <td className="num" translate="no">{m.shipment_be_no || m.be_no || "—"}</td>
+                    <td translate="no">{m.shipment_mbl || m.mbl || "—"}</td>
+                    <td>{m.client || "—"}</td>
+                    <td className="customs-says">
+                      {otp ? (
+                        <span className="customs-otp">
+                          <b translate="no">{otp}</b> valid 10 min from {istTime(m.received_at)}
+                        </span>
+                      ) : m.kind === "otp" ? (
+                        m.detail?.otp_expired ? "Expired" : "Admin only"
+                      ) : (
+                        m.summary
+                      )}
+                      {m.resolved_at && m.attention && <span className="customs-done">Done{m.resolved_note ? ` · ${m.resolved_note}` : ""}</span>}
+                    </td>
+                    <td className="customs-actions">
+                      {open && (
+                        <button type="button" className="btn-secondary" onClick={() => done(m)}>
+                          Mark done
+                        </button>
+                      )}
+                      {isAdmin && !m.shipment_id && m.kind !== "otp" && (
+                        <button type="button" className="btn-secondary" onClick={() => linkTo(m)}>
+                          Link to job…
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

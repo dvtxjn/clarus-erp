@@ -221,6 +221,16 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
         ):
             if alert:
                 found.append(alert)
+    # ICEGATE mails still open: B/E Negative Ack, B/E Query, failed filing
+    from app.models.icegate_mail import IcegateMail
+
+    by_id = {s.id: s for s in live}
+    if by_id:
+        for m in (db.query(IcegateMail).filter(IcegateMail.attention.is_(True), IcegateMail.resolved_at.is_(None),
+                                               IcegateMail.shipment_id.in_(list(by_id)))
+                  .order_by(IcegateMail.received_at)):
+            found.append({**alerts._base(by_id[m.shipment_id]), "kind": "icegate", "severity": "urgent", "days_left": 0,
+                          "due": None, "mail_id": m.id, "text": f"{m.label}: {m.summary}"})
     return alerts.sort_alerts(found)
 
 

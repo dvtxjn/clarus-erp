@@ -20,3 +20,4 @@ from app.models.backup import BackupRun  # noqa: F401
 from app.models.settings import AppSetting  # noqa: F401
 from app.models.payment import Payment, PaymentAllocation  # noqa: F401
 from app.models.container import ShipmentContainer  # noqa: F401
+from app.models.icegate_mail import IcegateMail  # noqa: F401

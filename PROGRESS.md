@@ -853,3 +853,16 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
 - Settings → Google Sheets copy: paste link (admin only), Update now, last run / problem. State in app_settings["sheets_mirror"].
 - deploy.sh enables sheets / picker / drive APIs and creates the scheduler job once.
 - Priorities set: uptime hardening next ("we will get into this"), ICEGATE mail reader P1, rest parked.
+
+## ICEGATE mail reader (2026-09-30, P1) — built (manual import; automatic mailbox read next)
+- Mailbox: ICEGATE mails go to bharatgtanna@gmail.com (personal Gmail). Samples in samples/icegate-mails (gitignored).
+- `app/icegate_mail/parse.py`: every ICEGATE mail -> event (LiveImpex names: B/E Ack / Neg Ack / Query / Exam Order /
+  Processed B/E / Out of Charge / Gate Pass, eSANCHIT, Submit, Supplementary, Filing failed, login OTP; others kept by subject).
+  Reads the .ack/.nak/.out/.dms flat files (\x1d separated): Ack F-record = port|job|job date|BE no|BE date.
+- `apply.py`: match BE no (+port) -> job no (+port; LiveImpex job = tracker job, verified) -> MBL/HBL (eSANCHIT);
+  Ack fills BE no/date (blanks only); Exam Order sets under examination; BE/OOC/gatepass PDFs go through the normal
+  document upload (_store_document); gate pass cleared date = mail day (IST). Neg Ack / Query / failed filing =
+  attention until done (auto-closed by a later Ack / OOC). Unmatched mails retried on every import. OTP: admin only, 10 min.
+- UI: Customs mail page (/customs-mail, upload .eml / Gmail zip), Customs timeline on the shipment Overview,
+  "ICEGATE" in Needs attention. Migration 0044 (icegate_mails).
+- Real samples (44 mails): 34 matched; jobs 174/175 not in the local tracker yet.

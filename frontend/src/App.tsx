@@ -1,3 +1,4 @@
+import CustomsMailPage from "./CustomsMailPage";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import type { ReactNode } from "react";
 import { AuthProvider, useAuth } from "./AuthContext";
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/shipments" element={<ShipmentsRoute />} />
             <Route path="/shipments/:id" element={<ShipmentDetailPage />} />
+            <Route path="/customs-mail" element={<CustomsMailPage />} />
             <Route path="/invoices" element={<AdminRoute><InvoicesPage /></AdminRoute>} />
             <Route path="/rates" element={<AdminRoute><RatesPage /></AdminRoute>} />
             <Route path="/settings" element={<AdminRoute><SettingsPage /></AdminRoute>} />

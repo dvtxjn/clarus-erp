@@ -1,3 +1,4 @@
+import CustomsTimeline from "./CustomsTimeline";
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
@@ -415,6 +416,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD — at the bottom,
           its length varies with the number of containers (client, 2026-09-30) */}
       {inland && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} portLabel={formatPort(s.port, ports) || s.port!} onRefreshed={onChange} />}
+      <CustomsTimeline shipmentId={s.id} />
     </div>
   );
 }

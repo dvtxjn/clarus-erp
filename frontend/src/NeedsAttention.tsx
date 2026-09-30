@@ -6,6 +6,7 @@ const KINDS: { id: AlertKind; label: string }[] = [
   { id: "deadline", label: "Deadlines" },
   { id: "free_days", label: "Free days" },
   { id: "documents", label: "Not attached" },
+  { id: "icegate", label: "ICEGATE" },
 ];
 const SEVERITY = { overdue: "Overdue", urgent: "Urgent", soon: "Soon" } as const;
 const SHOWN = 6;
@@ -63,17 +64,17 @@ export default function NeedsAttention() {
         <p className="field-note">Checking deadlines, free days and documents…</p>
       ) : alerts.length === 0 ? (
         <p className="attention-empty">
-          All clear: no “d” deadlines, free-day limits or missing documents in the next few days.
+          All clear: no “d” deadlines, free-day limits, missing documents or open ICEGATE queries.
         </p>
       ) : (
         <>
           <ul className="attention-list">
             {shown.map((a) => (
-              <li key={`${a.kind}-${a.shipment_id}`} className={`attention-row sev-${a.severity}`}>
+              <li key={`${a.kind}-${a.shipment_id}-${a.mail_id ?? ""}`} className={`attention-row sev-${a.severity}`}>
                 <span className="attention-sev">{SEVERITY[a.severity]}</span>
                 <span className="attention-who">
                   <span className="attention-line">
-                    <Link className="attention-job" to={`/shipments/${a.shipment_id}${a.kind === "documents" ? "?tab=documents" : ""}`}>
+                    <Link className="attention-job" to={`/shipments/${a.shipment_id}${a.kind === "documents" ? "?tab=documents" : a.kind === "icegate" ? "#customs" : ""}`}>
                       {a.job ? `Job ${a.job}` : "No job no."}
                     </Link>
                     <span className="attention-client">{a.client || a.consignee || "—"}</span>

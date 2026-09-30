@@ -1778,3 +1778,34 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .check-chip:hover:not(:disabled) { border-color: var(--color-text-muted); color: var(--color-text); background: var(--color-surface); }
 .check-chip.is-on { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
 .check-chip.is-on:hover:not(:disabled) { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-fg); }
+
+/* Customs mail (ICEGATE mails) — page + shipment timeline */
+.customs-drop { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border: 1px dashed var(--color-border); border-radius: var(--radius-lg); cursor: pointer; color: var(--color-text-muted); font-size: var(--text-sm); }
+.customs-drop:hover, .customs-drop:focus-within { border-color: var(--color-accent); color: var(--color-text); }
+.customs-drop input { max-width: 220px; font-size: var(--text-xs); }
+.customs-drop.is-busy { opacity: .7; cursor: progress; }
+.customs-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.customs-bar input[type="search"] { flex: 1; min-width: 200px; max-width: 320px; }
+.customs-table td { vertical-align: top; }
+.customs-table tr.is-open td { background: var(--bad-bg); }
+.customs-says { max-width: 420px; overflow-wrap: anywhere; }
+.customs-actions { white-space: nowrap; }
+.customs-actions button { height: 28px; padding: 0 10px; font-size: var(--text-xs); }
+.customs-actions button + button { margin-left: 6px; }
+.customs-flag { margin-left: 6px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--bad-bg); color: var(--bad-fg); border: 1px solid var(--bad-border); white-space: nowrap; }
+.customs-done { display: block; font-size: var(--text-xs); color: var(--ok-fg); }
+.customs-unmatched { color: var(--warn-fg); }
+.customs-otp b { font-family: var(--font-mono); font-size: var(--text-md); letter-spacing: .12em; margin-right: 6px; }
+.customs-list { list-style: none; margin: 0; padding: 0; }
+.customs-row { display: grid; grid-template-columns: 128px 1fr auto; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--color-border); align-items: start; }
+.customs-row:first-child { border-top: 0; }
+.customs-row.is-open .customs-label { color: var(--bad-fg); }
+.customs-when { font-size: var(--text-xs); color: var(--color-text-muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.customs-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.customs-label { font-weight: 600; font-size: var(--text-sm); }
+.customs-summary, .customs-notes { font-size: var(--text-xs); color: var(--color-text-muted); overflow-wrap: anywhere; }
+.customs-btn { height: 28px; padding: 0 10px; font-size: var(--text-xs); }
+@media (max-width: 767px) {
+  .customs-row { grid-template-columns: 1fr; }
+  .customs-drop input { max-width: 100%; }
+}

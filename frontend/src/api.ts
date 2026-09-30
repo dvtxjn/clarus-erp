@@ -122,7 +122,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return data;
 }
 
-export type AlertKind = "deadline" | "free_days" | "documents";
+export type AlertKind = "deadline" | "free_days" | "documents" | "icegate";
 export interface ShipmentAlert {
   kind: AlertKind;
   severity: "overdue" | "urgent" | "soon";
@@ -137,6 +137,7 @@ export interface ShipmentAlert {
   consignee: string | null;
   port: string | null;
   missing?: string[];
+  mail_id?: number;
 }
 
 /** Dashboard "Needs attention": "d" deadlines, free days at the POD, documents before BE filing. */
@@ -896,5 +897,60 @@ export async function setSheetsMirror(link: string): Promise<SheetsMirror> {
 }
 export async function runSheetsMirror(): Promise<SheetsMirror> {
   const { data } = await client.post("/sheets-mirror/run");
+  return data;
+}
+
+// ICEGATE mails (customs mail feed, shipment timeline)
+export interface IcegateMail {
+  id: number;
+  received_at: string | null;
+  kind: string;
+  label: string;
+  summary: string | null;
+  be_no: string | null;
+  be_date: string | null;
+  job_no: string | null;
+  port: string | null;
+  mbl: string | null;
+  detail: Record<string, unknown> | null;
+  notes: string[] | null;
+  shipment_id: number | null;
+  shipment_job: string | null;
+  shipment_mbl: string | null;
+  shipment_be_no: string | null;
+  client: string | null;
+  document_id: number | null;
+  attention: boolean;
+  resolved_at: string | null;
+  resolved_note: string | null;
+}
+export interface MailImportResult {
+  read: number;
+  new: number;
+  duplicates: number;
+  ignored: number;
+  matched: number;
+  attention: number;
+}
+export async function listIcegateMails(params: { attention?: boolean; unmatched?: boolean } = {}): Promise<IcegateMail[]> {
+  const { data } = await client.get("/icegate-mails", { params });
+  return data;
+}
+export async function shipmentIcegateMails(shipmentId: number): Promise<IcegateMail[]> {
+  const { data } = await client.get(`/shipments/${shipmentId}/icegate-mails`);
+  return data;
+}
+export async function importIcegateMails(files: File[]): Promise<MailImportResult> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  const { data } = await client.post("/icegate-mails/import", form);
+  return data;
+}
+export async function resolveIcegateMail(id: number, note?: string): Promise<IcegateMail> {
+  const { data } = await client.post(`/icegate-mails/${id}/resolve`, { note });
+  return data;
+}
+export async function linkIcegateMail(id: number, shipmentId: number): Promise<IcegateMail> {
+  const { data } = await client.post(`/icegate-mails/${id}/link`, { shipment_id: shipmentId });
   return data;
 }
