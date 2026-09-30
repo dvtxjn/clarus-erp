@@ -1236,44 +1236,72 @@ function InvoicePreview({ children }: { children: ReactNode }) {
     const c = content.current;
     if (!el || !c) return;
     const limit = A4_H - 76; // page margins + a little air
-    // Shrink the invoice to one page: the largest zoom z where the content, laid out z times
-    // wider, is at most one page tall. Measured unzoomed and written straight to the DOM, so
-    // the result doesn't feed back into the next measurement (that was the shaking).
+    const inner = A4_W - 56; // the page's content width (padding 28 px each side)
+    let fitted = ""; // what the last fit was for, so repeats are skipped
+    // Shrink the invoice to one page: the largest zoom z where the content, laid out 1/z
+    // times wider, is at most one page tall. Everything is measured on screen against the page
+    // itself, so it comes out the same whatever the browser's own zoom, CSS-zoom flavour or
+    // screen density; widths are in px (a % width is read differently under zoom by some
+    // Chrome versions, which cut the page off at the right).
     const fitContent = () => {
-      c.style.zoom = "1";
-      c.style.width = "100%";
-      let z = 1;
-      for (let i = 0; i < 4; i++) {
-        const h = c.scrollHeight;
-        if (h * z <= limit) break;
-        z = Math.floor((limit / h) * 1000) / 1000;
-        c.style.width = `${100 / z}%`;
+      const page = c.parentElement;
+      if (!page) return;
+      const unit = page.getBoundingClientRect().height / A4_H; // screen px per page px
+      if (!unit) return;
+      const key = `${c.textContent}|${c.getElementsByTagName("*").length}|${unit.toFixed(4)}`;
+      if (key === fitted) return;
+      fitted = key;
+      const tall = () => c.getBoundingClientRect().height / unit;
+      const wide = () => (c.clientWidth ? c.scrollWidth / c.clientWidth : 1);
+      const apply = (z: number) => {
+        c.style.width = `${Math.round(inner / z)}px`;
+        c.style.zoom = String(z);
+      };
+      apply(1);
+      let z = Math.min(1, 1 / wide(), limit / tall());
+      for (let i = 0; i < 6 && z < 1; i++) {
+        z = Math.floor(z * 1000) / 1000;
+        apply(z);
+        const over = Math.max(tall() / limit, wide());
+        if (over <= 1.001) break;
+        z = z / over;
       }
-      // the widened layout is shorter, so a slightly larger zoom may fit: settle downwards only
-      z = Math.min(1, Math.floor(Math.min(z, limit / c.scrollHeight) * 1000) / 1000);
-      c.style.width = z < 1 ? `${100 / z}%` : "100%";
-      c.style.zoom = String(z);
+      // the wider layout is shorter, so try a bit more zoom back (still has to fit)
+      if (z < 1) {
+        const up = Math.min(1, Math.floor((z * limit) / tall() * 1000) / 1000);
+        if (up > z + 0.005) {
+          apply(up);
+          if (tall() <= limit && wide() <= 1.001) z = up;
+          else apply(z);
+        }
+      }
     };
     const measure = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
       const h = Math.round(Math.max(480, window.innerHeight - top - 12));
-      setPaneH(h);
+      // only real changes: a 1-2 px wobble (scrollbar coming and going) must not re-lay out
+      setPaneH((old) => (Math.abs(old - h) > 2 ? h : old));
       const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 44) / A4_H);
-      setPageScale(mode === "fit" ? Math.round(Math.max(0.3, fit) * 100) / 100 : 1);
+      const next = mode === "fit" ? Math.round(Math.max(0.3, fit) * 50) / 50 : 1;
+      setPageScale((old) => (Math.abs(old - next) >= 0.02 ? next : old));
     };
     measure();
     fitContent();
-    // Refit only when the invoice's own text/rows change (runs before the paint, so no flash).
-    // Watching its size instead reacted to our own zoom and made some drafts flicker.
-    const mo = new MutationObserver(fitContent);
+    // Refit when the invoice's own text/rows change, before the paint (no flash). Changes that
+    // don't alter its text or rows (e.g. a browser extension touching the page) are skipped.
+    const soon = () => fitContent();
+    const mo = new MutationObserver(soon);
     mo.observe(c, { childList: true, subtree: true, characterData: true });
-    document.fonts?.ready.then(fitContent).catch(() => undefined);
-    const ro = new ResizeObserver(measure);
+    const refit = () => ((fitted = ""), soon());
+    document.fonts?.ready.then(refit).catch(() => undefined);
+    c.addEventListener("load", refit, true); // a logo image arriving late
+    const ro = new ResizeObserver(() => (measure(), soon()));
     ro.observe(el);
     window.addEventListener("resize", measure);
     return () => {
       mo.disconnect();
       ro.disconnect();
+      c.removeEventListener("load", refit, true);
       window.removeEventListener("resize", measure);
     };
   }, [mode]);
