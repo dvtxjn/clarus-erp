@@ -59,6 +59,8 @@ export default function RatesPage() {
   const [showRetired, setShowRetired] = useState(false);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [adding, setAdding] = useState(false);
+  const [q, setQ] = useState("");
+  const [section, setSection] = useState<ChargeCategory | "">("");
   // one section at a time instead of one long page (design refresh, 2026-09-29)
   const [params, setParams] = useSearchParams();
   const tab = (["standard", "licences", "hss"] as const).find((t) => t === params.get("tab")) ?? "standard";
@@ -78,7 +80,13 @@ export default function RatesPage() {
   }
 
   if (!charges) return <div className="tracker-empty">Loading…</div>;
-  const shown = charges.filter((c) => showRetired || c.is_active);
+  const needle = q.trim().toLowerCase();
+  const shown = charges.filter(
+    (c) =>
+      (showRetired || c.is_active) &&
+      (!section || c.category === section) &&
+      (!needle || [c.name, c.code, c.sac_code].some((v) => (v ?? "").toLowerCase().includes(needle))),
+  );
 
   return (
     <div className="rates-page">
@@ -107,6 +115,22 @@ export default function RatesPage() {
           </p>
         </div>
         <div className="rates-actions">
+          <input
+            type="search"
+            aria-label="Search charges"
+            placeholder="Search charge, code, SAC…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            spellCheck={false}
+          />
+          <select aria-label="Section" value={section} onChange={(e) => setSection(e.target.value as ChargeCategory | "")}>
+            <option value="">All sections</option>
+            {(Object.keys(SECTIONS) as ChargeCategory[]).map((k) => (
+              <option key={k} value={k}>
+                {SECTIONS[k]}
+              </option>
+            ))}
+          </select>
           <label className="toggle-row">
             <span>Show retired</span>
             <input type="checkbox" checked={showRetired} onChange={(e) => setShowRetired(e.target.checked)} />
@@ -130,12 +154,12 @@ export default function RatesPage() {
           <thead>
             <tr>
               <th>Charge</th>
+              <th className="num">Standard rate (₹)</th>
               <th>Code</th>
               <th>Section</th>
               <th>Basis</th>
               <th>SAC</th>
               <th className="num">GST %</th>
-              <th className="num">Standard rate (₹)</th>
               <th>Active</th>
             </tr>
           </thead>
@@ -146,6 +170,21 @@ export default function RatesPage() {
                 <tr key={c.id} className={c.is_active ? undefined : "rate-retired"}>
                   <td>
                     <TextInput value={c.name} disabled={!canEdit} onSave={(v) => save(c, { name: v }, "name")} />
+                  </td>
+                  <td className="num">
+                    {fixed ? (
+                      <span className="field-note">{fixed}</span>
+                    ) : (
+                      <TextInput
+                        value={c.default_rate == null ? "" : String(Number(c.default_rate))}
+                        placeholder="—"
+                        width={110}
+                        numeric
+                        allowEmpty
+                        disabled={!canEdit}
+                        onSave={(v) => save(c, { default_rate: v === "" ? null : Number(v) }, "standard rate")}
+                      />
+                    )}
                   </td>
                   <td className="rate-code">{c.code}</td>
                   <td>
@@ -194,21 +233,6 @@ export default function RatesPage() {
                       onSave={(v) => save(c, { gst_rate: Number(v) }, "GST %")}
                     />
                   </td>
-                  <td className="num">
-                    {fixed ? (
-                      <span className="field-note">{fixed}</span>
-                    ) : (
-                      <TextInput
-                        value={c.default_rate == null ? "" : String(Number(c.default_rate))}
-                        placeholder="—"
-                        width={110}
-                        numeric
-                        allowEmpty
-                        disabled={!canEdit}
-                        onSave={(v) => save(c, { default_rate: v === "" ? null : Number(v) }, "standard rate")}
-                      />
-                    )}
-                  </td>
                   <td>
                     <input
                       type="checkbox"
@@ -222,6 +246,16 @@ export default function RatesPage() {
                 </tr>
               );
             })}
+            {shown.length === 0 && (
+              <tr>
+                <td colSpan={8} className="field-note">
+                  No charges match.{" "}
+                  <button type="button" className="link-button" onClick={() => (setQ(""), setSection(""))}>
+                    Clear filters
+                  </button>
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

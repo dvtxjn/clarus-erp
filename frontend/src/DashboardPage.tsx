@@ -68,12 +68,13 @@ export default function DashboardPage() {
   const monthName = (ym: string) => new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   const find = (list: typeof summary.containers_by_eta_month, ym: string) => list.find((m) => m.month === ym);
   const arriving = find(summary.containers_by_eta_month, summary.this_month);
-  const clearedPick = clearedMonth ?? summary.last_month;
+  const clearedPick = clearedMonth ?? summary.this_month;
   const cleared = find(summary.containers_cleared_by_month, clearedPick);
+  const clearedNow = find(summary.containers_cleared_by_month, summary.this_month);
   const lastCleared = find(summary.containers_cleared_by_month, summary.last_month);
   const both = (m: { containers: number; tonnes: number } | undefined) =>
     `${fmtMetric(m?.containers ?? 0, "containers")} cntr · ${fmtMetric(m?.tonnes ?? 0, "tonnes")}`;
-  const clearedMonths = [...new Set([summary.last_month, ...summary.containers_cleared_by_month.map((m) => m.month)])].sort().reverse();
+  const clearedMonths = [...new Set([summary.this_month, summary.last_month, ...summary.containers_cleared_by_month.map((m) => m.month)])].sort().reverse();
 
   return (
     <div className="dashboard-page">
@@ -107,9 +108,11 @@ export default function DashboardPage() {
               <div className="stat-sub">{both(arriving)}</div>
             </div>
             <Link to="/shipments?tab=cleared" className="stat-card stat-card-link">
-              <div className="stat-value">{fmtMetric(lastCleared?.[metric] ?? 0, metric)}</div>
-              <div className="stat-label">Cleared in {monthName(summary.last_month)}</div>
-              <div className="stat-sub">{both(lastCleared)}</div>
+              <div className="stat-value">{fmtMetric(clearedNow?.[metric] ?? 0, metric)}</div>
+              <div className="stat-label">Cleared in {monthName(summary.this_month)}</div>
+              <div className="stat-sub">
+                {both(clearedNow)} · {monthName(summary.last_month)}: {fmtMetric(lastCleared?.[metric] ?? 0, metric)}
+              </div>
             </Link>
             <Link
               to="/shipments?tab=ongoing"
@@ -137,7 +140,7 @@ export default function DashboardPage() {
               <div className="dash-card-head">
                 {metric === "containers" ? "Containers" : "Gross weight"} cleared, month on month
               </div>
-              <MonthlyBars data={summary.containers_cleared_by_month} metric={metric} colors={colors} highlight={summary.last_month} portLabel={portLabel} />
+              <MonthlyBars data={summary.containers_cleared_by_month} metric={metric} colors={colors} highlight={summary.this_month} portLabel={portLabel} />
             </section>
           </div>
 
@@ -154,11 +157,11 @@ export default function DashboardPage() {
                 </select>
               </div>
               {/* always containers (client, 2026-09-29) */}
-              <PortDonut month={cleared} metric="containers" colors={colors} portLabel={portLabel} />
+              <PortDonut month={cleared} metric="containers" colors={colors} portLabel={portLabel} emptyText={`Nothing cleared in ${monthName(clearedPick)}.`} />
             </section>
             <section className="dash-card">
               <div className="dash-card-head">Arriving in {monthName(summary.this_month)} by port (ETA)</div>
-              <PortDonut month={arriving} metric={metric} colors={colors} portLabel={portLabel} />
+              <PortDonut month={arriving} metric={metric} colors={colors} portLabel={portLabel} emptyText={`Nothing arriving in ${monthName(summary.this_month)}.`} />
             </section>
           </div>
         </div>

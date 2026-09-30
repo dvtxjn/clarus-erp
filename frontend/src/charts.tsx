@@ -37,7 +37,9 @@ export function MonthlyBars({
   const bw = Math.min(56, (W - gap * (data.length + 1)) / data.length);
   const x0 = (W - (bw * data.length + gap * (data.length - 1))) / 2;
   const scale = (v: number) => (v / max) * (H - top - bottom);
+  const shown = [...new Set(data.flatMap((m) => Object.keys(m.by_port).filter((p) => m.by_port[p][metric] > 0)))].sort();
   return (
+    <>
     <svg viewBox={`0 0 ${W} ${H}`} className="chart" role="img" aria-label={`${metric} per month`}>
       <line x1={0} x2={W} y1={H - bottom} y2={H - bottom} className="chart-axis" />
       {data.map((m, i) => {
@@ -69,6 +71,15 @@ export function MonthlyBars({
         );
       })}
     </svg>
+    <ul className="chart-legend" aria-label="Ports">
+      {shown.map((p) => (
+        <li key={p}>
+          <span className="legend-dot" style={{ background: colors[p] }} />
+          {portLabel(p)}
+        </li>
+      ))}
+    </ul>
+    </>
   );
 }
 
@@ -77,16 +88,19 @@ export function PortDonut({
   metric,
   colors,
   portLabel,
+  emptyText,
 }: {
   month: MonthFigures | undefined;
   metric: Metric;
   colors: Record<string, string>;
   portLabel: (p: string) => string;
+  emptyText?: string;
 }) {
   const entries = Object.entries(month?.by_port ?? {}).filter(([, v]) => v[metric] > 0);
   const total = entries.reduce((n, [, v]) => n + v[metric], 0);
   const R = 52, C = 2 * Math.PI * R;
   let offset = 0;
+  if (entries.length === 0) return <p className="tracker-subtitle chart-empty">{emptyText ?? "Nothing this month."}</p>;
   return (
     <div className="donut">
       <svg viewBox="0 0 140 140" className="donut-svg" role="img" aria-label="Share by port">
@@ -120,7 +134,6 @@ export function PortDonut({
         </text>
       </svg>
       <ul className="donut-legend">
-        {entries.length === 0 && <li className="tracker-subtitle">Nothing this month.</li>}
         {entries.map(([port, v]) => (
           <li key={port}>
             <span className="legend-dot" style={{ background: colors[port] }} />

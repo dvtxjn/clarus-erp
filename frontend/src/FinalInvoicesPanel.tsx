@@ -1,3 +1,4 @@
+import { fmtDay } from "./dates";
 import { useEffect, useState } from "react";
 import {
   cancelFinalInvoice,
@@ -422,7 +423,7 @@ function FinalInvoiceEditor({
         {canAlter && (
           <span className="field-note">
             Can be altered until{" "}
-            {new Date(`${inv.alter_until}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            {fmtDay(inv.alter_until)}
           </span>
         )}
         <button className="btn-secondary" onClick={() => downloadFinalInvoice(inv.id).catch((e) => setMsg({ kind: "error", text: errorText(e) }))}>

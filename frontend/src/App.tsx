@@ -16,6 +16,7 @@ import HistoryPage from "./HistoryPage";
 import UsersPage from "./UsersPage";
 import InvoicesPage from "./InvoicesPage";
 import SettingsPage from "./SettingsPage";
+import NotFoundPage from "./NotFoundPage";
 import { UploadQueueProvider } from "./uploadQueue";
 
 /** The tracker grid on a desk, shipment cards on a phone. */
@@ -62,8 +63,9 @@ export default function App() {
             <Route path="/deleted" element={<AdminRoute><DeletedPage /></AdminRoute>} />
             <Route path="/history" element={<AdminRoute><HistoryPage /></AdminRoute>} />
             <Route path="/users" element={<AdminRoute><UsersPage /></AdminRoute>} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
         </UploadQueueProvider>
       </BrowserRouter>

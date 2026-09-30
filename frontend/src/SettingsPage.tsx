@@ -28,6 +28,31 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
+// blocks with unsaved edits: leaving the page (tab close or an in-app link) asks first (UX pass 2026-09-30)
+const unsaved = new Set<string>();
+function useLeaveGuard() {
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (unsaved.size) e.preventDefault();
+    };
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href]");
+      if (!unsaved.size || !a || e.defaultPrevented || e.metaKey || e.ctrlKey || (a as HTMLAnchorElement).target === "_blank") return;
+      if (!window.confirm("You have unsaved changes in Settings. Leave without saving?")) {
+        e.preventDefault();
+        e.stopPropagation();
+      } else unsaved.clear();
+    };
+    window.addEventListener("beforeunload", onUnload);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", onUnload);
+      document.removeEventListener("click", onClick, true);
+      unsaved.clear();
+    };
+  }, []);
+}
+
 /** Save / saved state for one block. */
 function useSave<T>(key: keyof AppSettings, initial: T | undefined, onSaved: (s: AppSettings) => void) {
   const [value, setValue] = useState<T | undefined>(initial);
@@ -35,6 +60,11 @@ function useSave<T>(key: keyof AppSettings, initial: T | undefined, onSaved: (s:
   const [busy, setBusy] = useState(false);
   useEffect(() => setValue(initial), [initial]);
   const dirty = JSON.stringify(value) !== JSON.stringify(initial);
+  useEffect(() => {
+    if (dirty) unsaved.add(String(key));
+    else unsaved.delete(String(key));
+    return () => void unsaved.delete(String(key));
+  }, [dirty, key]);
   const save = async (override?: T) => {
     setBusy(true);
     setMsg(null);
@@ -52,14 +82,17 @@ function useSave<T>(key: keyof AppSettings, initial: T | undefined, onSaved: (s:
 
 function SaveBar({ dirty, busy, msg, onSave, onReset }: { dirty: boolean; busy: boolean; msg: { ok: boolean; text: string } | null; onSave: () => void; onReset: () => void }) {
   return (
-    <div className="settings-save">
+    <div className={`settings-save${dirty ? " is-dirty" : ""}`}>
       <button disabled={!dirty || busy} onClick={onSave}>
         {busy ? "Saving…" : "Save"}
       </button>
       {dirty && (
-        <button className="btn-secondary" onClick={onReset}>
-          Undo changes
-        </button>
+        <>
+          <button className="btn-secondary" onClick={onReset}>
+            Undo changes
+          </button>
+          <span className="settings-unsaved">Unsaved changes</span>
+        </>
       )}
       {msg && <span role="status" className={msg.ok ? "settings-ok" : "auth-error"}>{msg.text}</span>}
     </div>
@@ -69,6 +102,7 @@ function SaveBar({ dirty, busy, msg, onSave, onReset }: { dirty: boolean; busy: 
 export default function SettingsPage() {
   const [s, setS] = useState<AppSettings | null>(null);
   const [sys, setSys] = useState<SystemStatus | null>(null);
+  useLeaveGuard();
   useEffect(() => {
     getSettings().then(setS);
     getSystemStatus().then(setSys).catch(() => setSys(null));
@@ -170,7 +204,7 @@ function CompanyBlock({ s, onSaved }: { s: AppSettings; onSaved: (s: AppSettings
         <label className="final-field settings-wide">
           <span>Address (one line per row)</span>
           <textarea
-            rows={2}
+            rows={Math.max(2, c.address_lines.length + 1)}
             value={c.address_lines.join("\n")}
             onChange={(e) => b.setValue({ ...c, address_lines: e.target.value.split("\n") })}
           />

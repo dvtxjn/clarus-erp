@@ -1,3 +1,4 @@
+import { fmtDay } from "./dates";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -20,8 +21,7 @@ import { useConfirm } from "./ConfirmDialog";
  */
 const inr = (v: string | number) => Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const n = (v: string | number | undefined) => Number(v || 0);
-const shortDate = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
+const shortDate = fmtDay; // one date style across invoicing
 const BUCKETS = ["0-30", "31-60", "61-90", "90+"];
 const MODES = ["NEFT", "RTGS", "IMPS", "Cheque", "UPI", "Cash", "Other"];
 

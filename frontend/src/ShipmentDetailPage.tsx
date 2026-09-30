@@ -1,4 +1,5 @@
 import CustomsTimeline from "./CustomsTimeline";
+import { nextStep } from "./clearanceFlow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
@@ -85,6 +86,12 @@ export function ShipmentDetail({
     Promise.all([reload(), docs]).finally(() => setLoading(false));
   }, [reload, shipmentId]);
 
+  // the tab title names the shipment (full page only; the peek panel leaves the tracker's title alone)
+  const job = shipment?.job;
+  useEffect(() => {
+    if (!peek && job) document.title = `Job ${job} · Clarus ERP`;
+  }, [peek, job]);
+
   if (loading) return <div className="tracker-empty">Loading…</div>;
   if (!shipment)
     return (
@@ -99,7 +106,7 @@ export function ShipmentDetail({
       {peek ? (
         <div className="peek-bar">
           {onFull ? (
-            <button type="button" className="peek-size" onClick={() => onFull(!full)} aria-pressed={full}>
+            <button type="button" className="peek-size btn-secondary" onClick={() => onFull(!full)} aria-pressed={full}>
               {full ? "⇥ Half view" : "⇤ Full width"}
             </button>
           ) : (
@@ -166,6 +173,8 @@ export function ShipmentDetail({
         <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
       </header>
 
+
+      <NextStepBar shipment={shipment} />
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -247,16 +256,28 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <Field label="Day" value={s.days} />
             <EditField label="License" field="license" s={s} onChange={onChange} />
             <EditField label="Containers" field="container" s={s} onChange={onChange} />
+            {s.port && (
+              <button
+                type="button"
+                className="link-button field-jump"
+                onClick={() => document.getElementById("shipment-containers")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                Container list ↓
+              </button>
+            )}
             <EditField label="Gross Wt" field="gross_wt" s={s} onChange={onChange} />
             <EditField label="Container Status" field="container_status" s={s} onChange={onChange} />
             <EditField label="CFS" field="cfs" s={s} onChange={onChange} />
             <EditField label="POC" field="poc" s={s} onChange={onChange} />
             <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
-            <EditField label="Shipping Line" field="shipping_line" s={s} onChange={onChange} />
-            <Field
-              label="Line (from BL)"
-              value={s.line_from_bl?.line ?? null}
-              hint="Worked out from the MBL's format (e.g. 9 digits = Maersk, HDMU = HMM)"
+            {/* one line field: what's typed, else what the MBL's format says (e.g. 9 digits = Maersk, HDMU = HMM) */}
+            <EditField
+              label="Shipping line"
+              field="shipping_line"
+              s={s}
+              onChange={onChange}
+              display={s.shipping_line || (s.line_from_bl?.line ? `${s.line_from_bl.line} (from BL)` : null)}
+              hint="Typed, or worked out from the MBL's format"
             />
         </div>
         {s.line_from_bl?.note && <p className="bl-note">{s.line_from_bl.note}</p>}
@@ -320,8 +341,8 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         <div className="detail-wide-foot">
           <HssEditor shipment={s} onChange={onChange} />
           <div className="detail-remarks">
-            <EditField label="Remark" field="remark" s={s} onChange={onChange} />
-            <EditField label="Remarks" field="remarks" s={s} onChange={onChange} multiline />
+            <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
+            <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
           </div>
         </div>
       </section>
@@ -991,6 +1012,20 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
   );
 }
 
+/** What the clearance is waiting on now: one line under the header (see clearanceFlow.ts). */
+function NextStepBar({ shipment }: { shipment: Shipment }) {
+  const n = nextStep(shipment);
+  if (!n) return null;
+  return (
+    <div className={`next-step${n.blocked ? " is-blocked" : ""}`} role="status">
+      <span className="next-step-label">{n.blocked ? "Blocked" : "Next"}</span>
+      <strong>{n.title}</strong>
+      <span className="next-step-detail">{n.detail}</span>
+      {n.also.length > 0 && <span className="next-step-also">Also open: {n.also.join(", ")}</span>}
+    </div>
+  );
+}
+
 /** The clearance checks, shown as chips at the top of the shipment page. */
 function statusFlags(s: Shipment): [string, boolean][] {
   return [
@@ -1159,7 +1194,9 @@ function IcegateBar({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => v
     <>
       <div className="icegate-bar">
         <span className="amount-block-title">IGM details</span>
-        <span className="field-note">{at ? `read from ICEGATE ${at}` : "not read from ICEGATE yet"}</span>
+        <span className="field-note">
+          {at ? `read from ICEGATE ${at}` : s.igm ? "IGM no from the tracker; details not read from ICEGATE yet" : "not read from ICEGATE yet"}
+        </span>
         <button type="button" className="btn-secondary" onClick={run} disabled={busy || !s.mbl}>
           {busy ? "Reading ICEGATE…" : "Fetch from ICEGATE"}
         </button>

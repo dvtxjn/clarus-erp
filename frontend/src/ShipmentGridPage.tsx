@@ -397,6 +397,8 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         </span>
       ),
     },
+    text("be_no", "BE No", 82),
+    { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
     { ...text("be_description", "Desc", 220), headerTooltip: "BE Description" },
     {
       ...dateCol("eta", "ETA", 118),
@@ -441,8 +443,6 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     },
     { ...text("container_status", "Cntr St", 78), headerTooltip: "Container Status" },
     text("cfs", "CFS", 96),
-    text("be_no", "BE No", 82),
-    { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
     text("container", "Cntr", 58),
     {
       // weight is always MTS: the unit sits in the title, cells show the number
@@ -455,9 +455,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         return /^\d+(\.\d+)?$/.test(v) ? `${v} MTS` : v || null;
       },
     },
-    text("remark", "Remark", 76),
+    { ...text("remark", "Short remark", 96), headerTooltip: "The sheet’s “Remark” column — a word or two" },
     text("poc", "POC", 100),
-    text("remarks", "Remarks", 150),
+    { ...text("remarks", "Notes", 150), headerTooltip: "The sheet’s “Remarks” column — longer notes" },
     { ...dateCol("cleared_date", "Cleared"), headerTooltip: "Cleared Date" },
     {
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
@@ -656,6 +656,7 @@ export default function ShipmentGridPage() {
   const [showColumns, setShowColumns] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
+  const toolsRef = useRef<HTMLDetailsElement>(null);
   const [showIcegate, setShowIcegate] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [colView, setColView] = useState<ColumnView>(() => {
@@ -1465,7 +1466,7 @@ export default function ShipmentGridPage() {
       </div>
 
       <div className="tracker-toolbar">
-        <div className="live-bar" title={live ? "Changes by others appear here as they happen" : "Reconnecting — changes will appear when it's back"}>
+        <div className="live-bar" title={live ? "Live: changes by others show up here as they happen. Names are the people on this page now." : "Reconnecting — changes will appear when it's back"}>
           <span className={live ? "live-dot live-on" : "live-dot"} />
           {live ? "Live" : "Reconnecting…"}
           {people.map((p) => {
@@ -1479,7 +1480,7 @@ export default function ShipmentGridPage() {
           })}
         </div>
         {tab === "ongoing" && (
-          <label className="group-by">
+          <label className="group-by" title="Split the list into sections, e.g. one per client">
             <span>Group by</span>
             <select value={view} onChange={(e) => changeView(e.target.value as ViewMode)}>
               {(Object.keys(VIEWS) as ViewMode[]).map((v) => (
@@ -1535,24 +1536,30 @@ export default function ShipmentGridPage() {
         <button className="btn-secondary" onClick={resetLayout}>
           Reset filters &amp; layout
         </button>
-        {isAdmin && (
-          <button className="btn-secondary" onClick={() => setShowImport((v) => !v)}>
-            Import sheet CSV
-          </button>
-        )}
-        {isAdmin && (
-          <button className="btn-secondary" onClick={() => setShowIcegate((v) => !v)} title="IGM, inward and ICD arrival for every shipment">
-            Read ICEGATE (IGM)
-          </button>
-        )}
-        {driveConfigured && (
-          <button
-            className="btn-secondary"
-            onClick={() => setShowFolders((v) => !v)}
-            title='Find each shipment&apos;s "JOB <job> - <MBL/HBL>" folder in Google Drive'
-          >
-            Link Drive folders
-          </button>
+        {(isAdmin || driveConfigured) && (
+          <details className="tools-menu" ref={toolsRef}>
+            <summary className="btn-secondary">Admin tools…</summary>
+            <div className="tools-menu-list" role="menu" onClick={() => toolsRef.current?.removeAttribute("open")}>
+              {isAdmin && (
+                <button type="button" role="menuitem" onClick={() => setShowImport((v) => !v)}>
+                  Import sheet CSV
+                  <span className="field-note">Bring in the Google Sheet tracker</span>
+                </button>
+              )}
+              {isAdmin && (
+                <button type="button" role="menuitem" onClick={() => setShowIcegate((v) => !v)}>
+                  Read ICEGATE (IGM)
+                  <span className="field-note">IGM, inward and ICD arrival for every shipment</span>
+                </button>
+              )}
+              {driveConfigured && (
+                <button type="button" role="menuitem" onClick={() => setShowFolders((v) => !v)}>
+                  Link Drive folders
+                  <span className="field-note">Find each shipment’s “JOB &lt;job&gt; - &lt;MBL/HBL&gt;” folder</span>
+                </button>
+              )}
+            </div>
+          </details>
         )}
         <button onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? "Cancel" : "+ Add Shipment"}</button>
       </div>
@@ -2103,6 +2110,7 @@ function EtaCell({ row, ctx }: { row: Shipment; ctx: GridContext }) {
         type="button"
         className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}`}
         title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
+        aria-label={row.eta_is_deadline ? "Deadline on (ETA − 4 days)" : "Mark a deadline"}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

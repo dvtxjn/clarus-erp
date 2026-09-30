@@ -125,7 +125,7 @@ export default function FpodContainers({
   const standard = rows?.find((c) => !c.free_days_typed)?.free_days ?? STANDARD_FREE_DAYS; // Panipat 21
 
   return (
-    <section className="detail-section detail-wide fpod">
+    <section className="detail-section detail-wide fpod" id="shipment-containers">
       <div className="fpod-head">
         <h3>{inland ? "Containers at FPOD" : "Containers"} · {portLabel}</h3>
         <span className="field-note">

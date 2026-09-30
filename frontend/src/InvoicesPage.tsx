@@ -1,3 +1,4 @@
+import { fmtDay } from "./dates";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Receivables from "./Receivables";
@@ -19,8 +20,7 @@ import {
  * one PDF or download the register, without opening each shipment. Admin only (invoicing).
  */
 const inr = (v: string | number) => Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const date = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
+const date = fmtDay;
 
 /** "Any month" + the last 24 months, newest first (a native month box renders as dashes when empty). */
 function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -186,12 +186,9 @@ function FinalRegister() {
                 />
               </th>
               <th>Number</th>
-              <th>Type</th>
               <th>Date</th>
               <th>Client</th>
-              <th>Job</th>
-              <th>BL No</th>
-              <th>BE No</th>
+              <th>Job · BL · BE</th>
               <th className="num">Taxable</th>
               <th className="num">Non-GST</th>
               <th className="num">GST</th>
@@ -203,14 +200,14 @@ function FinalRegister() {
           <tbody>
             {rows === null && (
               <tr>
-                <td colSpan={14} className="tracker-empty">
+                <td colSpan={11} className="tracker-empty">
                   Loading…
                 </td>
               </tr>
             )}
             {rows?.length === 0 && (
               <tr>
-                <td colSpan={14} className="tracker-empty">
+                <td colSpan={11} className="tracker-empty">
                   No invoices match.
                 </td>
               </tr>
@@ -220,19 +217,19 @@ function FinalRegister() {
                 <td>
                   <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Choose ${r.number ?? "draft"}`} />
                 </td>
-                <td className="inv-no">{r.number ?? "Draft"}</td>
                 <td>
+                  <span className="inv-no" translate="no">{r.number ?? "Draft"}</span>{" "}
                   <span className={`doc-marker ${r.kind === "tax" ? "doc-marker-basic" : "doc-marker-cfs"}`}>
                     {r.kind === "tax" ? "TAX" : "REIMB"}
                   </span>
                 </td>
                 <td>{date(r.invoice_date)}</td>
-                <td title={r.gstin}>{r.customer}</td>
-                <td>
+                <td className="inv-wrap" title={r.gstin}>{r.customer}</td>
+                <td className="inv-ship">
                   <Link to={`/shipments/${r.shipment_id}`}>{r.job ? `Job ${r.job}` : "open"}</Link>
+                  <span translate="no">BL {r.mbl ?? "—"}</span>
+                  <span translate="no">BE {r.be_no ?? "—"}</span>
                 </td>
-                <td className="inv-no">{r.mbl ?? "—"}</td>
-                <td className="inv-no">{r.be_no ?? "—"}</td>
                 {r.not_applicable ? (
                   <td colSpan={4} className="num final-na">
                     Not applicable
@@ -259,7 +256,7 @@ function FinalRegister() {
           {all.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={8}>
+                <td colSpan={5}>
                   <strong>{totals.count} invoices</strong>
                 </td>
                 <td className="num">{inr(totals.taxable)}</td>
@@ -301,7 +298,11 @@ function ProformaRegister() {
   }, [f]);
 
   const set = (k: keyof RegisterFilters, v: string) => setF((x) => ({ ...x, [k]: v || undefined }));
-  const all = rows ?? [];
+  // latest version of each proforma only, unless asked (or filtering to Superseded)
+  const [oldVersions, setOldVersions] = useState(false);
+  const everything = rows ?? [];
+  const all = oldVersions || f.status === "superseded" ? everything : everything.filter((r) => r.status !== "superseded");
+  const hiddenOld = everything.length - all.length;
   const chosen = picked.size ? all.filter((r) => picked.has(r.id)) : all;
   const total = all.reduce((n, r) => n + Number(r.grand_total), 0);
 
@@ -325,6 +326,10 @@ function ProformaRegister() {
         </select>
         <input list="org-names" aria-label="Bill to" placeholder="Bill to (type or pick)…" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
         <input aria-label="Search" placeholder="Job, MBL, BE, name…" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
+        <label className="inline-check">
+          <input type="checkbox" checked={oldVersions} onChange={(e) => setOldVersions(e.target.checked)} />
+          Show old versions{!oldVersions && hiddenOld > 0 ? ` (${hiddenOld})` : ""}
+        </label>
         <span className="inv-filters-actions">
           <button
             disabled={!chosen.length || busy}
@@ -357,9 +362,7 @@ function ProformaRegister() {
                   onChange={() => setPicked(picked.size === all.length ? new Set() : new Set(all.map((r) => r.id)))}
                 />
               </th>
-              <th>Job</th>
-              <th>BL No</th>
-              <th>BE No</th>
+              <th>Job · BL · BE</th>
               <th>Version</th>
               <th>Date</th>
               <th>Bill to</th>
@@ -370,14 +373,14 @@ function ProformaRegister() {
           <tbody>
             {rows === null && (
               <tr>
-                <td colSpan={9} className="tracker-empty">
+                <td colSpan={7} className="tracker-empty">
                   Loading…
                 </td>
               </tr>
             )}
-            {rows?.length === 0 && (
+            {rows !== null && all.length === 0 && (
               <tr>
-                <td colSpan={9} className="tracker-empty">
+                <td colSpan={7} className="tracker-empty">
                   No proformas match.
                 </td>
               </tr>
@@ -399,16 +402,16 @@ function ProformaRegister() {
                     aria-label="Choose"
                   />
                 </td>
-                <td>
+                <td className="inv-ship">
                   <Link to={`/shipments/${r.shipment_id}`}>{r.job ? `Job ${r.job}` : "open"}</Link>
+                  <span translate="no">BL {r.mbl ?? "—"}</span>
+                  <span translate="no">BE {r.be_no ?? "—"}</span>
                 </td>
-                <td className="inv-no">{r.mbl ?? "—"}</td>
-                <td className="inv-no">{r.be_no ?? "—"}</td>
                 <td>
                   {r.role && <span className={`party-badge party-${r.role}`}>{r.role}</span>} {r.name || `v${r.version}`}
                 </td>
                 <td>{date(r.date)}</td>
-                <td>{r.bill_to ?? "—"}</td>
+                <td className="inv-wrap">{r.bill_to ?? "—"}</td>
                 <td className="num">
                   <strong>{inr(r.grand_total)}</strong>
                 </td>
@@ -421,7 +424,7 @@ function ProformaRegister() {
           {all.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={7}>
+                <td colSpan={5}>
                   <strong>{all.length} proformas</strong>
                 </td>
                 <td className="num">

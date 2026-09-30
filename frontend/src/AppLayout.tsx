@@ -49,7 +49,7 @@ export default function AppLayout() {
   useEffect(() => {
     const [section, id] = pathname.split("/").filter(Boolean);
     const name = section === "shipments" && id ? "Shipment" : PAGE_TITLES[section ?? ""];
-    document.title = name ? `${name} · Clarus ERP` : "Clarus ERP";
+    document.title = name ? `${name} · Clarus ERP` : "Page not found · Clarus ERP";
   }, [pathname]);
   const [accent, pickAccent] = useState<AccentId>(savedAccent);
   const [theme, pickTheme] = useState<ThemeId>(savedTheme);
