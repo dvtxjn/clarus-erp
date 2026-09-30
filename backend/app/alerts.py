@@ -34,12 +34,13 @@ BASIC_DOCUMENTS = {
     DocumentType.FORM_6, DocumentType.FORM_9, DocumentType.INSURANCE, DocumentType.HSS_AGREEMENT,
 }
 
+# the office's short codes (client, 2026-09-30)
 DOC_LABELS = {
-    DocumentType.BL_COPY: "BL copy", DocumentType.HBL_COPY: "HBL copy",
-    DocumentType.COMMERCIAL_INVOICE: "Commercial invoice", DocumentType.PACKING_LIST: "Packing list",
-    DocumentType.CERTIFICATE_OF_ORIGIN: "Certificate of origin", DocumentType.FTA_CERTIFICATE_OF_ORIGIN: "FTA COO",
-    DocumentType.FORM_6_9: "Form 6 & 9", DocumentType.FORM_6: "Form 6", DocumentType.FORM_9: "Form 9",
-    DocumentType.INSURANCE: "Insurance", DocumentType.HSS_AGREEMENT: "HSS agreement",
+    DocumentType.BL_COPY: "BL", DocumentType.HBL_COPY: "HBL",
+    DocumentType.COMMERCIAL_INVOICE: "ComInv", DocumentType.PACKING_LIST: "PL",
+    DocumentType.CERTIFICATE_OF_ORIGIN: "COO", DocumentType.FTA_CERTIFICATE_OF_ORIGIN: "FTA COO",
+    DocumentType.FORM_6_9: "F6,9", DocumentType.FORM_6: "F6", DocumentType.FORM_9: "F9",
+    DocumentType.INSURANCE: "Insurance", DocumentType.HSS_AGREEMENT: "HSS",
 }
 
 _INW_FORMATS = ("%Y-%m-%d", "%d-%b-%Y", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y")

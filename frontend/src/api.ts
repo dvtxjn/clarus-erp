@@ -394,6 +394,14 @@ export async function downloadInvoice(proformaId: number, fmt: "xlsx" | "pdf"): 
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** The proforma PDF as a File (phone: share it to WhatsApp / mail from the share sheet). */
+export async function getInvoicePdfFile(proformaId: number): Promise<File> {
+  const res = await client.get(`/proformas/${proformaId}/invoice.pdf`, { responseType: "blob" });
+  const header = res.headers["x-filename"];
+  const name = header ? decodeURIComponent(header) : `proforma-${proformaId}.pdf`;
+  return new File([res.data], name, { type: "application/pdf" });
+}
+
 export async function updateProformaStatus(proformaId: number, status: ProformaStatus): Promise<Proforma> {
   const { data } = await client.patch(`/proformas/${proformaId}`, { status });
   return data;

@@ -41,6 +41,8 @@ const PAGE_TITLES: Record<string, string> = {
 export default function AppLayout() {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
+  const [moreOpen, setMoreOpen] = useState(false); // phone: the "More" sheet
+  useEffect(() => setMoreOpen(false), [pathname]);
   useEffect(() => {
     const [section, id] = pathname.split("/").filter(Boolean);
     const name = section === "shipments" && id ? "Shipment" : PAGE_TITLES[section ?? ""];
@@ -176,6 +178,55 @@ export default function AppLayout() {
           </button>
         </div>
       </aside>
+      {/* phones: bottom tabs instead of the sidebar (thumb reach); the rest sits under "More" */}
+      <nav className="m-tabbar" aria-label="Main">
+        <NavLink to="/dashboard">{ICONS.dashboard}<span>Dashboard</span></NavLink>
+        <NavLink to="/shipments">{ICONS.shipments}<span>Shipments</span></NavLink>
+        {user?.role === "admin" && <NavLink to="/invoices">{ICONS.invoices}<span>Invoicing</span></NavLink>}
+        <button type="button" className={moreOpen ? "active" : ""} aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
+          {icon(<><circle cx="3.5" cy="8" r="1.1" /><circle cx="8" cy="8" r="1.1" /><circle cx="12.5" cy="8" r="1.1" /></>)}
+          <span>More</span>
+        </button>
+      </nav>
+      {moreOpen && (
+        <div className="m-sheet-backdrop" onClick={() => setMoreOpen(false)}>
+          <div className="m-sheet" role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}>
+            {user?.role === "admin" && (
+              <nav className="m-sheet-links" aria-label="More pages">
+                <NavLink to="/rates">{ICONS.rates}Rates</NavLink>
+                <NavLink to="/users">{ICONS.users}Users</NavLink>
+                <NavLink to="/deleted">{ICONS.deleted}Recently deleted</NavLink>
+                <NavLink to="/settings">{ICONS.settings}Settings</NavLink>
+              </nav>
+            )}
+            <div className="theme-switch" role="radiogroup" aria-label="Theme">
+              {THEMES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={theme === t.id}
+                  className={theme === t.id ? "on" : ""}
+                  onClick={() => {
+                    setTheme(t.id);
+                    pickTheme(t.id);
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div className="m-sheet-user">
+              <span>
+                <strong>{user?.full_name}</strong> · {user?.role.replace("_", " ")}
+              </span>
+              <button className="secondary" onClick={logout}>
+                Log out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <main className="app-main" id="main" tabIndex={-1}>
         {sandbox.sandbox && (
           <div className="sandbox-banner" role="note">
