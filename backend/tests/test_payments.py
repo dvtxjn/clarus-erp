@@ -110,3 +110,9 @@ def test_on_account_allocated_later_tds_on_tax_only_and_exact_statement(client, 
     assert "24AAAAA8888A1Z5" not in text and "30-Sep-2026" in text
     other_pdf = client.get("/receivables/statement.pdf", params={"client": other["key"]}, headers=h)
     assert "24AAAAA8888A1Z5" in pypdfium2.PdfDocument(other_pdf.content)[0].get_textpage().get_text_range()
+
+
+def test_statement_amounts_use_indian_grouping():
+    from app.routers.receivables import _inr
+    assert [_inr(v) for v in ("0", "999", "516869", "12345678.5", "-402849")] == \
+        ["0.00", "999.00", "5,16,869.00", "1,23,45,678.50", "-4,02,849.00"]

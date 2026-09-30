@@ -161,6 +161,16 @@ def delete_payment(payment_id: int, db: Session = Depends(get_db), admin: User =
     db.commit()
 
 
+def _inr(v) -> str:
+    """Indian grouping: 5,16,869.00."""
+    v = Decimal(v).quantize(Decimal("0.01"))
+    sign, (whole, frac) = "-" if v < 0 else "", f"{abs(v):.2f}".split(".")
+    head, tail = whole[:-3], whole[-3:]
+    while len(head) > 2:
+        tail, head = head[-2:] + "," + tail, head[:-2]
+    return f"{sign}{head + ',' if head else ''}{tail}.{frac}"
+
+
 @router.get("/receivables/statement.pdf")
 def statement(client: str, db: Session = Depends(get_db)):
     """Statement of account for one client: open invoices, payments received, money on account and
@@ -185,7 +195,7 @@ def statement(client: str, db: Session = Depends(get_db)):
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=MARGIN, rightMargin=MARGIN, topMargin=MARGIN, bottomMargin=MARGIN,
                             title=f"Statement - {c['party']}")
-    inr = lambda v: f"{Decimal(v):,.2f}"  # noqa: E731
+    inr = _inr
     day = lambda v: f"{date.fromisoformat(v) if isinstance(v, str) else v:%d-%b-%Y}" if v else ""  # noqa: E731
     grid = ("LINEBELOW", (0, 0), (-1, -1), 0.3, colors.HexColor("#DDD"))
     head = [_p(co["name"], 14, True, colors.HexColor("#D26B21")), _p(co["address"], 7.5), _p(co["tax_line"], 7.5),
@@ -200,12 +210,14 @@ def statement(client: str, db: Session = Depends(get_db)):
                      _p(inr(i["outstanding"]), 7.5, True), _p(str(i["age_days"]), 7.5)])
     data.append([_p("Total outstanding", 8, True), "", "", "", "", "", "", _p(inr(c["outstanding"]), 8.5, True), ""])
     summary = 1
-    if Decimal(c["on_account"]) > 0:
-        data.append([_p("Less: received on account, not yet set against an invoice", 8), "", "", "", "", "", "",
-                     _p(f"- {inr(c['on_account'])}", 8.5), ""])
-        data.append([_p("Balance payable", 8, True), "", "", "", "", "", "",
-                     _p(inr(max(Decimal(0), Decimal(c["outstanding"]) - Decimal(c["on_account"]))), 8.5, True), ""])
-        summary = 3
+    less = [("Less: received on account, not yet set against an invoice", c["on_account"]),
+            ("Less: TDS you deduct (approx., 2% of our charges)", c["tds_estimate"])]
+    less = [(label, v) for label, v in less if Decimal(v) > 0]
+    for label, v in less:
+        data.append([_p(label, 8), "", "", "", "", "", "", _p(f"- {inr(v)}", 8.5), ""])
+    if less:
+        data.append([_p("Balance payable", 8, True), "", "", "", "", "", "", _p(inr(c["net_due"]), 8.5, True), ""])
+        summary += len(less) + 1
     t = Table(data, colWidths=[WIDTH * f for f in (0.15, 0.1, 0.09, 0.15, 0.12, 0.11, 0.08, 0.13, 0.07)], repeatRows=1)
     t.setStyle(_style(("BACKGROUND", (0, 0), (-1, 0), HEAD_C), grid,
                       *[("SPAN", (0, -r), (6, -r)) for r in range(1, summary + 1)],
