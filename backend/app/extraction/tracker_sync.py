@@ -117,10 +117,11 @@ def _shipping_line_checks(sync: "_Sync", shipment: Shipment, document: ShipmentD
     left_out = [c for c in charges if c.get("in_cost_inclusion") is False]
     if left_out:
         desc = ", ".join(f"{c['description']} ({c['currency']} → ₹{c['amount']:,.2f})" for c in left_out)
-        sync.notes.append(f"Left out of cost inclusion (not INR / freight head): {desc}. Tick it back on the Overview if it counts.")
-    review = [c["description"] for c in charges if c.get("review")]
+        sync.notes.append(f"Left out of cost inclusion (freight / surcharge, or not a known destination charge): {desc}. "
+                          "Tick it back on the Overview if it counts.")
+    review = [f"{c['description']} ({c['currency']})" for c in charges if c.get("review")]
     if review:
-        sync.notes.append(f"Please check: {', '.join(review)} — billed in INR but named like freight, so left out.")
+        sync.notes.append(f"Please check: {', '.join(review)} — not sure it's a destination charge; tick it on or off on the Overview.")
 
 
 def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocument,

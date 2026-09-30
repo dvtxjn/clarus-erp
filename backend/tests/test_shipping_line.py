@@ -245,3 +245,26 @@ def test_fta_number_after_the_mbl_is_split_off():
     assert split_fta("BHMA07216400- UKIN-170926-342EE1") == ("BHMA07216400", "UKIN-170926-342EE1")
     assert split_fta("CSX26JEDNSA021814") == ("CSX26JEDNSA021814", None)
     assert split_fta("UKIN-160926-E96101") == ("UKIN-160926-E96101", None)  # nothing before it: leave alone
+
+
+def test_destination_charges_decided_by_head_then_currency():
+    """Client, 2026-09-30: freight / surcharges in foreign currency are useless; destination charges count
+    whatever the currency; anything unknown in foreign currency is left out and flagged."""
+    from app.extraction.shipping_line_pdf import _classify
+
+    rows = [("Basic Ocean Freight", "USD"), ("Emergency Bunker Surcharge", "USD"), ("War Surcharge", "USD"),
+            ("Terminal Security Charge (ISPS)", "USD"), ("Terminal Handling Service - Destination", "INR"),
+            ("Terminal Handling Service - Origin", "USD"), ("Additional Import Service", "INR"),
+            ("Mystery Fee", "USD"), ("Mystery Fee", "INR"), ("BAF - Bunker Adjustment", "INR")]
+    got = {(d, cur): (c["in_cost_inclusion"], c["review"])
+           for (d, cur), c in zip(rows, _classify([{"description": d, "currency": cur} for d, cur in rows], strict=True))}
+    assert got[("Basic Ocean Freight", "USD")] == (False, False)
+    assert got[("Emergency Bunker Surcharge", "USD")] == (False, False)
+    assert got[("War Surcharge", "USD")] == (False, False)
+    assert got[("Terminal Security Charge (ISPS)", "USD")] == (True, False)       # destination, any currency
+    assert got[("Terminal Handling Service - Destination", "INR")] == (True, False)
+    assert got[("Terminal Handling Service - Origin", "USD")] == (False, False)
+    assert got[("Additional Import Service", "INR")] == (True, False)
+    assert got[("Mystery Fee", "USD")] == (False, True)                           # unknown foreign: out, check
+    assert got[("Mystery Fee", "INR")] == (True, False)
+    assert got[("BAF - Bunker Adjustment", "INR")] == (False, True)               # Maersk: INR freight-named, check

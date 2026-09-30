@@ -22,12 +22,9 @@ Samples it's built from (reference: client uploads, 2026-09-28):
 Returns the same amount keys as the CFS reader (cfs_before_tax / cfs_gst /
 cfs_after_tax / cfs_sanity_ok) so tracker sync treats all invoices alike, plus
 carrier, invoice_no, is_proforma and `charges` (one dict per charge line).
-Client rule (2026-09-28, narrowed 2026-09-30): on MAERSK invoices a charge is a
-destination charge (-> cost inclusion) only if BOTH checks agree — it's billed in
-INR, and its charge head isn't freight (Maersk invoices can include USD freight);
-when they disagree (an INR line named like freight) it's left out and flagged.
-Every other line's import invoice only carries destination charges: all count,
-whatever the currency.
+What counts as cost inclusion (destination charges): see _classify — freight / surcharges in a foreign currency
+are out, known destination heads are in whatever the currency, unknown foreign-currency lines are out and flagged
+(client, 2026-09-30). Any line can be ticked back on / off by hand on the Overview.
 """
 from __future__ import annotations
 
@@ -122,7 +119,14 @@ GST_PAIR = re.compile(r"(?<![\d,.])(?=(?P<taxable>" + MONEY + r")\s+(?P<rate>\d{
 # charge heads that are freight / origin, not destination charges
 FREIGHT_HEAD = re.compile(
     r"FREIGHT|\bBAS\b|\bBAF\b|BUNKER|\bEBS\b|\bCAF\b|CURRENCY\s+ADJ|PEAK\s+SEASON|\bPSS\b|\bGRI\b|"
-    r"LOW\s+SULPHUR|\bLSS\b|\bORIGIN\b|EXPORT", re.IGNORECASE)
+    r"LOW\s+SULPHUR|\bLSS\b|\bORIGIN\b|EXPORT|\bWAR\b|WAR\s*RISK|\bWRS\b|EMERGENCY|OCEAN|\bEU\s*ETS\b|EMISSION|"
+    r"CARBON|GENERAL\s+RATE|RATE\s+RESTORATION|CONGESTION\s+SURCHARGE|CANAL|SUEZ|PANAMA|PIRACY|\bAMS\b|\bENS\b", re.IGNORECASE)
+# charge heads that are destination charges for certain — counted whatever the currency (e.g. ISPS in USD)
+DEST_HEAD = re.compile(
+    r"DESTINATION|IMPORT|\bTHC\b|TERMINAL|HANDLING|DOCUMENT|DOC(?:UMENTATION)?\s*FEE|DELIVERY\s+ORDER|\bD/?O\b|ISPS|"
+    r"SECURITY|CONTAINER\s+PROTECT|CLEAN|WASH|HAULAGE|INLAND|DETENTION|DEMURRAGE|STORAGE|SEAL|SURVEY|TOLL|ADMIN|"
+    r"MAINTENANCE|MANDATORY\s+USER|EQUIPMENT|B/?L\s+FEE|HOUSE\s+B/?L|REPAIR|LIFT|MOVEMENT|IMBALANCE|SERVICE\s+CHARGE",
+    re.IGNORECASE)
 SAC_LINE = re.compile(r"^SAC(?:/HSN)?\s*:?\s*(\d{6})\s*$")
 
 
@@ -238,19 +242,28 @@ def _charges(lines: list[str]) -> list[dict[str, Any]]:
 
 
 def _classify(out: list[dict[str, Any]], strict: bool = False) -> list[dict[str, Any]]:
-    """Which charges are destination charges (-> cost inclusion).
-    Maersk (strict): only INR charges whose head isn't freight — its invoices can carry freight.
-    Every other line (client, 2026-09-30): their import invoices only ever carry destination
-    charges, so every line counts, whatever the currency (e.g. HMM's ISPS fee in USD)."""
+    """Which charges are destination charges (-> cost inclusion). Client rule (2026-09-30, final):
+      - freight / surcharges in a foreign currency (basic ocean freight, emergency bunker, war surcharge, …): out
+      - a head that is a destination charge for certain (THC, documentation, DO, ISPS, haulage, …): in, any currency
+      - anything else in INR: in; anything else in a foreign currency: out, flagged to check
+      - a freight-named head billed in INR: Maersk (strict — its invoices can carry freight) out, others in
+        (their import invoices only carry destination charges, e.g. Cordelia's BAF in INR); both flagged
+    The admin ticks any line back on / off on the Overview (manual override)."""
     for c in out:
-        if not strict:
-            c["in_cost_inclusion"], c["review"] = True, False
-            continue
+        desc = c["description"] or ""
         inr = c["currency"] == "INR"
-        freight_head = bool(FREIGHT_HEAD.search(c["description"] or ""))
-        c["in_cost_inclusion"] = inr and not freight_head
-        # the two checks disagree -> left out, but worth a look
-        c["review"] = inr and freight_head
+        freight_head = bool(FREIGHT_HEAD.search(desc))
+        dest_head = bool(DEST_HEAD.search(desc)) and not (freight_head and not inr)
+        if dest_head and not freight_head:
+            c["in_cost_inclusion"], c["review"] = True, False
+        elif freight_head and not inr:
+            c["in_cost_inclusion"], c["review"] = False, False
+        elif freight_head:  # INR, named like freight
+            c["in_cost_inclusion"], c["review"] = not strict, strict
+        elif inr:
+            c["in_cost_inclusion"], c["review"] = True, False
+        else:  # foreign currency, not a known head
+            c["in_cost_inclusion"], c["review"] = False, True
     return out
 
 
