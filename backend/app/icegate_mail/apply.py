@@ -35,6 +35,9 @@ from app.models.shipment import Shipment
 from app.models.user import User
 
 MAX_FILE = 25 * 1024 * 1024
+# Older mail (e.g. the 2,000+ mails moved from the old inbox, client 2026-09-30) is history only: it goes on
+# the shipment's timeline but changes nothing, adds no documents and raises no "Needs attention".
+HISTORY_DAYS = 45
 IST = timezone(timedelta(hours=5, minutes=30))  # office time (client: GMT+5:30)
 
 
@@ -113,11 +116,13 @@ def _apply(db: Session, m: IcegateMail, s: Shipment, user: Optional[User]) -> li
         from app.routers.documents import _store_document
 
         doc_type = DocumentType[(m.detail or {}).get("doc_type") or ""]
-        dup = db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
-                                                ShipmentDocument.original_filename == m.pdf_name).first()
-        if dup:
+        dup = (db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
+                                                 ShipmentDocument.original_filename == m.pdf_name).first()
+               or db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
+                                                    ShipmentDocument.document_type == doc_type).first())
+        if dup:  # this copy (or one of the same kind, uploaded by hand) is already there: no duplicate
             m.document_id = dup.id
-            notes.append("PDF already on the shipment")
+            notes.append("Already on the shipment — not added again")
         else:
             data = m.pdf
             db.flush()
@@ -151,6 +156,10 @@ def _settle(db: Session, m: IcegateMail) -> None:
             x.resolved_at, x.resolved_note = now, "Out of charge given"
 
 
+def is_history(m: IcegateMail) -> bool:
+    return m.received_at is not None and datetime.now(timezone.utc) - _ts(m.received_at) > timedelta(days=HISTORY_DAYS)
+
+
 def link(db: Session, m: IcegateMail, user: Optional[User]) -> None:
     """Match (if not yet) and apply (once)."""
     if m.shipment_id is None:
@@ -161,6 +170,11 @@ def link(db: Session, m: IcegateMail, user: Optional[User]) -> None:
     if m.applied:
         return
     s = db.get(Shipment, m.shipment_id)
+    if is_history(m) or s.is_archived or s.is_billed:
+        m.notes = ["Older mail / finished shipment — on the timeline only, nothing changed"]
+        m.pdf = None
+        m.applied = True
+        return
     if m.pdf and user is None:
         return  # documents are added on an import by a person
     m.notes = _apply(db, m, s, user)
@@ -189,6 +203,8 @@ def import_mails(db: Session, raws: Iterable[bytes], user: Optional[User]) -> di
                         be_date=ev["be_date"], job_no=ev["job_no"], port=ev["port"], mbl=ev["mbl"], detail=detail,
                         attention=ev["attention"], imported_by_id=user.id if user else None,
                         pdf_name=ev["pdf"]["name"] if ev["pdf"] else None, pdf=ev["pdf"]["data"] if ev["pdf"] else None)
+        if is_history(m):  # old: no "Needs attention", and no PDF kept waiting in the database
+            m.attention, m.pdf = False, None
         db.add(m)
         db.flush()
         out["new"] += 1

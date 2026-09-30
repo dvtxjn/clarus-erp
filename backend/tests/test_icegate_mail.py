@@ -99,3 +99,23 @@ def test_import_matches_fills_and_attention(client, admin_headers):
 
     r = client.post(f"/icegate-mails/{nk['id']}/resolve", json={"note": "checked"}, headers=h)
     assert r.status_code == 200
+
+
+def test_old_mail_is_history_only(client, admin_headers):
+    """Mails older than 45 days (the old inbox moved over) go on the timeline but change nothing."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "OLDMAIL1", "job": "977", "port": "INNSA1"}, headers=h).json()["id"]
+    old = [mail("Job number 977_CACHI01_Success", "ok", "devfilingtest@icegate.gov.in",
+                [("1.ack", ack("INNSA1", "977", "8870001", "10062026"))], date="Wed, 10 Jun 2026 11:00:00 +0530"),
+           mail("Job number 978_CACHI01_Failed", "Failed", "devfilingtest@icegate.gov.in", [("1.nak", nak("INNSA1", "978"))],
+                date="Wed, 10 Jun 2026 11:05:00 +0530")]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for i, m in enumerate(old):
+            z.writestr(f"{i}.eml", m)
+    client.post("/icegate-mails/import", files=[("files", ("old.zip", buf.getvalue(), "application/zip"))], headers=h)
+    s = client.get(f"/shipments/{sid}", headers=h).json()
+    assert s["be_no"] is None  # nothing filled from an old mail
+    tl = client.get(f"/shipments/{sid}/icegate-mails", headers=h).json()
+    assert tl and "timeline only" in tl[0]["notes"][0]
+    assert not [x for x in client.get("/icegate-mails?attention=true", headers=h).json() if x["job_no"] == "978"]
