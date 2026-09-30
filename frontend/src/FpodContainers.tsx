@@ -264,29 +264,46 @@ export default function FpodContainers({
   );
 }
 
-/** The table drawn as a clean PNG (always light, for the client): shipment line on top, one row per container. */
+/**
+ * The table drawn as a clean PNG (always light, for the client): shipment line on top, one row per container.
+ * Same columns as the table on screen. Every column and the canvas are sized to their text, so nothing is trimmed or cut off.
+ */
 function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], inland: boolean): Promise<Blob> {
   const scale = 2;
   const cols = [
-    { label: "Container", w: 150, get: (c: ShipmentContainer) => c.container_no },
-    { label: "Type", w: 56, get: (c: ShipmentContainer) => c.status ?? "—" },
-    { label: "Status", w: 170, get: (c: ShipmentContainer) => c.tracking_status ?? (c.arrival_date ? "Arrived" : "Not arrived yet") },
-    { label: inland ? "Arrived at FPOD" : "Inward (INW)", w: 120, get: (c: ShipmentContainer) => fmt(c.arrival_date) },
-    { label: "Days free", w: 76, get: (c: ShipmentContainer) => String(c.free_days) },
-    { label: "Free until", w: 120, get: (c: ShipmentContainer) => fmt(c.last_free_day) },
-    { label: "Day", w: 110, get: (c: ShipmentContainer) => (c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} (${-c.days_left} over)` : `Day ${c.day}`) },
+    { label: "Container", get: (c: ShipmentContainer) => c.container_no },
+    { label: "Type", get: (c: ShipmentContainer) => c.status ?? "—" },
+    { label: "Status", get: (c: ShipmentContainer) => c.tracking_status ?? (c.arrival_date ? "Arrived" : "Not arrived yet") },
+    { label: inland ? "Arrived at FPOD" : "Inward (INW)", get: (c: ShipmentContainer) => fmt(c.arrival_date) },
+    { label: "Days free", get: (c: ShipmentContainer) => String(c.free_days) },
+    { label: "Free until", get: (c: ShipmentContainer) => fmt(c.last_free_day) },
+    { label: "Day", get: (c: ShipmentContainer) => (c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} · ${-c.days_left} over` : `Day ${c.day}`) },
+    { label: "Source", get: (c: ShipmentContainer) => (c.is_manual || c.source !== "icegate" ? "Typed" : "ICEGATE") },
   ];
   const pad = 24;
   const rowH = 30;
-  const width = pad * 2 + cols.reduce((n, c) => n + c.w, 0);
+  const cellPad = 16; // 8 each side
+  const font = (w: number, size: number) => `${w} ${size}px Inter, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  const who = [s.job ? `Job ${s.job}` : null, s.consignee || s.client].filter(Boolean).join(" · ");
+  const asOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const title = `Container tracking · ${portLabel}${who ? ` · ${who}` : ""}`;
+  const sub = `BL ${s.mbl || "—"} · BE ${s.be_no || "not filed"} · as on ${asOn}`;
+
+  // measure first (a scratch context), then size the canvas
+  const m = document.createElement("canvas").getContext("2d")!;
+  const measure = (text: string, f: string) => ((m.font = f), Math.ceil(m.measureText(text).width));
+  const widths = cols.map((c) =>
+    Math.max(measure(c.label, font(600, 12)), ...rows.map((r) => measure(c.get(r), font(400, 12.5)))) + cellPad + 8,
+  );
+  const tableW = widths.reduce((n, w) => n + w, 0);
+  const width = pad * 2 + Math.max(tableW, measure("CLARUS LOGISTICS", font(700, 15)), measure(title, font(600, 14)), measure(sub, font(400, 12)));
   const headH = 86;
   const height = headH + rowH * (rows.length + 1) + pad;
   const canvas = document.createElement("canvas");
-  canvas.width = width * scale;
-  canvas.height = height * scale;
+  canvas.width = Math.ceil(width * scale);
+  canvas.height = Math.ceil(height * scale);
   const ctx = canvas.getContext("2d")!;
   ctx.scale(scale, scale);
-  const font = (w: number, size: number) => `${w} ${size}px Inter, -apple-system, "Segoe UI", Roboto, sans-serif`;
 
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, width, height);
@@ -295,40 +312,36 @@ function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], i
   ctx.fillText("CLARUS LOGISTICS", pad, pad + 12);
   ctx.fillStyle = "#1B1C1F";
   ctx.font = font(600, 14);
-  const who = [s.job ? `Job ${s.job}` : null, s.consignee || s.client].filter(Boolean).join(" · ");
-  ctx.fillText(`Container tracking · ${portLabel}${who ? ` · ${who}` : ""}`, pad, pad + 34);
+  ctx.fillText(title, pad, pad + 34);
   ctx.fillStyle = "#5F636A";
   ctx.font = font(400, 12);
-  const asOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-  ctx.fillText(`BL ${s.mbl || "—"} · BE ${s.be_no || "not filed"} · as on ${asOn}`, pad, pad + 54);
+  ctx.fillText(sub, pad, pad + 54);
 
   let y = headH;
   ctx.fillStyle = "#EDEDEA";
-  ctx.fillRect(pad, y, width - pad * 2, rowH);
+  ctx.fillRect(pad, y, tableW, rowH);
   ctx.fillStyle = "#26272B";
   ctx.font = font(600, 12);
   let x = pad;
-  for (const c of cols) {
+  cols.forEach((c, i) => {
     ctx.fillText(c.label, x + 8, y + 19);
-    x += c.w;
-  }
+    x += widths[i];
+  });
   ctx.font = font(400, 12.5);
   for (const r of rows) {
     y += rowH;
     ctx.strokeStyle = "#E8E8E4";
     ctx.beginPath();
     ctx.moveTo(pad, y + rowH);
-    ctx.lineTo(width - pad, y + rowH);
+    ctx.lineTo(pad + tableW, y + rowH);
     ctx.stroke();
     x = pad;
-    for (const c of cols) {
+    cols.forEach((c, i) => {
       const over = c.label === "Day" && r.days_left != null && r.days_left < 0;
       ctx.fillStyle = over ? "#9A3129" : "#1B1C1F";
-      let text = c.get(r);
-      while (ctx.measureText(text).width > c.w - 14 && text.length > 3) text = `${text.slice(0, -2)}…`;
-      ctx.fillText(text, x + 8, y + 19);
-      x += c.w;
-    }
+      ctx.fillText(c.get(r), x + 8, y + 19);
+      x += widths[i];
+    });
   }
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("no image"))), "image/png"));
 }
