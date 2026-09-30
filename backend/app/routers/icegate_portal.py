@@ -41,8 +41,8 @@ def change_password(payload: PasswordIn, db: Session = Depends(get_db), user: Us
 
 
 class LoginIn(BaseModel):
-    icegate_id: str = Field(min_length=6, max_length=40)
-    cha_code: str = Field(min_length=6, max_length=40)
+    icegate_id: Optional[str] = Field(None, max_length=40)  # either can be changed alone; blank = keep
+    cha_code: Optional[str] = Field(None, max_length=40)
 
 
 @router.put("")
@@ -51,10 +51,15 @@ def set_login(payload: LoginIn, db: Session = Depends(get_db), user: User = Depe
 
     row, lg = sync.login_state(db)
     old = (lg.get("icegate_id"), lg.get("cha_code"))
-    lg.update(icegate_id=payload.icegate_id.strip().upper(), cha_code=payload.cha_code.strip().upper())
+    for field in ("icegate_id", "cha_code"):
+        v = "".join((getattr(payload, field) or "").split()).upper()
+        if v and not (6 <= len(v) <= 40 and v.isalnum()):
+            raise HTTPException(status_code=422, detail=f"{'ICEGATE ID' if field == 'icegate_id' else 'CHA code'} should be 6–40 letters and digits")
+        if v:
+            lg[field] = v
     row.value = lg
     record_change(db, "app_settings", 0, sync.LOGIN_KEY, " / ".join(filter(None, old)) or None,
-                  f"{lg['icegate_id']} / {lg['cha_code']}", user.id)
+                  " / ".join(filter(None, (lg.get("icegate_id"), lg.get("cha_code")))), user.id)
     db.commit()
     return _out(db)
 

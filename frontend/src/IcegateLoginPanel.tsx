@@ -4,7 +4,9 @@ import { istTime } from "./customsMail";
 
 function errorText(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
-  return typeof d === "string" ? d : "Something went wrong — try again.";
+  if (typeof d === "string") return d;
+  if (Array.isArray(d) && d[0]?.msg) return String(d[0].msg); // field check from the server
+  return "Something went wrong — try again.";
 }
 
 /**

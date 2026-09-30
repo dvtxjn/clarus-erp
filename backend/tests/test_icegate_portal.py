@@ -109,7 +109,10 @@ def test_outside_hours_does_nothing(monkeypatch):
 def test_password_mechanism(client, admin_headers, monkeypatch):
     monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", __import__("cryptography.fernet", fromlist=["Fernet"]).Fernet.generate_key().decode())
     h = admin_headers
-    assert client.put("/icegate-login", json={"icegate_id": "acgfa8615dpcb000", "cha_code": "ACGFA8615DCH001"}, headers=h).status_code == 200
+    assert client.put("/icegate-login", json={"icegate_id": "acgfa8615dpcb000"}, headers=h).status_code == 200  # one field alone
+    r = client.put("/icegate-login", json={"cha_code": "ACGFA8615DCH001"}, headers=h).json()
+    assert (r["icegate_id"], r["cha_code"]) == ("ACGFA8615DPCB000", "ACGFA8615DCH001")
+    assert client.put("/icegate-login", json={"icegate_id": "ab"}, headers=h).status_code == 422
     r = client.put("/icegate-login/password", json={"password": "old-secret"}, headers=h).json()
     assert r["password_set"] and r["ready"] and "old-secret" not in str(r)
 
