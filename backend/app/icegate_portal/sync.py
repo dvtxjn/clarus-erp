@@ -299,7 +299,7 @@ def apply_challans(db: Session, rows: list[dict], now: datetime) -> dict:
             continue
         if not be:
             continue
-        last = latest_challan(db, be)
+        last = latest_challan(db, be, day(c.get("boeDate")))
         if last and last.challan_no == str(c.get("challanNumber")) and Decimal(last.due_amount) == amount:
             continue
         db.add(DutyChallan(be_no=be, be_date=c.get("boeDate"), location_code=c.get("locationCode"), iec=c.get("iecCode"),
@@ -310,7 +310,7 @@ def apply_challans(db: Session, rows: list[dict], now: datetime) -> dict:
     if added:
         from app.routers.challans import _match, _refresh
 
-        matched, _ = _match(db, [str(c.get("boeNumber")) for c in rows])
+        matched, _ = _match(db, [(str(c.get("boeNumber") or "").strip(), c.get("boeDate")) for c in rows])
         _refresh(db, matched)
     return {"pending": len(rows), "added": added}
 

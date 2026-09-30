@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
@@ -81,11 +81,37 @@ def stamp_duty(shipment: Shipment, customs_duty_total: Optional[Decimal] = None)
     return ZERO
 
 
-def latest_challan(db: Session, be_no: Optional[str]) -> Optional[DutyChallan]:
+_CHALLAN_DATE_FORMATS = ("%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d", "%d-%b-%Y", "%d-%b-%y", "%d.%m.%y", "%d/%m/%y")
+
+
+def challan_be_date(text: Optional[str]) -> Optional[date]:
+    """DutyChallan.be_date is text as the export / ICEGATE gave it ("26.09.2026"); None = no/unreadable date."""
+    raw = str(text or "").strip().split(" ")[0]
+    for fmt in _CHALLAN_DATE_FORMATS:
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def latest_challan(db: Session, be_no: Optional[str], be_date: Optional[date] = None) -> Optional[DutyChallan]:
+    """A BE's most recent challan row. BE numbers are reused every year (client, 2026-09-30), so with the
+    BE date: rows for that date first; rows without a (readable) date are the fallback; other dates never."""
     if not be_no:
         return None
-    return (db.query(DutyChallan).filter(DutyChallan.be_no == be_no.strip())
-            .order_by(DutyChallan.uploaded_at.desc(), DutyChallan.id.desc()).first())
+    rows = (db.query(DutyChallan).filter(DutyChallan.be_no == be_no.strip())
+            .order_by(DutyChallan.uploaded_at.desc(), DutyChallan.id.desc()))
+    if be_date is None:
+        return rows.first()
+    undated = None
+    for ch in rows:
+        d = challan_be_date(ch.be_date)
+        if d == be_date:
+            return ch
+        if d is None and undated is None:
+            undated = ch
+    return undated
 
 
 def _doc_amount(shipment: Shipment, doc_type: DocumentType, key: str) -> Optional[Decimal]:
@@ -358,7 +384,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     disclaimer = None
     if proforma.bill_to_role == "seller":
         disclaimer = f"{seller or 'Seller'} to pay {name or s.hss_buyer or 'Buyer'}"
-    challan = latest_challan(db, s.be_no)
+    challan = latest_challan(db, s.be_no, s.be_dt)
     duty = customs_duty(s, challan)
     value = value_summary(proforma)
     return {

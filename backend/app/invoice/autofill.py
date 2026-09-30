@@ -270,7 +270,7 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
             if code not in ("AC", "EC") and code not in rule_codes:
                 add_formula(code, row, f"licence {licence.number}")
 
-    challan = latest_challan(db, s.be_no)
+    challan = latest_challan(db, s.be_no, s.be_dt)
     duty = customs_duty(s, challan)
     duty_total = None
     if duty is not None:

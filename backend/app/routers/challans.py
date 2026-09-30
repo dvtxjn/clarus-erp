@@ -1,7 +1,7 @@
 """
 Duty challans (daily ICEGATE pending-challan list) -> customs duty interest
 on proformas. Uploaded from the dashboard every day; a BE's figure is its most
-recent row, matched to shipments by BE number whenever a proforma is filled
+recent row, matched to shipments by BE number (+ BE date when known) whenever a proforma is filled
 or viewed. Interest = Due Amount - the BE's total duty.
 """
 from __future__ import annotations
@@ -88,18 +88,32 @@ class DailyStatus(BaseModel):
     awaiting_challan: list[AwaitingChallan] = []
 
 
-def _match(db: Session, be_nos: list[str]) -> tuple[list[ChallanMatch], list[str]]:
-    ships = {}
-    for s in db.query(Shipment).filter(Shipment.be_no.in_(be_nos)):
-        ships.setdefault(s.be_no, s)
-    matched, unmatched = [], []
-    for be in be_nos:
-        s = ships.get(be)
-        if s is None:
+def _match(db: Session, rows: list[tuple[str, Optional[str]]]) -> tuple[list[ChallanMatch], list[str]]:
+    """rows = (BE no, the challan row's BE date text or None). BE numbers are reused every year (client,
+    2026-09-30): a dated row matches the shipment with that BE date (or one with no BE date yet); an
+    undated row falls back to the BE's most recent shipment."""
+    from app.invoice.build import challan_be_date, latest_challan  # avoid an import cycle at load time
+
+    ships: dict[str, list[Shipment]] = {}
+    for s in db.query(Shipment).filter(Shipment.be_no.in_({be for be, _ in rows})):
+        ships.setdefault(s.be_no, []).append(s)
+    matched, unmatched, seen = [], [], set()
+    for be, be_date in rows:
+        cands = sorted(ships.get(be, []), key=lambda x: (x.be_dt is not None, x.be_dt or date.min, x.id), reverse=True)
+        d = challan_be_date(be_date)
+        if d is not None:
+            cands = [x for x in cands if x.be_dt == d] or [x for x in cands if x.be_dt is None]
+        if not cands:
             unmatched.append(be)
             continue
-        from app.invoice.build import latest_challan  # avoid an import cycle at load time
-        ch = latest_challan(db, be)
+        s = cands[0]
+        if s.id in seen:
+            continue
+        seen.add(s.id)
+        ch = latest_challan(db, be, s.be_dt)
+        if ch is None:  # only another year's challan on file
+            unmatched.append(be)
+            continue
         interest = (max(Decimal("0"), Decimal(ch.due_amount) - Decimal(s.duty_amount))
                     if s.duty_amount is not None else None)
         matched.append(ChallanMatch(be_no=be, shipment_id=s.id, job=s.job, mbl=s.mbl,
@@ -130,7 +144,7 @@ async def upload_challans(file: UploadFile = File(...), db: Session = Depends(ge
         db.add(DutyChallan(**r, source="upload", filename=file.filename, uploaded_by_id=user.id, uploaded_at=now))
     db.flush()
     record_change(db, "duty_challans", 0, "upload", None, f"{file.filename}: {len(rows)} row(s)", user.id)
-    matched, unmatched = _match(db, [r["be_no"] for r in rows])
+    matched, unmatched = _match(db, [(r["be_no"], r.get("be_date")) for r in rows])
     _refresh(db, matched)
     db.commit()
     return ChallanUploadOut(rows=len(rows), matched=matched, unmatched=unmatched, note=note)
@@ -140,11 +154,16 @@ async def upload_challans(file: UploadFile = File(...), db: Session = Depends(ge
 def add_challan(payload: ChallanManual, db: Session = Depends(get_db), user: User = Depends(require_billing_access)):
     """One BE's challan Due Amount entered by hand."""
     be = payload.be_no.strip()
-    db.add(DutyChallan(be_no=be, due_amount=payload.due_amount, challan_no=payload.challan_no,
+    # dated with the BE's latest shipment (BE numbers are reused every year), so it isn't mistaken for
+    # another year's figure and outranks older rows for this BE
+    latest = (db.query(Shipment).filter(Shipment.be_no == be, Shipment.be_dt.isnot(None))
+              .order_by(Shipment.be_dt.desc()).first())
+    db.add(DutyChallan(be_no=be, be_date=latest.be_dt.strftime("%d.%m.%Y") if latest else None,
+                       due_amount=payload.due_amount, challan_no=payload.challan_no,
                        source="manual", uploaded_by_id=user.id))
     db.flush()
     record_change(db, "duty_challans", 0, "manual", None, f"BE {be}: {payload.due_amount}", user.id)
-    matched, unmatched = _match(db, [be])
+    matched, unmatched = _match(db, [(be, latest.be_dt.strftime("%d.%m.%Y") if latest else None)])
     _refresh(db, matched)
     db.commit()
     return ChallanUploadOut(rows=1, matched=matched, unmatched=unmatched)
