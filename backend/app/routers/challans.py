@@ -86,6 +86,11 @@ class DailyStatus(BaseModel):
     organizations_updated_today: bool
     # ongoing shipments with a BE but neither a duty challan nor an OOC copy: interest unknown
     awaiting_challan: list[AwaitingChallan] = []
+    # ICEGATE's own pending-challan list (read daily at 9, or "Read from ICEGATE" on the dashboard)
+    icegate_ready: bool = False
+    icegate_challans_at: Optional[datetime] = None
+    icegate_challans_pending: Optional[int] = None
+    icegate_error: Optional[str] = None
 
 
 def _match(db: Session, rows: list[tuple[str, Optional[str]]]) -> tuple[list[ChallanMatch], list[str]]:
@@ -200,9 +205,19 @@ def daily_status(db: Session = Depends(get_db), _user: User = Depends(require_bi
                 for s in db.query(Shipment).filter(Shipment.be_no.isnot(None), Shipment.be_no != "",
                                                   Shipment.is_archived.is_(False))
                 if not s.is_fully_cleared and s.be_no not in with_challan and s.id not in with_ooc]
+    from app.icegate_portal import sync
+    from app.models.settings import AppSetting
+
+    row = db.get(AppSetting, sync.KEY)
+    st = dict(row.value or {}) if row else {}
+    ice = st.get("last_challans") or {}
+    ice_at = datetime.fromisoformat(ice["at"]) if ice.get("at") else None
+    ice_today = bool(ice_at and ice_at.astimezone(sync.IST).date() == datetime.now(sync.IST).date())
     return DailyStatus(
+        icegate_ready=sync.ready(db), icegate_challans_at=ice_at, icegate_challans_pending=ice.get("pending"),
+        icegate_error=st.get("last_error"),
         challans_last_uploaded_at=last,
-        challans_updated_today=bool(last and last.date() == date.today()),
+        challans_updated_today=bool(last and last.date() == date.today()) or ice_today,
         challans_in_last_upload=in_last,
         organizations=db.query(OrganizationEntry).filter(OrganizationEntry.is_active.is_(True)).count(),
         organizations_last_updated_at=org_last,
