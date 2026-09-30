@@ -1717,3 +1717,20 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
   .attention-row { grid-template-columns: 58px minmax(0, 1fr); gap: 4px 10px; }
   .dashboard-page .stat-value { font-size: 20px; }
 }
+
+/* tracker formula bar (Excel-style): the selected cell's full value */
+.formula-bar {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 4px 6px 4px 10px; min-height: 36px;
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--edge-highlight);
+}
+.formula-name {
+  flex: none; max-width: 240px; font-size: 12px; font-weight: 600; color: var(--color-text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+}
+.formula-fx { flex: none; font-style: italic; font-weight: 600; font-size: 12px; color: var(--color-text-muted); padding: 0 6px; border-left: 1px solid var(--color-border); border-right: 1px solid var(--color-border); }
+.formula-input { flex: 1; min-width: 0; border: none; background: transparent; padding: 4px 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.formula-input:focus { box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+.formula-input[readonly] { color: var(--color-text); }
+.formula-hint { flex: none; font-size: 11.5px; color: var(--color-text-muted); white-space: nowrap; }
+.formula-copy { flex: none; height: 28px; padding: 0 10px; font-size: 12px; }
+@media (max-width: 1100px) { .formula-hint { display: none; } }

@@ -580,6 +580,8 @@ export default function ShipmentGridPage() {
   const [tab, setTab] = useState<Tab>(() => loadTab(searchParams.get("tab")));
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  // formula bar (client, 2026-09-30): the selected cell's full value, to copy — or type over, like Excel
+  const [fx, setFx] = useState<{ client: string; rowId: number; colId: string } | null>(null);
   const statusFilter = (searchParams.get("status") as ShipmentStatus | null) ?? undefined;
   // side panel ("peek"): the shipment opens over the tracker; kept in the URL (?peek=58)
   const peekId = Number(searchParams.get("peek")) || null;
@@ -1469,6 +1471,7 @@ export default function ShipmentGridPage() {
             </div>
           )}
           <div className="client-grid-header">
+            <FormulaBar cell={fx ? formulaCell(sectionRefs.current.get(fx.client)?.current?.api, fx.rowId, fx.colId) : null} />
             <AgGridReact<Shipment>
               ref={headerRef}
               theme={gridTheme}
@@ -1549,7 +1552,9 @@ export default function ShipmentGridPage() {
                 onCellFocused={(e) => {
                   if (e.rowIndex == null || !e.column || typeof e.column === "string") return;
                   const row = e.api.getDisplayedRowAtIndex(e.rowIndex)?.data;
-                  if (row) announce(row.id, e.column.getColId(), false);
+                  if (!row) return;
+                  announce(row.id, e.column.getColId(), false);
+                  setFx({ client, rowId: row.id, colId: e.column.getColId() });
                 }}
                 onCellEditingStarted={(e) => e.data && announce(e.data.id, e.column.getColId(), true)}
                 onCellEditingStopped={onEditingStopped}
@@ -1937,5 +1942,79 @@ function EtaCell({ row, ctx }: { row: Shipment; ctx: GridContext }) {
         </span>
       )}
     </span>
+  );
+}
+
+
+/** What the formula bar shows for the selected cell: the text as the cell displays it, and whether
+ *  typing there may change it (plain text cells only — dates, ticks and pickers keep their own editors). */
+interface FormulaCell {
+  label: string;
+  text: string;
+  editable: boolean;
+  save: (value: string) => void;
+}
+
+function formulaCell(api: GridApi<Shipment> | undefined, rowId: number, colId: string): FormulaCell | null {
+  const node = api?.getRowNode(String(rowId));
+  const col = api?.getColumn(colId);
+  if (!api || !node?.data || !col) return null;
+  const def = col.getColDef();
+  const raw = api.getCellValue({ rowNode: node, colKey: colId });
+  const shown = api.getCellValue({ rowNode: node, colKey: colId, useFormatter: true });
+  const text = shown == null || typeof shown === "object" ? (raw == null || typeof raw === "object" ? "" : String(raw)) : String(shown);
+  // plain text cells only: dates / numbers / ticks keep their own editors (a typed string would be wrong there)
+  const textCell = def.cellDataType === "text" || (def.cellDataType == null && (raw == null || typeof raw === "string"));
+  const editable = col.isCellEditable(node) && !def.cellEditor && textCell;
+  const job = node.data.job ? `Job ${node.data.job}` : node.data.mbl;
+  return {
+    label: `${job} · ${def.headerName ?? colId}`,
+    text,
+    editable,
+    save: (value) => node.setDataValue(colId, value), // runs the normal cell save (onCellValueChanged)
+  };
+}
+
+/** Excel-style formula bar above the tracker: select a cell, its whole value sits here to copy;
+ *  on a plain text cell, type and press Enter to save it (Esc puts it back). */
+function FormulaBar({ cell }: { cell: FormulaCell | null }) {
+  const [draft, setDraft] = useState(cell?.text ?? "");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setDraft(cell?.text ?? ""), [cell?.label, cell?.text]);
+  const changed = !!cell && draft !== cell.text;
+  const copy = () =>
+    navigator.clipboard?.writeText(draft).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    });
+  return (
+    <div className="formula-bar">
+      <span className="formula-name" title={cell?.label}>
+        {cell?.label ?? "Select a cell"}
+      </span>
+      <span className="formula-fx" aria-hidden="true">
+        fx
+      </span>
+      <input
+        className="formula-input"
+        aria-label={cell ? `Value of ${cell.label}` : "Selected cell value"}
+        value={draft}
+        readOnly={!cell?.editable}
+        placeholder={cell ? "" : "Click any cell to see its full value here"}
+        spellCheck={false}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (!cell) return;
+          if (e.key === "Enter" && changed) cell.save(draft);
+          if (e.key === "Escape") setDraft(cell.text);
+        }}
+        onBlur={() => changed && cell?.save(draft)}
+      />
+      {cell && !cell.editable && <span className="formula-hint">read only here · double-click the cell to edit</span>}
+      <button type="button" className="btn-secondary formula-copy" onClick={copy} disabled={!cell || !draft}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
   );
 }
