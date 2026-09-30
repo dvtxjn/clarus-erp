@@ -429,6 +429,11 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .detail-section h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; color: var(--color-text-muted); letter-spacing: .02em; }
 .field-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .field-row:last-child { border-bottom: none; }
+/* Long unbroken values (MBLs, emails, party names) wrap instead of pushing the card off a phone screen */
+.field-row { gap: 10px; min-width: 0; }
+.field-row > * { min-width: 0; overflow-wrap: anywhere; }
+.field-row > .field-value:not(.edit-value) { text-align: right; }
+.detail-section, .detail-remarks, .detail-wide-foot > * { min-width: 0; overflow-wrap: anywhere; }
 .field-label { color: var(--color-text-muted); }
 .flag-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .flag-chip { font-size: 13px; padding: 6px 10px; border-radius: var(--radius); background: var(--color-subtle); color: var(--color-text-muted); }
@@ -613,7 +618,8 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .upload-result-note { color: var(--warn-fg); }
 
 /* shipment detail: BL + BE up front */
-.detail-title { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 150px; }
+.key-ids .key-id, .key-ids .key-id * { min-width: 0; overflow-wrap: anywhere; }
+.detail-title { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 150px; max-width: 100%; overflow-wrap: anywhere; }
 .detail-job { font-size: 17px; font-weight: 600; }
 .detail-client { color: var(--color-text-muted); font-size: 13px; }
 .key-ids { display: flex; gap: 10px; margin: 0; flex: 1; min-width: 0; }
@@ -1100,7 +1106,8 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .detail-grid { align-items: stretch; }
 .detail-wide { grid-column: 1 / -1; }
 .detail-col > .detail-section:last-child { flex: 1; }
-.field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); column-gap: 28px; }
+.field-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); column-gap: 28px; }
+.field-grid > * { min-width: 0; }
 .field-grid .field-row:last-child { border-bottom: 1px solid var(--color-border); }
 .detail-wide-foot { display: grid; grid-template-columns: minmax(0, 480px) minmax(0, 1fr); gap: 28px; margin-top: 6px; align-items: start; }
 .detail-remarks { display: flex; gap: 12px; padding: 5px 0; font-size: 13px; }
