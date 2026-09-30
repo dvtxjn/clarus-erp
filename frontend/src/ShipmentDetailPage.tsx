@@ -113,15 +113,20 @@ export function ShipmentDetail({
           <div className="key-id key-id-keys">
             <div className={`key-id-cell${(shipment.mbl ?? "").length + (shipment.hbl ?? "").length > 26 ? " key-id-long" : ""}`}>
               <span className="key-id-label">BL No (MBL{shipment.hbl ? " / HBL" : ""})</span>
-              <span className="key-id-value" title={[shipment.mbl, shipment.hbl].filter(Boolean).join(" / ")}>
-                {shipment.mbl}
-                {shipment.hbl && <span className="key-id-date"> / {shipment.hbl}</span>}
+              <span className="key-id-value">
+                <CopyValue value={shipment.mbl} label="BL no" />
+                {shipment.hbl && (
+                  <span className="key-id-date">
+                    {" / "}
+                    <CopyValue value={shipment.hbl} label="HBL no" />
+                  </span>
+                )}
               </span>
             </div>
             <div className={`key-id-cell${shipment.be_no ? "" : " key-id-missing"}`}>
               <span className="key-id-label">BE No · BE Date</span>
               <span className="key-id-value">
-                {shipment.be_no ?? "Not filed yet"}
+                {shipment.be_no ? <CopyValue value={shipment.be_no} label="BE no" /> : "Not filed yet"}
                 {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
               </span>
             </div>
@@ -421,6 +426,27 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           its length varies with the number of containers (client, 2026-09-30) */}
       {inland && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} portLabel={formatPort(s.port, ports) || s.port!} onRefreshed={onChange} />}
     </div>
+  );
+}
+
+/** A key number (BL / BE): shown in full (wraps rather than cut), click copies it. */
+function CopyValue({ value, label }: { value: string | null | undefined; label: string }) {
+  const [copied, setCopied] = useState(false);
+  if (!value) return null;
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value!);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked: the text can still be selected */
+    }
+  }
+  return (
+    <button type="button" className="copy-value" onClick={copy} title={`${value} — click to copy`} aria-label={`Copy ${label} ${value}`} translate="no">
+      {value}
+      <span className="copy-value-tag" aria-live="polite">{copied ? "Copied" : ""}</span>
+    </button>
   );
 }
 
