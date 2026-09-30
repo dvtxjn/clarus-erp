@@ -4,9 +4,8 @@ import {
   addContainer,
   editContainer,
   listContainers,
-  refreshContainersFromIcegate,
+  refreshIcegate,
   removeContainer,
-  type IcdRefresh,
   type ShipmentContainer,
 } from "./api";
 import { useConfirm } from "./ConfirmDialog";
@@ -25,12 +24,19 @@ type Patch = Parameters<typeof editContainer>[2];
  * (MBL only) on command, or typed; a typed arrival survives a refresh. A typed Status covers containers
  * that haven't arrived ("On rail"). "Copy as image" puts the table on the clipboard for the client.
  */
-export default function FpodContainers({ shipment, portLabel }: { shipment: Shipment; portLabel: string }) {
+export default function FpodContainers({
+  shipment,
+  portLabel,
+  onRefreshed,
+}: {
+  shipment: Shipment;
+  portLabel: string;
+  onRefreshed: (s: Shipment) => void;
+}) {
   const shipmentId = shipment.id;
   const [rows, setRows] = useState<ShipmentContainer[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [bl, setBl] = useState<IcdRefresh["bl"]>(null);
   const [adding, setAdding] = useState(false);
   const [newNo, setNewNo] = useState("");
   const [newDate, setNewDate] = useState("");
@@ -40,21 +46,17 @@ export default function FpodContainers({ shipment, portLabel }: { shipment: Ship
     listContainers(shipmentId).then(setRows).catch(() => setRows([]));
   }, [shipmentId]);
 
+  // the same full read as "Fetch from ICEGATE" in the IGM details (sea IGM + ICD BL status + arrivals)
   async function fetchIcegate() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await refreshContainersFromIcegate(shipmentId);
-      setRows(r.containers);
-      setBl(r.bl);
-      setMsg(
-        r.found
-          ? {
-              ok: true,
-              text: `ICEGATE: ${r.added} added, ${r.updated} arrival${r.updated === 1 ? "" : "s"} updated${r.kept_manual ? `, ${r.kept_manual} typed by hand kept` : ""}.`,
-            }
-          : { ok: false, text: "ICEGATE has nothing for this MBL at an ICD yet." },
-      );
+      const { summary, shipment: fresh } = await refreshIcegate(shipmentId);
+      if (!summary.icd_found) {
+        setMsg({ ok: false, text: `ICEGATE has nothing at an ICD for MBL ${shipment.mbl} yet (check it's the full MBL, e.g. HMM: HDMU…).` });
+        return;
+      }
+      onRefreshed(fresh); // reloads this list with the new arrivals
     } catch (e) {
       setMsg({ ok: false, text: errText(e) });
     } finally {
@@ -142,12 +144,6 @@ export default function FpodContainers({ shipment, portLabel }: { shipment: Ship
         <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
           {msg.text}
         </div>
-      )}
-      {bl && (
-        <p className="field-note">
-          Gateway {bl.gateway_port ?? "—"} · IGM {bl.igm_no ?? "—"} ({fmt(bl.igm_date)}) · inward {fmt(bl.inward_date)} · SMTP{" "}
-          {bl.smtp_no ?? "—"} ({fmt(bl.smtp_date)})
-        </p>
       )}
       {adding && (
         <form className="fpod-add" onSubmit={add}>

@@ -1757,3 +1757,9 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .fpod-status { width: 100%; min-width: 130px; }
 .fpod-days { width: 64px; text-align: right; }
 .fpod-days.is-typed { color: var(--warn-fg); font-weight: 600; }
+/* IGM details header: title, when ICEGATE was read, the fetch button */
+.icegate-bar { display: flex; align-items: center; gap: 10px; margin: 12px 0 2px; }
+.icegate-bar .field-note { margin: 0; }
+.icegate-bar button { margin-left: auto; height: 28px; padding: 0 12px; font-size: 12.5px; }
+.detail-wide > .grid-toast { margin: 4px 0; }
+.icegate-diffs { margin: 6px 0 0; padding: 8px 12px 8px 28px; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-fg); font-size: 12.5px; }

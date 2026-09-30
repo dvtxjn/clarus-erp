@@ -59,6 +59,9 @@ def fetch(mbl: str, client: Optional[httpx.Client] = None) -> dict:
                 "smtp_no": _s(x.get("smtpNo")), "smtp_date": _d(x.get("smtpDT")),
                 "total_package": _s(x.get("totalPackage")), "package_code": _s(x.get("packageCode")),
                 "gross_weight": _s(x.get("grossWeight")), "unit": _s(x.get("uqc")),
+                "sub_line_no": _s(x.get("subLineNo")), "mbl_date": _d(x.get("mawbDT")),
+                "cargo_movement": _s(x.get("cargoMovement")), "goods": _s(x.get("descOfGoods")),
+                "importer": _s(x.get("impNm")), "be_location": _s(x.get("beLoc")),
             })
             c = client.post(API + "publicblContainer-no-detail", json={
                 "subLineNo": x.get("subLineNo"), "igmRTN": x.get("igmRTN"), "igmDT": x.get("igmDT"),

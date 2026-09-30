@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { useParams, useSearchParams, Link } from "react-router-dom";
-import { correctInvoiceAmounts, getShipment, listDocuments, setCostInclusion } from "./api";
+import { correctInvoiceAmounts, getShipment, listDocuments, refreshIcegate, setCostInclusion } from "./api";
 import { useSaveShipment } from "./useSaveShipment";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
@@ -197,6 +198,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           : "Yes (marked by hand)"
         : "No";
 
+  const inland = !!s.port && !SEA_PORTS.has(s.port);
   return (
     // shipment & movement (+ remarks) across the top; then customs duty + status | CFS | shipping line
     <div className="detail-grid">
@@ -218,11 +220,18 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
             <EditField label="Shipping Line" field="shipping_line" s={s} onChange={onChange} />
         </div>
-        {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30).
-            Filled from ICEGATE's Sea IGM enquiry (MBL + port) or typed in. */}
-        <div className="amount-block-title detail-subhead">IGM details</div>
+        {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30). Filled on command
+            from ICEGATE's Sea IGM (MBL + port; inland: at the gateway the ICD names) or typed in. */}
+        <IcegateBar s={s} onChange={onChange} />
         <div className="field-grid">
-            <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
+            {inland && s.icegate?.gateway_igm && (
+              <Field
+                label={`IGM No (gateway ${s.icegate.gateway_igm.port ?? ""})`}
+                value={s.icegate.gateway_igm.no}
+                hint="The sea IGM at the gateway port. The IGM above is the ICD's own IGM."
+              />
+            )}
+            <EditField label={inland ? "IGM Date (gateway)" : "IGM Date"} field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
             <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
             <EditField label="Voyage" field="voyage" s={s} onChange={onChange} />
             <EditField label="Cont (IGM)" field="cont" s={s} onChange={onChange} />
@@ -231,7 +240,35 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <EditField label="GW (IGM)" field="gw" s={s} onChange={onChange} />
             <EditField label="Total Pkg" field="total_pkg" s={s} onChange={onChange} />
             <EditField label="Pkg Code" field="pkg_code" s={s} onChange={onChange} />
+            {s.icegate?.vessel?.vessel_code && <Field label="Vessel" value={`${s.icegate.vessel.vessel_code}${s.icegate.vessel.imo_no ? ` · IMO ${s.icegate.vessel.imo_no}` : ""}`} />}
         </div>
+        {/* inland: what the ICD BL status adds on top of the IGM details (repeats left out) */}
+        {inland && s.icegate?.icd && (
+          <>
+            <div className="amount-block-title detail-subhead">FPOD ICD BL details</div>
+            <div className="field-grid">
+              <Field label="ICD IGM" value={[s.icegate.icd.icd_igm_no, s.icegate.icd.icd_igm_date].filter(Boolean).join(" · ") || null} />
+              <Field label="SMTP" value={[s.icegate.icd.smtp_no, s.icegate.icd.smtp_date].filter(Boolean).join(" · ") || null} hint="Rail / road permit from the gateway to the ICD" />
+              <Field label="Gateway port" value={s.icegate.icd.gateway_port ? formatPort(s.icegate.icd.gateway_port, ports) || s.icegate.icd.gateway_port : null} />
+              <Field label="BE location" value={s.icegate.icd.be_location ?? null} />
+              <Field label="Importer (ICD)" value={s.icegate.icd.importer ?? null} />
+              {Object.entries(s.icegate.icd)
+                .filter(([k]) => !["icd_igm_no", "icd_igm_date", "smtp_no", "smtp_date", "gateway_port", "be_location", "importer"].includes(k))
+                .map(([k, v]) => (
+                  <Field key={k} label={k.replace(/_/g, " ")} value={v} />
+                ))}
+            </div>
+            {(s.icegate.differences?.length ?? 0) > 0 && (
+              <ul className="icegate-diffs" role="list">
+                {s.icegate.differences!.map((d) => (
+                  <li key={d.field}>
+                    <strong>{d.field}</strong> differs: IGM {d.igm} · ICD {d.icd}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
         <div className="detail-wide-foot">
           <HssEditor shipment={s} onChange={onChange} />
           <div className="detail-remarks">
@@ -364,7 +401,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       </div>
       {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD — at the bottom,
           its length varies with the number of containers (client, 2026-09-30) */}
-      {s.port && !SEA_PORTS.has(s.port) && <FpodContainers shipment={s} portLabel={formatPort(s.port, ports) || s.port} />}
+      {inland && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} portLabel={formatPort(s.port, ports) || s.port!} onRefreshed={onChange} />}
     </div>
   );
 }
@@ -996,5 +1033,57 @@ function Field({ label, value, hint, strong }: { label: string; value: string | 
         {value ?? "—"}
       </span>
     </div>
+  );
+}
+
+
+/** "IGM details" heading + the one button that reads ICEGATE for this shipment (sea IGM, and for inland
+ *  shipments the ICD BL status too). Staff: the MBL must be the full one ICEGATE knows (HMM: HDMU…). */
+function IcegateBar({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  async function run() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { summary, shipment } = await refreshIcegate(s.id);
+      onChange(shipment);
+      const n = Object.keys(summary.changed).length;
+      if (!summary.sea_found && !summary.icd_found) {
+        setMsg({ ok: false, text: `ICEGATE has nothing for MBL ${s.mbl}. Check it's the full MBL with the line's prefix (e.g. HMM: HDMU…).` });
+      } else {
+        const parts = [
+          summary.sea_found ? (n ? `${n} IGM field${n === 1 ? "" : "s"} filled` : "IGM details already up to date") : "sea IGM not found",
+          summary.inland ? (summary.icd_found ? "ICD BL read" : "not at the ICD yet") : null,
+          summary.differences?.length ? `${summary.differences.length} difference${summary.differences.length === 1 ? "" : "s"} to check` : null,
+          ...summary.notes,
+        ].filter(Boolean);
+        setMsg({ ok: !summary.differences?.length && !summary.notes.length, text: parts.join(" · ") });
+      }
+    } catch (e) {
+      const detail = axios.isAxiosError(e) ? e.response?.data?.detail : null;
+      setMsg({ ok: false, text: typeof detail === "string" ? detail : "Couldn't reach ICEGATE — try again." });
+    } finally {
+      setBusy(false);
+    }
+  }
+  const at = s.icegate?.fetched_at
+    ? new Date(s.icegate.fetched_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+    : null;
+  return (
+    <>
+      <div className="icegate-bar">
+        <span className="amount-block-title">IGM details</span>
+        <span className="field-note">{at ? `read from ICEGATE ${at}` : "not read from ICEGATE yet"}</span>
+        <button type="button" className="btn-secondary" onClick={run} disabled={busy || !s.mbl}>
+          {busy ? "Reading ICEGATE…" : "Fetch from ICEGATE"}
+        </button>
+      </div>
+      {msg && (
+        <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
+          {msg.text}
+        </div>
+      )}
+    </>
   );
 }

@@ -66,6 +66,7 @@ class ShipmentBase(BaseModel):
     port: Optional[str] = None
     hs_code_id: Optional[int] = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
+    icegate: Optional[dict[str, Any]] = None
 
 
 class ShipmentCreate(ShipmentBase):

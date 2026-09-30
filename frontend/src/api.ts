@@ -819,14 +819,6 @@ export interface ShipmentContainer {
   last_free_day: string | null;
   days_left: number | null;
 }
-export interface IcdRefresh {
-  found: boolean;
-  added: number;
-  updated: number;
-  kept_manual: number;
-  bl: { igm_no: string | null; igm_date: string | null; gateway_port: string | null; inward_date: string | null; smtp_no: string | null; smtp_date: string | null; icd: string | null } | null;
-  containers: ShipmentContainer[];
-}
 
 export async function listContainers(shipmentId: number): Promise<ShipmentContainer[]> {
   const { data } = await client.get(`/shipments/${shipmentId}/containers`);
@@ -855,8 +847,18 @@ export async function editContainer(
 export async function removeContainer(shipmentId: number, id: number): Promise<void> {
   await client.delete(`/shipments/${shipmentId}/containers/${id}`);
 }
-/** On command: ICEGATE ICD BL status (MBL only) → containers + arrival at the ICD. */
-export async function refreshContainersFromIcegate(shipmentId: number): Promise<IcdRefresh> {
-  const { data } = await client.post(`/shipments/${shipmentId}/containers/refresh-icd`);
+
+export interface IcegateSummary {
+  inland: boolean;
+  sea_found: boolean;
+  icd_found: boolean;
+  changed: Record<string, [string | null, string]>;
+  notes: string[];
+  differences?: { field: string; igm: string; icd: string }[];
+  containers?: { added: number; updated: number; kept_manual: number };
+}
+/** On command: sea IGM (+ ICD BL status for inland) → IGM details, FPOD ICD BL details, container arrivals. */
+export async function refreshIcegate(shipmentId: number): Promise<{ summary: IcegateSummary; shipment: import("./types").Shipment }> {
+  const { data } = await client.post(`/shipments/${shipmentId}/icegate/refresh`);
   return data;
 }

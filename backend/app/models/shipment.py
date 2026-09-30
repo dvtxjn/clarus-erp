@@ -110,6 +110,9 @@ class Shipment(SoftDeleteMixin, Base):
 
     # values for user-created tracker columns: {column key: value}
     custom_fields = Column(JSON, nullable=False, default=dict, server_default="{}")
+    # ICEGATE read-out (app/igm/refresh.py): sea IGM extras (vessel, gateway IGM for inland) and, for inland
+    # shipments, the FPOD ICD BL details not already in the IGM fields + any differences between the two
+    icegate = Column(JSON, nullable=True)
 
     # --- Yes/No tracker flags (spec §2.1 — auto-updated by document upload
     # per §3.3 wherever a mapping exists) ---

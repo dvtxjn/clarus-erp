@@ -103,6 +103,15 @@ export interface Shipment {
   hss_buyer: string | null;
   is_archived: boolean;
   days: string; // computed server-side: today - INW + 1, or "Pending"
+  /** ICEGATE read-out (on command): gateway IGM for inland, vessel, FPOD ICD BL details, differences. */
+  icegate?: {
+    fetched_at?: string;
+    gateway_igm?: { port: string | null; no: string | null; date: string | null };
+    vessel?: { vessel_code?: string; imo_no?: string; voyage_no?: string; goods?: string };
+    icd?: Record<string, string>;
+    differences?: { field: string; igm: string; icd: string }[];
+    notes?: string[];
+  } | null;
   // Cleared = Cleared Date + Duty, CFS Inv, Line, OOC, DO all ticked
   is_fully_cleared: boolean;
   missing_for_clearance: string[];
