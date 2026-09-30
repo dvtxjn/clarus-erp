@@ -76,6 +76,8 @@ def fetch(mbl: str, client: Optional[httpx.Client] = None) -> dict:
                 "subLineNo": x.get("subLineNo"), "igmRTN": x.get("igmRTN"), "igmDT": x.get("igmDT"),
                 "customerSite": x.get("fileName"), "lineNo": x.get("lineNo"),
             })
+            if c.status_code == 400:  # "No Record Found !!" — BL at the ICD, containers not listed yet
+                continue
             c.raise_for_status()
             for y in _json(c):
                 no = _s(y.get("contNo"))
