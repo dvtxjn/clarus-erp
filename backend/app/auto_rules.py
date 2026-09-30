@@ -37,7 +37,6 @@ BUILTIN: dict[str, tuple[str, str]] = {
     "status.queries": ("ICEGATE shows a query on our BE (BE no + date + port)", "Flag Needs attention; close it when replied"),
     "odex.do_released": ("ODeX: DO Released for a BL", "Tick DO (the DO number and date go on the timeline)"),
     "odex.do_rejected": ("ODeX: the line rejected the DO request", "Flag Needs attention with the line's remarks"),
-    "odex.kyc_pending": ("ODeX: consignee KYC / registration pending", "Flag Needs attention"),
     "odex.cfs_fill": ("ODeX: CFS request Confirmed", "Fill the CFS (only if empty)"),
 }
 DEFAULT_OFF = {"odex.cfs_fill"}  # ODeX writes the CFS's long code name; the tracker keeps short names

@@ -57,6 +57,8 @@ def test_parse_odex_kinds():
     assert e["kind"] == "odex_invoice_received" and e["detail"]["invoices"][0]["amount"] == "708265.5"
     e = parse(rejected("CYP0122342"))
     assert e["kind"] == "odex_do_rejected" and e["attention"] and "Finance HOLD" in e["detail"]["remarks"]
+    # KYC-pending mails are spam for the office: not read at all
+    assert parse(odex("ODeX: KYC OR Registration Pending", "<p>Consignee : DIVINE INDUSTRIES</p>")) is None
     # a person's reply to an ODeX mail isn't ODeX's own mail
     assert parse(mail("Re: ODeX: Notification Mail for Rejecting of DO Request", "pls check", sender="someone@cma-cgm.com")) is None
 

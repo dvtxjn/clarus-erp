@@ -231,7 +231,7 @@ def link(db: Session, m: IcegateMail, user: Optional[User]) -> None:
 def _attention_on(db: Session, kind: str) -> bool:
     from app import auto_rules
 
-    rule = {"odex_do_rejected": "odex.do_rejected", "odex_kyc_pending": "odex.kyc_pending"}.get(kind, "mail.attention")
+    rule = {"odex_do_rejected": "odex.do_rejected"}.get(kind, "mail.attention")
     return auto_rules.on(db, rule)
 
 

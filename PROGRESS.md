@@ -921,7 +921,7 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
 ## ODeX mails, automatic rules, instant-mail switch (2026-09-30)
 - ODeX notifications (notification@odexservices.com) are read with the ICEGATE mails (app/icegate_mail/parse_odex.py):
   DO released (ticks DO; DO no/date on the timeline), invoices requested / received (line invoices, amounts),
-  DO request rejected and KYC pending (Needs attention; a later DO release closes the rejection), CFS request,
+  DO request rejected (Needs attention; a later DO release closes it); KYC-pending mails are spam — not read, CFS request,
   IGM filed. Matched by BL only (ODeX's Location is the gateway). People's replies are not read.
 - Settings → Automatic rules (app/auto_rules.py): every built-in IF … THEN … can be switched off; the old-mail
   limit (45 days) is editable; admins add their own rules (mail type [+ text] or BE status queue → tick a box
