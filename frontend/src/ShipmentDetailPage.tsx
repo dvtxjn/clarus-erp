@@ -210,7 +210,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <EditField label="ETA" field="eta" kind="date" s={s} onChange={onChange} display={fmtDate(s.eta)} />
             <EditField label="INW" field="inw" s={s} onChange={onChange} hint="Typed like the sheet, e.g. 19-Sep-2026" />
             <Field label="Day" value={s.days} />
-            <EditField label="IGM" field="igm" s={s} onChange={onChange} />
             <EditField label="License" field="license" s={s} onChange={onChange} />
             <EditField label="Containers" field="container" s={s} onChange={onChange} />
             <EditField label="Gross Wt" field="gross_wt" s={s} onChange={onChange} />
@@ -224,12 +223,16 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             from ICEGATE's Sea IGM (MBL + port; inland: at the gateway the ICD names) or typed in. */}
         <IcegateBar s={s} onChange={onChange} />
         <div className="field-grid">
-            {inland && s.icegate?.gateway_igm && (
+            {/* IGM no: read from ICEGATE (client, 2026-09-30) — inland: the gateway's sea IGM here, the ICD's own
+                IGM under FPOD ICD BL details; typed only as a fallback before the first ICEGATE read */}
+            {inland && s.icegate?.gateway_igm ? (
               <Field
                 label={`IGM No (gateway ${s.icegate.gateway_igm.port ?? ""})`}
                 value={s.icegate.gateway_igm.no}
-                hint="The sea IGM at the gateway port. The IGM above is the ICD's own IGM."
+                hint="The sea IGM at the gateway port. The ICD's own IGM is under FPOD ICD BL details."
               />
+            ) : (
+              <EditField label="IGM No" field="igm" s={s} onChange={onChange} />
             )}
             <EditField label={inland ? "IGM Date (gateway)" : "IGM Date"} field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
             <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
