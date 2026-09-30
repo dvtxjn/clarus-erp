@@ -1767,3 +1767,14 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .icegate-settings { padding: 0; }
 .icegate-progress { height: 4px; border-radius: 2px; background: var(--color-subtle); overflow: hidden; }
 .icegate-progress span { display: block; height: 100%; background: var(--color-accent); transition: width .3s; }
+
+/* tracker checklist chips (own class: the filter chips' .chip used to override them — no colour, wider, cut off) */
+.checklist-cell { flex-wrap: nowrap; gap: 3px; }
+.check-chip {
+  flex: none; font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted);
+  box-shadow: none; white-space: nowrap; cursor: pointer;
+}
+.check-chip:hover:not(:disabled) { border-color: var(--color-text-muted); color: var(--color-text); background: var(--color-surface); }
+.check-chip.is-on { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
+.check-chip.is-on:hover:not(:disabled) { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-fg); }

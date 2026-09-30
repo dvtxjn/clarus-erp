@@ -260,10 +260,12 @@ function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & 
         <button
           key={f}
           type="button"
-          className={s[f] ? "chip chip-on" : "chip"}
+          className={s[f] ? "check-chip is-on" : "check-chip"}
+          aria-pressed={!!s[f]}
           title={`${tip}: ${s[f] ? "Yes" : "No"} — click to change`}
           onClick={() => p.context.toggleFlag(s, f)}
         >
+          {s[f] && <span aria-hidden="true">✓ </span>}
           {label}
         </button>
       ))}
@@ -457,7 +459,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
       colId: "checklist",
       headerName: "Checklist",
-      width: 222,
+      // all five chips on one line, ticked or not — a saved narrower width can't cut them
+      width: 290,
+      minWidth: 290,
       editable: false,
       sortable: false,
       headerTooltip: "Click a chip to toggle it. Filter with e.g. OOC:N",
@@ -1597,8 +1601,20 @@ function SettledStack({ children }: { children: ReactNode }) {
       if (el.querySelector(".ag-row")) quiet = window.setTimeout(reveal, 80);
     });
     ro.observe(el);
+    // The grids swallow a plain up/down wheel even though they never scroll vertically themselves (auto height),
+    // so the page didn't move over the tracker (client, 2026-09-30). Up/down scrolls the page; sideways and
+    // Shift+wheel still scroll the table sideways; scrollable popups (menus, pickers) keep their own scrolling.
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if ((e.target as Element | null)?.closest?.(".ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .columns-panel, .mini-popover, .date-editor"))
+        return;
+      e.preventDefault();
+      window.scrollBy({ top: e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       ro.disconnect();
+      el.removeEventListener("wheel", onWheel);
       window.clearTimeout(quiet);
       window.clearTimeout(cap);
     };
