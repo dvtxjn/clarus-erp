@@ -173,7 +173,9 @@ def _label(cs: dict) -> str:
     elif ts(cs.get("assessDate")):
         parts.append(f"Assessed {ts(cs['assessDate']).strftime('%d-%b')}" + (" (system)" if cs.get("appraisement") == "SYSTEM" else ""))
     q = na(cs.get("currentQueue"))
-    if q:
+    if q and q.upper() == "INS":
+        parts.append("Under examination (INS)")
+    elif q:
         parts.append(f"with {q}")
     return " · ".join(parts) or "Filed — not assessed yet"
 
@@ -204,10 +206,11 @@ def apply_be_status(db: Session, s: Shipment, data: dict, now: datetime) -> list
     paid, exam, ooc = ts(cs.get("pymtDate")), ts(cs.get("examDate")), ts(cs.get("oocDate"))
     if paid or ooc:
         set_("duty_paid", True)
-    if exam:
+    # queue INS = with the inspection (examination) officer: under examination (client, 2026-09-30)
+    if exam or (na(cs.get("currentQueue")) or "").upper() == "INS":
         set_("under_examination", True)
-        if not s.examination_at:
-            set_("examination_at", exam.strftime("%d/%m/%Y %H:%M"))
+    if exam and not s.examination_at:
+        set_("examination_at", exam.strftime("%d/%m/%Y %H:%M"))
     if ooc:
         set_("ooc", True)
         if s.ooc_date is None:
@@ -219,6 +222,11 @@ def apply_be_status(db: Session, s: Shipment, data: dict, now: datetime) -> list
         record_change(db, "shipments", s.id, "status", s.status, new, None)
         s.status = new
     prev = (s.icegate or {}).get("be_status") or {}
+    # INS at any point in the BE's life = it was under examination (client): remembered across runs
+    in_ins = (record["queue"] or "").upper() == "INS"
+    record["was_ins"] = bool(prev.get("was_ins") or in_ins)
+    if record["was_ins"] and not in_ins and not exam and "OOC" not in record["label"]:
+        record["label"] += " · was under examination"
     if prev.get("label") != record["label"]:
         record["changed_at"] = record["fetched_at"]
     else:

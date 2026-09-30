@@ -78,6 +78,25 @@ def test_label_and_evidence(client, admin_headers, monkeypatch):
     assert not [x for x in client.get("/icegate-mails?attention=true", headers=h).json() if x["be_no"] == "9952741"]
 
 
+def test_ins_queue_means_under_examination(client, admin_headers):
+    """Client, 2026-09-30: a BE with the INS queue is under examination (before any exam date shows)."""
+    sid = client.post("/shipments", json={"mbl": "PORTAL-INS", "port": "INMUN1", "be_no": "9042299", "be_dt": "2026-09-26"},
+                      headers=admin_headers).json()["id"]
+    ins = {**RUNNING, "currentStatusModel": [{**RUNNING["currentStatusModel"][0], "currentQueue": "INS"}]}
+    db = SessionLocal()
+    try:
+        s = db.get(Shipment, sid)
+        sync.apply_be_status(db, s, ins, datetime.now(timezone.utc))
+        assert s.under_examination and "Under examination (INS)" in s.icegate["be_status"]["label"]
+        # later the queue moves on: still remembered as examined
+        sync.apply_be_status(db, s, RUNNING, datetime.now(timezone.utc))
+        assert s.under_examination and s.icegate["be_status"]["was_ins"]
+        assert s.icegate["be_status"]["label"].endswith("was under examination")
+    finally:
+        db.rollback()
+        db.close()
+
+
 def test_challans_added_only_when_changed(client, admin_headers, monkeypatch):
     monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", __import__("cryptography.fernet", fromlist=["Fernet"]).Fernet.generate_key().decode())
     rows = [{"iecCode": "AAVFD7221R", "locationCode": "INMUN1", "boeNumber": 9142224, "boeDate": "26.09.2026",
