@@ -873,3 +873,17 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
   first connect reads the last 30 days. Needs: Gmail filter forwarding from:icegate.gov.in (bharatgtanna@gmail.com) to a
   Workspace mailbox; OAuth consent screen Internal; redirect URI /oauth/gmail/callback; secret google-oauth-secret.
 - Next discussed: ICEGATE login using OTPs — ask what the login is for; no CAPTCHA bypass.
+
+### ICEGATE portal (logged in) — data pickers (scouted 2026-09-30, client guiding)
+- Login (portal's own flow): POST identity/ext-login {icegateId, password (AES-ECB, portal's built-in key), usertype}
+  -> POST otp/Ext/otp/{id} (header Session_id) -> OTP mailed -> POST otp/Ext/verify-otp/{id} {otp, otpType:"L"}.
+  Token + sessionId in sessionStorage; calls send Authorization + session_id. Idle logout on the page (ng2Idle);
+  identity/refresh-token {icegateId, sessionId} keeps it alive; userLogout/logout at the end. No CAPTCHA.
+- Challans (daily duty challan list): page #/role-dashboard/challans-generated-CB (open directly once logged in).
+  Data: POST dashboard/challansGenerated/getChallanDetailsForCB/ {iecCode, icegateId, roleId, startDate, endDate}
+  -> ALL rows at once (the page's "items per page" only limits the display): iecCode, iecName, locationCode,
+  boeNumber, boeDate dd.mm.yyyy, challanNumber, dutyAmount, documentType. Maps 1:1 onto DutyChallan (source "icegate").
+  Widget count call getCountAndAmountDueForCb often 504s — ignore it.
+- Plan: daily morning job: login (OTP via the mailbox reader) -> challans -> DutyChallan rows -> logout. Password in
+  Secret Manager (client types it). Needs the mailbox reader live first.
+- Next from client: BE status page flow + links.
