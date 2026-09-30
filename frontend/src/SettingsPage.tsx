@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
 import { EInvoicing, InvoiceNumbering } from "./RatesPage";
-import IcegateSettings from "./IcegateSettings";
 import SheetsMirrorSettings from "./SheetsMirrorSettings";
 import MailboxSettings from "./MailboxSettings";
 import AutoRulesSettings from "./AutoRulesSettings";
@@ -91,10 +90,7 @@ export default function SettingsPage() {
           Standard rates, licences and HSS rules: <Link to="/rates">Rates</Link>.
         </p>
       </Section>
-      <Section title="ICEGATE" hint="IGM and ICD BL status read automatically; backfill on command.">
-        <IcegateSettings />
-      </Section>
-      <Section title="ICEGATE & ODeX mailbox" hint="ICEGATE and ODeX (DO / line invoice) mails read automatically (Customs mail page).">
+      <Section title="ICEGATE & ODeX mailbox" hint="ICEGATE and ODeX (DO / line invoice) mails read automatically. “Check mail now” is on the Customs mail page.">
         <MailboxSettings />
       </Section>
       <Section title="Automatic rules" hint="What the ERP updates by itself from mails and ICEGATE — switch any rule off, or add your own.">

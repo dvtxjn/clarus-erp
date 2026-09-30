@@ -5,7 +5,7 @@ const when = (iso: string) =>
   new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
 /**
- * Settings → ICEGATE (client, 2026-09-30): the automatic read every 6 h (which shipments it takes), and a
+ * Shipments → Read ICEGATE (client, 2026-09-30; moved from Settings to sit by the shipments): the automatic read every 6 h (which shipments it takes), and a
  * backfill on command — every shipment, one at a time, with progress (Google Cloud gives the server CPU
  * only while it answers, so the page walks the list instead of a long background job).
  */

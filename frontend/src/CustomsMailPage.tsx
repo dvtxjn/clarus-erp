@@ -11,6 +11,7 @@ import {
 } from "./api";
 import { useAuth } from "./AuthContext";
 import { istTime } from "./customsMail";
+import CustomsReadBar from "./CustomsReadBar";
 import IcegateLoginPanel from "./IcegateLoginPanel";
 import { formatPort, usePorts } from "./ports";
 
@@ -183,6 +184,7 @@ export default function CustomsMailPage() {
         </div>
       )}
 
+      {(isAdmin || user?.role === "import_manager") && <CustomsReadBar isAdmin={isAdmin} onRead={load} />}
       <div className="customs-bar">
         <div className="seg-switch" role="group" aria-label="Show">
           {(

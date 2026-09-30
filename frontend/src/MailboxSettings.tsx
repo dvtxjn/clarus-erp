@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { disconnectMailbox, getMailbox, mailboxConnectUrl, setMailboxPush, syncMailbox, type MailboxStatus } from "./api";
+import { disconnectMailbox, getMailbox, mailboxConnectUrl, setMailboxPush, type MailboxStatus } from "./api";
 import { istTime } from "./customsMail";
 
 function errorText(e: unknown): string {
@@ -110,9 +110,6 @@ export default function MailboxSettings() {
             )}
           </div>
           <div className="settings-save">
-            <button type="button" disabled={busy} onClick={() => run(syncMailbox)}>
-              {busy ? "Checking…" : "Check now"}
-            </button>
             <button type="button" className="btn-secondary" disabled={busy} onClick={() => run(disconnectMailbox)}>
               Disconnect
             </button>

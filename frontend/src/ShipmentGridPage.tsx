@@ -36,6 +36,7 @@ import {
 } from "./api";
 import { useAuth } from "./AuthContext";
 import TrackerImportPanel from "./TrackerImportPanel";
+import IcegateSettings from "./IcegateSettings";
 import LinkFoldersPanel from "./LinkFoldersPanel";
 import { driveConfigured } from "./googleDrive";
 import { useSaveShipment } from "./useSaveShipment";
@@ -655,6 +656,7 @@ export default function ShipmentGridPage() {
   const [showColumns, setShowColumns] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
+  const [showIcegate, setShowIcegate] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [colView, setColView] = useState<ColumnView>(() => {
     try {
@@ -1538,6 +1540,11 @@ export default function ShipmentGridPage() {
             Import sheet CSV
           </button>
         )}
+        {isAdmin && (
+          <button className="btn-secondary" onClick={() => setShowIcegate((v) => !v)} title="IGM, inward and ICD arrival for every shipment">
+            Read ICEGATE (IGM)
+          </button>
+        )}
         {driveConfigured && (
           <button
             className="btn-secondary"
@@ -1551,6 +1558,17 @@ export default function ShipmentGridPage() {
       </div>
 
       {showImport && <TrackerImportPanel onApplied={refresh} onClose={() => setShowImport(false)} />}
+      {showIcegate && (
+        <div className="import-panel">
+          <div className="import-head">
+            <h3>ICEGATE: IGM, inward and ICD arrival</h3>
+            <button className="btn-secondary" onClick={() => (setShowIcegate(false), refresh())}>
+              Close
+            </button>
+          </div>
+          <IcegateSettings />
+        </div>
+      )}
       {showFolders && shipments && (
         <LinkFoldersPanel
           shipments={shipments}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getIcegateLogin, runIcegateLookup, setIcegateLoginIds, setIcegatePassword, type IcegateLogin } from "./api";
+import { getIcegateLogin, setIcegateLoginIds, setIcegatePassword, type IcegateLogin } from "./api";
 import { istTime } from "./customsMail";
 
 function errorText(e: unknown): string {
@@ -114,11 +114,6 @@ export default function IcegateLoginPanel({ isAdmin }: { isAdmin: boolean }) {
           style={{ flex: 1, minWidth: 0, maxWidth: 320 }}
         />
         <button type="submit" disabled={busy === "pw" || !pw.trim()}>{busy === "pw" ? "Saving…" : l.password_set ? "Update password" : "Save password"}</button>
-        {l.ready && (
-          <button type="button" className="btn-secondary" disabled={!!busy} onClick={() => act("run", () => runIcegateLookup("status"), "BE status read.")}>
-            {busy === "run" ? "Reading…" : "Read BE status now"}
-          </button>
-        )}
       </form>
       {msg && (
         <div role="status" aria-live="polite" className={`grid-toast ${msg.ok ? "grid-toast-ok" : "grid-toast-error"}`}>
