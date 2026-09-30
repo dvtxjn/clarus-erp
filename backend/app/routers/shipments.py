@@ -270,7 +270,7 @@ def rename_client(payload: ClientRename, db: Session = Depends(get_db), current_
 def get_shipment(shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     shipment = _get_shipment_or_404(db, shipment_id)
     _check_port_access(shipment, current_user)
-    return shipment
+    return _with_final_duty(db, shipment)
 
 
 @router.post("", response_model=ShipmentOut, status_code=status.HTTP_201_CREATED)
@@ -340,7 +340,7 @@ def update_shipment(
         refresh_draft_proformas(db, shipment)  # e.g. paid-by-us switches, duty figures, port
     db.commit()
     db.refresh(shipment)
-    return shipment
+    return _with_final_duty(db, shipment)
 
 
 @router.delete("/{shipment_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -377,7 +377,7 @@ def mark_shipment_billed(shipment_id: int, db: Session = Depends(get_db),
         setattr(shipment, field, value)
     db.commit()
     db.refresh(shipment)
-    return shipment
+    return _with_final_duty(db, shipment)
 
 
 @router.post("/{shipment_id}/unbill", response_model=ShipmentOut)
@@ -406,7 +406,7 @@ def unbill_shipment(shipment_id: int, db: Session = Depends(get_db), current_use
             setattr(shipment, field, value)
     db.commit()
     db.refresh(shipment)
-    return shipment
+    return _with_final_duty(db, shipment)
 
 
 def _status_from_audit(raw: Optional[str]) -> Optional[ShipmentStatus]:
@@ -480,6 +480,16 @@ def _conflicts(db: Session, shipment: Shipment, changes: dict, base: dict) -> li
                     "changed_by": who.full_name if who else None,
                     "changed_at": last.changed_at.isoformat() if last and last.changed_at else None})
     return out
+
+
+def _with_final_duty(db: Session, shipment: Shipment) -> Shipment:
+    """Customs duty as actually payable — BE duty + interest from the duty challan, or the OOC copy's
+    total (the final amount paid) — for the Overview's Customs duty block (client, 2026-09-30)."""
+    from app.invoice.build import customs_duty, latest_challan  # avoid an import cycle at load time
+    duty = customs_duty(shipment, latest_challan(db, shipment.be_no, shipment.be_dt)) if shipment.be_no else None
+    shipment.final_duty = None if duty is None else {
+        "total": str(duty["total"]), "interest": str(duty["interest"]), "source": duty["source"]}
+    return shipment
 
 
 def _get_shipment_or_404(db: Session, shipment_id: int) -> Shipment:

@@ -595,6 +595,10 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState<Record<BeField, string>>({ assessable_value: "", igst_amount: "", duty_amount: "" });
   const [error, setError] = useState<string | null>(null);
+  // after OOC the duty that counts is what was paid, interest included; before it, only once a challan shows interest
+  const fd = s.final_duty;
+  const final = fd && fd.source !== "be" && (s.ooc || Number(fd.interest) > 0) ? fd : null;
+  const finalHint = final?.source === "ooc" ? "From the OOC copy's total (the amount paid)" : "BE duty + interest from the duty challan";
 
   function start() {
     setValues({
@@ -642,8 +646,14 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
             />
           </label>
         ) : (
-          <Field key={f} label={label} value={fmtMoney(s[f])} strong={f === "duty_amount"} hint="From the Assessed / OOC BE" />
+          <Field key={f} label={label} value={fmtMoney(s[f])} strong={f === "duty_amount" && !final} hint="From the Assessed / OOC BE" />
         ),
+      )}
+      {!editing && final && (
+        <>
+          <Field label="Interest" value={fmtMoney(final.interest)} hint={finalHint} />
+          <Field label={s.ooc ? "Final Duty (incl. interest)" : "Duty due (incl. interest)"} value={fmtMoney(final.total)} strong hint={finalHint} />
+        </>
       )}
       {editing && (
         <div className="amount-actions">

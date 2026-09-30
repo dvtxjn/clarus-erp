@@ -105,6 +105,8 @@ export interface Shipment {
   days: string; // computed server-side: today - INW + 1, or "Pending"
   /** Shipping line worked out from the MBL's format; note = why ICEGATE may not find it as typed. */
   line_from_bl?: { line: string; note: string | null } | null;
+  // duty as actually payable: BE duty + challan interest, or the OOC copy's total (detail responses only)
+  final_duty?: { total: string; interest: string; source: "challan" | "ooc" | "be" } | null;
   /** ICEGATE read-out (on command): gateway IGM for inland, vessel, FPOD ICD BL details, differences. */
   icegate?: {
     fetched_at?: string;

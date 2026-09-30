@@ -149,6 +149,7 @@ class ShipmentUpdate(BaseModel):
 class ShipmentOut(ShipmentBase):
     icegate: Optional[dict[str, Any]] = None       # ICEGATE read-out (read only)
     line_from_bl: Optional[dict[str, Any]] = None  # {"line", "note"} from the MBL's format (computed)
+    final_duty: Optional[dict[str, Any]] = None    # {"total", "interest", "source"}; single-shipment responses only
     model_config = ConfigDict(from_attributes=True)
 
     id: int
