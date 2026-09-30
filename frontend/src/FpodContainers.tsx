@@ -173,6 +173,7 @@ export default function FpodContainers({
       ) : rows.length === 0 ? (
         <p className="field-note">No containers yet: Fetch from ICEGATE (reads the IGM with the MBL), or add them by hand.</p>
       ) : (
+        <div className="fpod-scroll">
         <table className="tracker-grid fpod-table">
           <thead>
             <tr>
@@ -257,6 +258,7 @@ export default function FpodContainers({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );

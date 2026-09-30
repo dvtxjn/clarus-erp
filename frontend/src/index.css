@@ -1803,6 +1803,10 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .fpod-add { display: flex; gap: 8px; margin: 0 0 8px; flex-wrap: wrap; }
 .fpod-add input:first-child { flex: 1; min-width: 220px; text-transform: uppercase; }
 .fpod-table td { vertical-align: middle; }
+/* the container list scrolls sideways on its own; the page never gets wider than the phone */
+.fpod, .fpod-scroll { min-width: 0; max-width: 100%; }
+.fpod-scroll { overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.fpod-add input:first-child { min-width: 0; }
 .fpod-no { font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
 .fpod-date { padding: 2px 6px; font-size: 12.5px; }
 .fpod-soon { color: var(--warn-fg); font-weight: 600; }
