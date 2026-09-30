@@ -190,6 +190,7 @@ export default function ProformaPanel({
         onShipmentChange={onShipmentChange}
         onAddExamCharge={(id) => setPrefillChargeId(id)}
       />
+      <TdsSwitch shipment={shipment} onShipmentChange={onShipmentChange} />
 
       {active && active.id === freshId && active.line_items.length > 0 && (
         <div className="prefill-note">
@@ -297,6 +298,37 @@ function ExamReminder({
         <label className="toggle-row">
           <span>Under examination</span>
           <input type="checkbox" role="switch" checked={!!s.under_examination} disabled={saving} onChange={toggle} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Whether the client cuts TDS when paying our invoices for this shipment — a billing
+ * matter, not customs duty (client, 2026-09-30). Receivables shows it on the invoices.
+ */
+function TdsSwitch({ shipment: s, onShipmentChange }: { shipment: Shipment; onShipmentChange: (s: Shipment) => void }) {
+  const saveShipment = useSaveShipment();
+  const [saving, setSaving] = useState(false);
+  async function toggle() {
+    setSaving(true);
+    try {
+      onShipmentChange((await saveShipment(s, { tds_deducted: !s.tds_deducted })).shipment);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="exam-reminder exam-neutral">
+      <div>
+        <strong>{s.tds_deducted ? "Client cuts TDS on this shipment." : "No TDS cut by the client."}</strong>
+        <div className="exam-source">Shown on the invoices in Receivables — record the TDS amount there when paid.</div>
+      </div>
+      <div className="exam-actions">
+        <label className="toggle-row">
+          <span>TDS cut by client</span>
+          <input type="checkbox" role="switch" checked={!!s.tds_deducted} disabled={saving} onChange={toggle} />
         </label>
       </div>
     </div>

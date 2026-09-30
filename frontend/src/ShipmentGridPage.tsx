@@ -243,7 +243,7 @@ const FLAGS: FlagList = [
 ];
 const CFS_TDS_FLAGS: FlagList = [
   ["cfs_paid_by_us", "CFS by us", "CFS paid by us"],
-  ["tds_deducted", "TDS", "TDS cut on the shipment"],
+  ["tds_deducted", "TDS", "Client cuts TDS on our invoices"],
   ["tds_on_cfs", "TDS on CFS", "We cut TDS on the CFS payment"],
 ];
 const FLAG_LABELS = Object.fromEntries([...FLAGS, ...CFS_TDS_FLAGS].map(([f, , tip]) => [f, tip])) as Record<

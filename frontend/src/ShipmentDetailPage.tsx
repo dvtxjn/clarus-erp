@@ -236,7 +236,7 @@ export function ShipmentDetail({
   );
 }
 
-type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_deducted" | "tds_on_cfs" | "under_examination";
+type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_on_cfs" | "under_examination";
 
 function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
   const ports = usePorts();
@@ -253,7 +253,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
   const toggles: [Exclude<ToggleField, "under_examination">, string][] = [
     ["cfs_paid_by_us", "CFS paid by us"],
     ["line_paid_by_us", "Shipping line paid by us"],
-    ["tds_deducted", "TDS cut on the shipment"],
     ["tds_on_cfs", "TDS cut on CFS payment"],
   ];
   const examination =
@@ -373,18 +372,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         <section className="detail-section">
           <h3>Customs duty</h3>
           <BeAmounts shipment={s} onChange={onChange} />
-          {toggles.filter(([f]) => f === "tds_deducted").map(([field, label]) => (
-            <label className="toggle-row" key={field}>
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={!!s[field]}
-                disabled={saving === field}
-                onChange={() => toggle(field)}
-              />
-            </label>
-          ))}
         </section>
         <section className="detail-section">
           <h3>Status</h3>

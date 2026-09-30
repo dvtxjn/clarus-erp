@@ -284,6 +284,7 @@ function ClientRows({
             <td>
               {i.number} · <Link to={`/shipments/${i.shipment_id}`}>{i.job ? `Job ${i.job}` : "shipment"}</Link> · BL{" "}
               {i.mbl ?? "—"} · BE {i.be_no ?? "—"} · {shortDate(i.invoice_date)}
+              {i.tds_expected && " · TDS expected"}
             </td>
             <td className="num">{inr(i.net_payable)}</td>
             <td className="num">{inr(i.paid)}</td>
@@ -412,6 +413,7 @@ function PaymentDialog({ c, onClose, onSaved }: { c: ClientReceivable; onClose: 
                   {i.number}{" "}
                   <span className="doc-group-count">
                     BL {i.mbl ?? "—"} · BE {i.be_no ?? "—"} · {shortDate(i.invoice_date)}
+                    {i.tds_expected && " · TDS expected"}
                   </span>
                 </td>
                 <td className="num">{inr(i.outstanding)}</td>

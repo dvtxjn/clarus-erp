@@ -772,6 +772,7 @@ export interface OpenInvoice {
   job: string | null;
   be_no: string | null;
   mbl: string | null;
+  tds_expected: boolean; // the client cuts TDS on this shipment (switch on the proforma)
   net_payable: string;
   paid: string;
   tds: string;
