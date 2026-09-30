@@ -1254,36 +1254,26 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       c.style.width = z < 1 ? `${100 / z}%` : "100%";
       c.style.zoom = String(z);
     };
-    let lastH = -1;
-    let lastW = -1;
     const measure = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
-      const h = Math.max(480, window.innerHeight - top - 12);
+      const h = Math.round(Math.max(480, window.innerHeight - top - 12));
       setPaneH(h);
       const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 44) / A4_H);
       setPageScale(mode === "fit" ? Math.round(Math.max(0.3, fit) * 100) / 100 : 1);
     };
-    const onContent = () => {
-      // only refit when the invoice itself changed, not because of our own zoom/width
-      const w = c.getBoundingClientRect().width;
-      const sh = c.scrollHeight;
-      if (sh === lastH && Math.abs(w - lastW) < 1) return;
-      fitContent();
-      lastH = c.scrollHeight;
-      lastW = c.getBoundingClientRect().width;
-    };
     measure();
     fitContent();
-    lastH = c.scrollHeight;
-    lastW = c.getBoundingClientRect().width;
-    const roPane = new ResizeObserver(measure);
-    roPane.observe(el);
-    const roContent = new ResizeObserver(onContent);
-    roContent.observe(c);
+    // Refit only when the invoice's own text/rows change (runs before the paint, so no flash).
+    // Watching its size instead reacted to our own zoom and made some drafts flicker.
+    const mo = new MutationObserver(fitContent);
+    mo.observe(c, { childList: true, subtree: true, characterData: true });
+    document.fonts?.ready.then(fitContent).catch(() => undefined);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
     window.addEventListener("resize", measure);
     return () => {
-      roPane.disconnect();
-      roContent.disconnect();
+      mo.disconnect();
+      ro.disconnect();
       window.removeEventListener("resize", measure);
     };
   }, [mode]);
