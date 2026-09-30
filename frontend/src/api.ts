@@ -589,7 +589,7 @@ export async function importOrganizations(file: File): Promise<{ created: number
 
 // --- Recently deleted (admin) ---
 export interface DeletedItem {
-  kind: "shipment" | "document" | "proforma" | "final_invoice";
+  kind: "shipment" | "document" | "proforma" | "final_invoice" | "payment" | "container";
   id: number;
   label: string;
   shipment_id: number | null;
@@ -666,6 +666,7 @@ export interface CompanySettings {
 }
 export interface AppSettings {
   e_invoicing: boolean;
+  tds_rate_editable: boolean;
   company: CompanySettings;
   bank: [string, string][];
   final_terms: string[];
@@ -684,6 +685,11 @@ export async function getSystemStatus(): Promise<SystemStatus> {
 }
 export async function getSettings(): Promise<AppSettings> {
   const { data } = await client.get("/settings");
+  return data;
+}
+/** Switches every signed-in user's screens need. */
+export async function getPublicSettings(): Promise<{ tds_rate_editable: boolean }> {
+  const { data } = await client.get("/settings/public");
   return data;
 }
 export async function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<AppSettings> {
@@ -772,7 +778,8 @@ export interface OpenInvoice {
   job: string | null;
   be_no: string | null;
   mbl: string | null;
-  tds_expected: boolean; // the client cuts TDS on this shipment (switch on the proforma)
+  tds_expected: boolean; // tax invoice of a shipment whose client cuts TDS (switch on the proforma)
+  tds_estimate: string; // ~2% of the taxable value, until TDS is recorded
   net_payable: string;
   paid: string;
   tds: string;
@@ -782,6 +789,7 @@ export interface OpenInvoice {
   bucket: string;
 }
 export interface ClientReceivable {
+  key: string; // exactly this client (gstin:… / name:…)
   party: string;
   gstin: string;
   billed: string;
@@ -789,6 +797,8 @@ export interface ClientReceivable {
   tds: string;
   outstanding: string;
   on_account: string;
+  tds_estimate: string;
+  net_due: string; // outstanding − on account − expected TDS
   buckets: Record<string, string>;
   oldest_days: number;
   invoices: OpenInvoice[];
@@ -802,7 +812,17 @@ export interface PaymentRecord {
   mode: string | null;
   reference: string | null;
   notes: string | null;
-  allocations: { invoice_id: number; number: string | null; amount: string; tds: string }[];
+  key: string;
+  allocations: {
+    invoice_id: number;
+    number: string | null;
+    shipment_id: number | null;
+    job: string | null;
+    be_no: string | null;
+    mbl: string | null;
+    amount: string;
+    tds: string;
+  }[];
   unallocated: string;
 }
 export async function getReceivables(client?: string, includePaid = false): Promise<{ as_of: string; clients: ClientReceivable[] }> {
@@ -829,8 +849,14 @@ export async function recordPayment(body: {
 export async function deletePayment(id: number): Promise<void> {
   await client.delete(`/payments/${id}`);
 }
-export async function downloadStatement(party: string): Promise<void> {
-  await downloadBlob(`/receivables/statement.pdf?client=${encodeURIComponent(party)}`, "statement.pdf");
+/** Set money already on account against invoices. */
+export async function allocatePayment(id: number, allocations: { invoice_id: number; amount: string; tds: string }[]): Promise<PaymentRecord> {
+  const { data } = await client.post(`/payments/${id}/allocate`, { allocations });
+  return data;
+}
+/** `key` = the client's key, so the statement is exactly that client. */
+export async function downloadStatement(key: string): Promise<void> {
+  await downloadBlob(`/receivables/statement.pdf?client=${encodeURIComponent(key)}`, "statement.pdf");
 }
 function client_get(path: string, params: Record<string, unknown>) {
   return client.get(path, { params });

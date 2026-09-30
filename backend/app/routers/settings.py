@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.core.audit import record_change
 from app.core.database import get_db
-from app.core.deps import require_admin, require_billing_access
-from app.models.settings import AppSetting, all_settings, defaults
+from app.core.deps import get_current_user, require_admin, require_billing_access
+from app.models.settings import AppSetting, all_settings, defaults, get_setting
 from app.models.user import User
 
 router = APIRouter(tags=["settings"])
@@ -22,7 +22,7 @@ class SettingIn(BaseModel):
 def _check(key: str, v: Any) -> None:
     """Each setting has a shape; refuse anything else (these are printed on invoices)."""
     ok = True
-    if key == "e_invoicing":
+    if key in ("e_invoicing", "tds_rate_editable"):
         ok = isinstance(v, bool)
     elif key == "company":
         need = ("name", "gstin", "pan", "state_code", "state")
@@ -44,6 +44,12 @@ def _check(key: str, v: Any) -> None:
 @router.get("/settings")
 def read_settings(db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
     return all_settings(db)
+
+
+@router.get("/settings/public")
+def read_public_settings(db: Session = Depends(get_db), _user: User = Depends(get_current_user)):
+    """The few switches every signed-in user's screens need (no invoice details)."""
+    return {"tds_rate_editable": bool(get_setting(db, "tds_rate_editable"))}
 
 
 @router.put("/settings/{key}")

@@ -34,7 +34,8 @@ def split_hss(consignee):
     return (seller, buyer) if seller and buyer else None
 
 
-# TDS we deduct when paying a CFS invoice (on the basic value, before GST)
+# TDS we deduct when paying a CFS invoice (on the basic value, before GST): 2% (194C). A shipment
+# may carry another rate (cfs_tds_rate, in %) only when the admin switches "tds_rate_editable" on.
 CFS_TDS_RATE = Decimal("0.02")
 
 
@@ -137,6 +138,7 @@ class Shipment(SoftDeleteMixin, Base):
     cfs_billed_as = Column(String, default="reimbursement", nullable=False, server_default="reimbursement")
     tds_deducted = Column(Boolean, default=False, nullable=False, server_default="0")  # TDS cut on the shipment
     tds_on_cfs = Column(Boolean, default=False, nullable=False, server_default="0")  # we cut TDS when paying the CFS
+    cfs_tds_rate = Column(Numeric(5, 2), nullable=True)  # % of CFS basic; empty = the usual 2%
 
     # --- HSS (high sea sale): consignee "SELLER - BUYER"; each party gets its own invoice ---
     is_hss = Column(Boolean, default=False, nullable=False, server_default="0")
@@ -208,14 +210,15 @@ class Shipment(SoftDeleteMixin, Base):
     # --- CFS payment (only when we pay the CFS; otherwise we just pass the invoice on) ---
     @property
     def cfs_tds_amount(self) -> Optional[Decimal]:
-        """2% of the CFS basic value, when we pay the CFS and cut TDS on it."""
+        """TDS % (usually 2%) of the CFS basic value, when we pay the CFS and cut TDS on it."""
         if not (self.cfs_paid_by_us and self.tds_on_cfs) or self.cfs_amount_before_tax is None:
             return None
-        return (Decimal(self.cfs_amount_before_tax) * CFS_TDS_RATE).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        rate = Decimal(self.cfs_tds_rate) / 100 if self.cfs_tds_rate is not None else CFS_TDS_RATE
+        return (Decimal(self.cfs_amount_before_tax) * rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
     @property
     def cfs_payment_after_tds(self) -> Optional[Decimal]:
-        """BASIC VALUE + GST - 2% of BASIC VALUE (TDS) = what we actually pay the CFS."""
+        """BASIC VALUE + GST - TDS on BASIC VALUE = what we actually pay the CFS."""
         if not self.cfs_paid_by_us or self.cfs_amount_before_tax is None:
             return None
         basic = Decimal(self.cfs_amount_before_tax)

@@ -14,6 +14,7 @@ from app.models.audit import AuditLogEntry
 from app.models.container import ShipmentContainer
 from app.models.document import ShipmentDocument
 from app.routers.documents import COMBINED_DOCUMENTS
+from app.models.settings import get_setting
 from app.models.shipment import Shipment
 from app.models.soft_delete import soft_delete
 from app.models.tracker_column import TrackerColumn
@@ -314,6 +315,14 @@ def update_shipment(
     custom = changes.pop("custom_fields", None)
     if changes.get("cfs_paid_by_us") and not shipment.cfs_paid_by_us and "tds_on_cfs" not in changes:
         changes["tds_on_cfs"] = True  # we normally cut 2% TDS when we pay the CFS
+    if changes.get("cfs_tds_rate") is not None:
+        rate = Decimal(changes["cfs_tds_rate"])
+        if rate == 2:
+            changes["cfs_tds_rate"] = None  # the usual rate: keep it empty
+        elif not get_setting(db, "tds_rate_editable"):
+            raise HTTPException(status_code=422, detail="TDS on CFS is fixed at 2%. The admin can allow other rates in Settings.")
+        elif not (0 < rate <= 20):
+            raise HTTPException(status_code=422, detail="TDS rate should be between 0% and 20%")
     if custom:
         _apply_custom_fields(db, shipment, custom, current_user.id)
     evidence_changed = False

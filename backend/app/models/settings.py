@@ -22,6 +22,8 @@ def _defaults() -> dict:
     return {
         # E-invoicing (IRN) applies to Clarus: an issued invoice whose e-invoice is filed can't be altered
         "e_invoicing": False,
+        # TDS on CFS payments is 2%; switched on, the rate becomes selectable per shipment (1% / 2% / 10% / custom)
+        "tds_rate_editable": False,
         # final-invoice number formats: {n} = the number (e.g. {n:04d} for 0201), {fy} = "26-27"
         "invoice_series": {"tax": "CL/{n}/{fy}", "reimbursement": "RI/CL/{n}/{fy}"},
         # printed on every invoice (Settings page)

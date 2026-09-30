@@ -53,3 +53,60 @@ def test_payment_split_tds_outstanding_and_statement(client, admin_headers):
     pdf = client.get("/receivables/statement.pdf", params={"client": "Statement Traders"}, headers=h)
     assert pdf.status_code == 200 and "STATEMENT OF ACCOUNT" in pypdfium2.PdfDocument(pdf.content)[0].get_textpage().get_text_range()
     assert other["tax"]["number"]
+
+
+def test_on_account_allocated_later_tds_on_tax_only_and_exact_statement(client, admin_headers):
+    h = admin_headers
+    pair = _issued_pair(client, h, "Advance Traders", "24AAAAA7777A1Z5", "PAY0003")
+    tax, reim = pair["tax"], pair["reimbursement"]
+    # a second client whose name contains the first one's: the statement must not mix them up
+    _issued_pair(client, h, "Advance Traders Exports", "24AAAAA8888A1Z5", "PAY0004")
+    sid = tax["shipment_id"]
+    client.patch(f"/shipments/{sid}", json={"tds_deducted": True}, headers=h)
+
+    c = client.get("/receivables", params={"client": "advance traders"}, headers=h).json()["clients"]
+    c = next(x for x in c if x["gstin"] == "24AAAAA7777A1Z5")
+    by_kind = {i["kind"]: i for i in c["invoices"]}
+    # TDS is cut on the service (tax) invoice only — never on the reimbursement
+    assert by_kind["tax"]["tds_expected"] and not by_kind["reimbursement"]["tds_expected"]
+    est = round(float(tax["totals"]["sub_taxable"]) * 0.02, 2)
+    assert float(by_kind["tax"]["tds_estimate"]) == est and float(by_kind["reimbursement"]["tds_estimate"]) == 0
+    assert c["key"] == "gstin:24AAAAA7777A1Z5"
+
+    # an advance, not set against anything: it's on account and the net due drops by it
+    adv = client.post("/payments", json={"received_on": "2026-09-30", "party": "Advance Traders",
+                                         "party_gstin": "24AAAAA7777A1Z5", "amount": "5000"}, headers=h).json()
+    c = next(x for x in client.get("/receivables", params={"client": "advance traders"}, headers=h).json()["clients"]
+             if x["key"] == "gstin:24AAAAA7777A1Z5")
+    total = float(tax["totals"]["net_payable"]) + float(reim["totals"]["net_payable"])
+    assert float(c["on_account"]) == 5000 and float(c["net_due"]) == round(total - 5000 - est, 2)
+
+    # later: set it against the reimbursement invoice
+    r = client.post(f"/payments/{adv['id']}/allocate", json={"allocations": [{"invoice_id": reim["id"], "amount": "3000"}]},
+                    headers=h)
+    assert r.status_code == 200 and float(r.json()["unallocated"]) == 2000
+    assert r.json()["allocations"][0]["mbl"] == "PAY0003"
+    # more than is left on account: refused
+    assert client.post(f"/payments/{adv['id']}/allocate", json={"allocations": [{"invoice_id": reim["id"], "amount": "2500"}]},
+                       headers=h).status_code == 400
+    # another client's invoice: refused
+    other = next(x for x in client.get("/receivables", params={"client": "advance traders exports"}, headers=h)
+                 .json()["clients"])
+    assert client.post(f"/payments/{adv['id']}/allocate",
+                       json={"allocations": [{"invoice_id": other["invoices"][0]["id"], "amount": "100"}]},
+                       headers=h).status_code == 400
+    # the rest, again against the same invoice: merged into one line
+    r = client.post(f"/payments/{adv['id']}/allocate", json={"allocations": [{"invoice_id": reim["id"], "amount": "2000"}]},
+                    headers=h).json()
+    assert len(r["allocations"]) == 1 and float(r["allocations"][0]["amount"]) == 5000 and float(r["unallocated"]) == 0
+    c = next(x for x in client.get("/receivables", params={"client": "advance traders"}, headers=h).json()["clients"]
+             if x["key"] == "gstin:24AAAAA7777A1Z5")
+    assert float(c["outstanding"]) == round(total - 5000, 2) and float(c["on_account"]) == 0
+
+    # statement by key: exactly that client, with its payments
+    pdf = client.get("/receivables/statement.pdf", params={"client": c["key"]}, headers=h)
+    text = pypdfium2.PdfDocument(pdf.content)[0].get_textpage().get_text_range()
+    assert pdf.status_code == 200 and "Payments received" in text and "24AAAAA7777A1Z5" in text
+    assert "24AAAAA8888A1Z5" not in text and "30-Sep-2026" in text
+    other_pdf = client.get("/receivables/statement.pdf", params={"client": other["key"]}, headers=h)
+    assert "24AAAAA8888A1Z5" in pypdfium2.PdfDocument(other_pdf.content)[0].get_textpage().get_text_range()

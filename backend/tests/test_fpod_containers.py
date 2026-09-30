@@ -72,6 +72,17 @@ def test_add_and_remove_by_hand(client, admin_headers, inland):
     assert client.post(base, json={"container_no": "ABCU1234567"}, headers=admin_headers).status_code == 409
     assert client.delete(f"{base}/{r.json()['id']}", headers=admin_headers).status_code == 204
     assert client.get(base, headers=admin_headers).json() == []
+    # the removal is in the shipment's history, and Recently deleted can bring it back
+    hist = client.get(f"/shipments/{inland}/history", headers=admin_headers).json()
+    assert any(e["field"] == "deleted" and e["about"] == "ABCU1234567" for e in hist)
+    gone = [d for d in client.get("/deleted", headers=admin_headers).json() if d["kind"] == "container"]
+    assert gone and gone[0]["label"] == "Container ABCU1234567" and gone[0]["shipment_id"] == inland
+    assert client.post(f"/deleted/container/{r.json()['id']}/restore", headers=admin_headers).status_code == 200
+    assert [c["container_no"] for c in client.get(base, headers=admin_headers).json()] == ["ABCU1234567"]
+    # removed again and typed in again by hand: restoring the old one would make a duplicate — refused
+    client.delete(f"{base}/{r.json()['id']}", headers=admin_headers)
+    client.post(base, json={"container_no": "ABCU1234567"}, headers=admin_headers)
+    assert client.post(f"/deleted/container/{r.json()['id']}/restore", headers=admin_headers).status_code == 400
 
 
 def test_days_free_and_free_until_per_container(client, admin_headers, inland):

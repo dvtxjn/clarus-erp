@@ -179,6 +179,7 @@ def remove_container(shipment_id: int, container_id: int, db: Session = Depends(
                                            ShipmentContainer.shipment_id == shipment_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Container not found")
+    record_change(db, "shipment_containers", c.id, "deleted", c.container_no, None, user.id)
     soft_delete(db, c, user.id)
     db.commit()
 

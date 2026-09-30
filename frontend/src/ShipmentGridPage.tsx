@@ -1,4 +1,5 @@
 import { tabKeys } from "./tabKeys";
+import { copyText } from "./clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
@@ -2034,7 +2035,7 @@ function MiniFieldPopover({
 }) {
   const [v, setV] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const away = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && onClose();
@@ -2071,11 +2072,13 @@ function MiniFieldPopover({
           type="button"
           className="btn-secondary"
           disabled={!v}
-          onClick={() => {
-            navigator.clipboard?.writeText(v).then(() => setCopied(true));
+          onClick={async () => {
+            const ok = await copyText(v);
+            setCopied(ok ? "ok" : "fail");
+            window.setTimeout(() => setCopied(null), 1500);
           }}
         >
-          {copied ? "Copied" : "Copy"}
+          {copied === "ok" ? "Copied" : copied === "fail" ? "Couldn't copy" : "Copy"}
         </button>
         <span style={{ flex: 1 }} />
         <button type="button" className="btn-secondary" onClick={onClose}>
@@ -2167,11 +2170,16 @@ function FormulaBar({ cell }: { cell: FormulaCell | null }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => setDraft(cell?.text ?? ""), [cell?.label, cell?.text]);
   const changed = !!cell && draft !== cell.text;
-  const copy = () =>
-    navigator.clipboard?.writeText(draft).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    });
+  const [failed, setFailed] = useState(false);
+  const copy = async () => {
+    const ok = await copyText(draft);
+    setCopied(ok);
+    setFailed(!ok);
+    window.setTimeout(() => {
+      setCopied(false);
+      setFailed(false);
+    }, 1500);
+  };
   return (
     <div className="formula-bar">
       <span className="formula-name" title={cell?.label}>
@@ -2197,8 +2205,8 @@ function FormulaBar({ cell }: { cell: FormulaCell | null }) {
         onBlur={() => changed && cell?.save(draft)}
       />
       {cell && !cell.editable && <span className="formula-hint">read only here · double-click the cell to edit</span>}
-      <button type="button" className="btn-secondary formula-copy" onClick={copy} disabled={!cell || !draft}>
-        {copied ? "Copied" : "Copy"}
+      <button type="button" className="btn-secondary formula-copy" onClick={copy} disabled={!cell || !draft} aria-live="polite">
+        {copied ? "Copied" : failed ? "Couldn't copy" : "Copy"}
       </button>
     </div>
   );

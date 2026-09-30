@@ -92,7 +92,7 @@ export default function FpodContainers({
   }
 
   async function remove(c: ShipmentContainer) {
-    if (!(await confirm({ title: `Remove ${c.container_no}?`, message: "It comes off this shipment (an admin can restore it).", confirmLabel: "Remove", danger: true })))
+    if (!(await confirm({ title: `Remove ${c.container_no}?`, message: "It comes off this shipment. An admin can bring it back from Recently deleted.", confirmLabel: "Remove", danger: true })))
       return;
     try {
       await removeContainer(shipmentId, c.id);

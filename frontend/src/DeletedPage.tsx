@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listDeleted, restoreDeleted, type DeletedItem } from "./api";
 
@@ -7,6 +7,8 @@ const KIND_LABELS: Record<DeletedItem["kind"], string> = {
   document: "Document",
   proforma: "Proforma",
   final_invoice: "Final invoice",
+  payment: "Payment",
+  container: "Container",
 };
 
 function errorText(e: unknown): string {
@@ -22,6 +24,24 @@ export default function DeletedPage() {
   const [items, setItems] = useState<DeletedItem[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [kind, setKind] = useState("");
+  const [who, setWho] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [q, setQ] = useState("");
+  const people = useMemo(() => [...new Set((items ?? []).map((d) => d.deleted_by).filter((x): x is string => !!x))].sort(), [items]);
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return (items ?? []).filter((d) => {
+      if (kind && d.kind !== kind) return false;
+      if (who && d.deleted_by !== who) return false;
+      const day = new Date(d.deleted_at).toLocaleDateString("en-CA"); // local yyyy-mm-dd
+      if (from && day < from) return false;
+      if (to && day > to) return false;
+      return !needle || `${d.label} ${d.shipment ?? ""}`.toLowerCase().includes(needle);
+    });
+  }, [items, kind, who, from, to, q]);
+  const filtered = !!(kind || who || from || to || q);
 
   const load = useCallback(() => listDeleted().then(setItems), []);
   useEffect(() => {
@@ -48,11 +68,54 @@ export default function DeletedPage() {
       <div>
         <h1>Recently deleted</h1>
         <p className="field-note">
-          Deleted shipments, documents, proformas and draft invoices are kept here — nothing is erased. Restore puts
+          Deleted shipments, documents, containers, proformas, draft invoices and payments are kept here — nothing is erased. Restore puts
           it back exactly as it was. Issued invoices can't be deleted (cancel them instead).
         </p>
       </div>
       {msg && <div role="status" className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
+      {!!items?.length && (
+        <div className="inv-filters">
+          <select aria-label="What" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="">Everything</option>
+            {Object.entries(KIND_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <select aria-label="Deleted by" value={who} onChange={(e) => setWho(e.target.value)}>
+            <option value="">Anyone</option>
+            {people.map((p) => (
+              <option key={p}>{p}</option>
+            ))}
+          </select>
+          <label className="final-field-inline">
+            From <input type="date" aria-label="Deleted from" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label className="final-field-inline">
+            To <input type="date" aria-label="Deleted to" value={to} onChange={(e) => setTo(e.target.value)} />
+          </label>
+          <input aria-label="Search deleted" placeholder="Item, job, BL…" value={q} onChange={(e) => setQ(e.target.value)} />
+          {filtered && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setKind("");
+                setWho("");
+                setFrom("");
+                setTo("");
+                setQ("");
+              }}
+            >
+              Clear
+            </button>
+          )}
+          <span className="doc-group-count">
+            {shown.length} of {items.length}
+          </span>
+        </div>
+      )}
       {items === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : items.length === 0 ? (
@@ -71,7 +134,14 @@ export default function DeletedPage() {
             </tr>
           </thead>
           <tbody>
-            {items.map((d) => (
+            {shown.length === 0 && (
+              <tr>
+                <td colSpan={6} className="tracker-empty">
+                  Nothing matches these filters.
+                </td>
+              </tr>
+            )}
+            {shown.map((d) => (
               <tr key={`${d.kind}:${d.id}`}>
                 <td>{KIND_LABELS[d.kind]}</td>
                 <td>{d.label}</td>

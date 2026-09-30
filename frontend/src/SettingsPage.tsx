@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
-import { EInvoicing, InvoiceNumbering } from "./RatesPage";
+import { EInvoicing, InvoiceNumbering, TdsRateSwitch } from "./RatesPage";
 import SheetsMirrorSettings from "./SheetsMirrorSettings";
 import MailboxSettings from "./MailboxSettings";
 import AutoRulesSettings from "./AutoRulesSettings";
@@ -117,9 +117,10 @@ export default function SettingsPage() {
       <CompanyBlock s={s} onSaved={setS} />
       <BankBlock s={s} onSaved={setS} />
       <TextBlock s={s} onSaved={setS} />
-      <Section title="Invoicing" hint="E-invoicing and where the invoice numbers continue from. Rates and licences are on the Rates page.">
+      <Section title="Invoicing" hint="E-invoicing, where the invoice numbers continue from, and TDS rates. Rates and licences are on the Rates page.">
         <EInvoicing canEdit />
         <InvoiceNumbering canEdit />
+        <TdsRateSwitch canEdit />
         <p className="field-note">
           Standard rates, licences and HSS rules: <Link to="/rates">Rates</Link>.
         </p>

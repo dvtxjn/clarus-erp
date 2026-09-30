@@ -86,7 +86,8 @@ export interface Shipment {
   tds_on_cfs: boolean;
   drive_folder_id: string | null;
   drive_folder_link: string | null;
-  cfs_tds_amount: string | null; // 2% of CFS basic, when we pay the CFS and cut TDS
+  cfs_tds_rate: string | null; // % of CFS basic; null = the usual 2%
+  cfs_tds_amount: string | null; // TDS (usually 2%) of CFS basic, when we pay the CFS and cut TDS
   cfs_payment_after_tds: string | null; // basic + GST - TDS
   remarks: string | null;
   fta_info: string | null; // FTA certificate no / notes (the small FTA button on the MBL)

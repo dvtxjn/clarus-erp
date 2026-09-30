@@ -854,6 +854,48 @@ export function InvoiceNumbering({ canEdit }: { canEdit: boolean }) {
 }
 
 /**
+ * Admin: TDS on CFS payments is 2%; switched on, each shipment's rate can be picked
+ * (1% / 2% / 10% / custom) on the shipment page (client, 2026-09-30).
+ */
+export function TdsRateSwitch({ canEdit }: { canEdit: boolean }) {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    getSettings()
+      .then((s) => setOn(s.tds_rate_editable))
+      .catch(() => setOn(null));
+  }, []);
+  if (on === null) return null;
+  return (
+    <div className="hss-rule">
+      <label className="toggle-row" title={canEdit ? "" : "Only the admin can change this"}>
+        <span>
+          <strong>Allow other TDS rates on CFS payments</strong>
+          <span className="field-note" style={{ display: "block" }}>
+            Off: TDS is always 2% (CFS). On: each shipment's CFS section lets you pick 1%, 2%, 10% or type a rate.
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={on}
+          disabled={!canEdit}
+          onChange={async () => {
+            setErr(null);
+            try {
+              setOn((await setSetting("tds_rate_editable", !on)).tds_rate_editable);
+            } catch {
+              setErr("Couldn't save — only the admin can change this.");
+            }
+          }}
+        />
+      </label>
+      {err && <div className="auth-error">{err}</div>}
+    </div>
+  );
+}
+
+/**
  * Admin: does e-invoicing (IRN) apply to Clarus? When on, altering an issued bill first asks
  * whether its e-invoice has been filed — a filed one can't be altered (client, 2026-09-30).
  * Either way, issued bills can be altered only until the 10th of the next month.

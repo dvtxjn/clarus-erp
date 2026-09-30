@@ -125,6 +125,7 @@ class ShipmentUpdate(BaseModel):
     cfs_billed_as: Optional[Literal["reimbursement", "taxable"]] = None
     tds_deducted: Optional[bool] = None
     tds_on_cfs: Optional[bool] = None
+    cfs_tds_rate: Optional[Decimal] = None
     is_hss: Optional[bool] = None
     hss_seller: Optional[str] = None
     hss_buyer: Optional[str] = None
@@ -176,6 +177,7 @@ class ShipmentOut(ShipmentBase):
     under_examination: Optional[bool] = None
     examination_at: Optional[str] = None
     # CFS payment when we pay the CFS: basic + GST - 2% TDS on basic
+    cfs_tds_rate: Optional[Decimal] = None  # empty = the usual 2%
     cfs_tds_amount: Optional[Decimal] = None
     cfs_payment_after_tds: Optional[Decimal] = None
     created_at: datetime

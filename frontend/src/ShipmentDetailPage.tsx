@@ -1,11 +1,12 @@
 import { tabKeys } from "./tabKeys";
+import { copyText } from "./clipboard";
 import CustomsTimeline from "./CustomsTimeline";
 import { nextStep } from "./clearanceFlow";
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
-import { correctInvoiceAmounts, getShipment, listDocuments, refreshIcegate, setCostInclusion } from "./api";
+import { correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, refreshIcegate, setCostInclusion } from "./api";
 import { useSaveShipment } from "./useSaveShipment";
 import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
@@ -276,7 +277,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <EditField label="ETA" field="eta" kind="date" s={s} onChange={onChange} display={fmtDate(s.eta)} />
             <EditField label="INW" field="inw" s={s} onChange={onChange} hint="Typed like the sheet, e.g. 19-Sep-2026" />
             <Field label="Day" value={s.days} />
-            <EditField label="License" field="license" s={s} onChange={onChange} />
             <EditField label="Containers" field="container" s={s} onChange={onChange} />
             {s.port && (
               <button
@@ -341,8 +341,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               <Field label="ICD IGM" value={[s.icegate.icd.icd_igm_no, s.icegate.icd.icd_igm_date].filter(Boolean).join(" · ") || null} />
               <Field label="SMTP" value={[s.icegate.icd.smtp_no, s.icegate.icd.smtp_date].filter(Boolean).join(" · ") || null} hint="Rail / road permit from the gateway to the ICD" />
               <Field label="Gateway port" value={s.icegate.icd.gateway_port ? formatPort(s.icegate.icd.gateway_port, ports) || s.icegate.icd.gateway_port : null} />
-              <Field label="BE location" value={s.icegate.icd.be_location ?? null} />
-              <Field label="Importer (ICD)" value={s.icegate.icd.importer ?? null} />
               {Object.entries(s.icegate.icd)
                 .filter(([k]) => !["icd_igm_no", "icd_igm_date", "smtp_no", "smtp_date", "gateway_port", "be_location", "importer"].includes(k))
                 .map(([k, v]) => (
@@ -371,14 +369,19 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       <div className="detail-col">
         <section className="detail-section">
           <h3>Customs duty</h3>
+          <EditField label="License" field="license" s={s} onChange={onChange} />
+          {inland && s.icegate?.icd?.be_location && <Field label="BE location" value={s.icegate.icd.be_location} hint="From the ICD BL status" />}
+          {inland && s.icegate?.icd?.importer && <Field label="Importer (ICD)" value={s.icegate.icd.importer} hint="From the ICD BL status" />}
           <BeAmounts shipment={s} onChange={onChange} />
         </section>
         <section className="detail-section">
           <h3>Status</h3>
           <EditField label="OOC Date" field="ooc_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.ooc_date)} />
-          <Field label="Examination" value={examination} hint="Read from the OOC copy" />
           <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
-            <span>Under examination</span>
+            <span>
+              Under examination
+              {s.under_examination && <span className="field-note"> {examination}</span>}
+            </span>
             <input
               type="checkbox"
               role="switch"
@@ -408,15 +411,16 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
           {s.cfs_paid_by_us ? (
             <>
+              {s.tds_on_cfs && <TdsRate shipment={s} onChange={onChange} />}
               <Field
-                label="TDS @ 2% of basic"
+                label={`TDS @ ${tdsPct(s)}% of basic`}
                 value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
-                hint="2% of the CFS basic value (before GST)"
+                hint={`${tdsPct(s)}% of the CFS basic value (before GST)`}
               />
               <Field
                 label="Payment after TDS"
                 value={fmtMoney(s.cfs_payment_after_tds)}
-                hint="Basic + GST − 2% of basic"
+                hint={`Basic + GST − ${tdsPct(s)}% of basic`}
                 strong
               />
               <label className="toggle-row" title="How CFS goes on the proforma">
@@ -486,22 +490,95 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
 }
 
 /** A key number (BL / BE): shown in full (wraps rather than cut), click copies it. */
+const tdsPct = (s: Shipment) => (s.cfs_tds_rate == null ? "2" : String(Number(s.cfs_tds_rate)));
+
+/**
+ * TDS rate on the CFS payment: fixed at 2% unless the admin allows other rates in Settings;
+ * then 1% / 2% / 10% or a typed rate (client, 2026-09-30).
+ */
+function TdsRate({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+  const [editable, setEditable] = useState(false);
+  const [custom, setCustom] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const saveShipment = useSaveShipment();
+  useEffect(() => {
+    getPublicSettings()
+      .then((p) => setEditable(p.tds_rate_editable))
+      .catch(() => setEditable(false));
+  }, []);
+  const pct = tdsPct(s);
+  const preset = ["1", "2", "10"].includes(pct);
+  if (!editable && pct === "2") return null; // the usual: shown in the TDS line below
+  async function save(v: string) {
+    const n = Number(v.trim());
+    if (!v.trim() || !Number.isFinite(n) || n <= 0 || n > 20) {
+      setErr("Enter a rate above 0% and up to 20%.");
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    try {
+      onChange((await saveShipment(s, { cfs_tds_rate: n === 2 ? null : String(n) })).shipment);
+      setCustom(null);
+    } catch (e) {
+      const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      setErr(typeof d === "string" ? d : "Couldn't save the rate.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <label className="toggle-row">
+        <span>TDS rate</span>
+        {editable ? (
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <select
+              value={custom !== null || !preset ? "custom" : pct}
+              disabled={busy}
+              onChange={(e) => (e.target.value === "custom" ? setCustom(preset ? "" : pct) : save(e.target.value))}
+            >
+              <option value="1">1%</option>
+              <option value="2">2% (CFS)</option>
+              <option value="10">10%</option>
+              <option value="custom">Other…</option>
+            </select>
+            {(custom !== null || !preset) && (
+              <input
+                type="text"
+                inputMode="decimal"
+                aria-label="TDS rate in percent"
+                placeholder="e.g. 5…"
+                style={{ width: 70 }}
+                value={custom ?? pct}
+                aria-invalid={!!err}
+                onChange={(e) => setCustom(e.target.value)}
+                onBlur={(e) => custom !== null && e.target.value.trim() && e.target.value.trim() !== pct && save(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && save((e.target as HTMLInputElement).value)}
+              />
+            )}
+          </span>
+        ) : (
+          <span className="field-note">{pct}% (other rates are off in Settings)</span>
+        )}
+      </label>
+      {err && <div className="auth-error" role="alert">{err}</div>}
+    </>
+  );
+}
+
 function CopyValue({ value, label }: { value: string | null | undefined; label: string }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"Copied" | "Couldn't copy" | "">("");
   if (!value) return null;
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(value!);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      /* clipboard blocked: the text can still be selected */
-    }
+    setCopied((await copyText(value!)) ? "Copied" : "Couldn't copy");
+    window.setTimeout(() => setCopied(""), 1500);
   }
   return (
     <button type="button" className="copy-value" onClick={copy} title={`${value} — click to copy`} aria-label={`Copy ${label} ${value}`} translate="no">
       {value}
-      <span className="copy-value-tag" aria-live="polite">{copied ? "Copied" : ""}</span>
+      <span className="copy-value-tag" aria-live="polite">{copied}</span>
     </button>
   );
 }

@@ -141,6 +141,25 @@ def test_cfs_payment_after_tds(client, admin_headers):
     assert s["cfs_tds_amount"] is None and float(s["cfs_payment_after_tds"]) == 128100.80
 
 
+def test_cfs_tds_rate_needs_the_admin_switch(client, admin_headers):
+    sid = _new_shipment(client, admin_headers)
+    _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf())  # basic 108560
+    client.patch(f"/shipments/{sid}", json={"cfs_paid_by_us": True}, headers=admin_headers)
+    assert client.get("/settings/public", headers=admin_headers).json() == {"tds_rate_editable": False}
+    r = client.patch(f"/shipments/{sid}", json={"cfs_tds_rate": 10}, headers=admin_headers)
+    assert r.status_code == 422 and "fixed at 2%" in r.json()["detail"]
+    assert client.patch(f"/shipments/{sid}", json={"cfs_tds_rate": 2}, headers=admin_headers).status_code == 200
+
+    assert client.put("/settings/tds_rate_editable", json={"value": True}, headers=admin_headers).status_code == 200
+    s = client.patch(f"/shipments/{sid}", json={"cfs_tds_rate": 10}, headers=admin_headers).json()
+    assert float(s["cfs_tds_rate"]) == 10 and float(s["cfs_tds_amount"]) == 10856.00
+    s = client.patch(f"/shipments/{sid}", json={"cfs_tds_rate": 1}, headers=admin_headers).json()
+    assert float(s["cfs_tds_amount"]) == 1085.60
+    assert client.patch(f"/shipments/{sid}", json={"cfs_tds_rate": 25}, headers=admin_headers).status_code == 422
+    s = client.patch(f"/shipments/{sid}", json={"cfs_tds_rate": 2}, headers=admin_headers).json()
+    assert s["cfs_tds_rate"] is None and float(s["cfs_tds_amount"]) == 2171.20  # 2% is stored as empty
+
+
 def test_upload_is_also_saved_into_linked_drive_folder(client, admin_headers, monkeypatch):
     from app.integrations import google_drive
     saved = {}

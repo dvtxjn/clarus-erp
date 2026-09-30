@@ -11,6 +11,7 @@ from app.core.database import get_db
 from app.core.deps import require_admin
 from app.extraction.cfs_totals import INVOICE_DOC_TYPES, recompute_invoice_totals
 from app.invoice.autofill import refresh_draft_proformas
+from app.models.container import ShipmentContainer
 from app.models.document import ShipmentDocument
 from app.models.final_invoice import FinalInvoice
 from app.models.payment import Payment
@@ -21,11 +22,11 @@ from app.models.user import User
 
 router = APIRouter(prefix="/deleted", tags=["recently deleted"], dependencies=[Depends(require_admin)])
 
-Kind = Literal["shipment", "document", "proforma", "final_invoice", "payment"]
+Kind = Literal["shipment", "document", "proforma", "final_invoice", "payment", "container"]
 MODELS = {"shipment": Shipment, "document": ShipmentDocument, "proforma": Proforma, "final_invoice": FinalInvoice,
-          "payment": Payment}
+          "payment": Payment, "container": ShipmentContainer}
 TABLES = {"shipment": "shipments", "document": "shipment_documents", "proforma": "proformas",
-          "final_invoice": "final_invoices", "payment": "payments"}
+          "final_invoice": "final_invoices", "payment": "payments", "container": "shipment_containers"}
 
 
 def _all(db: Session, model):
@@ -39,6 +40,8 @@ def _label(kind: str, obj) -> str:
         return obj.generated_filename or obj.original_filename or obj.document_type.value
     if kind == "proforma":
         return f"Proforma v{obj.version_number}" + (f" · {obj.name}" if obj.name else "")
+    if kind == "container":
+        return f"Container {obj.container_no}"
     if kind == "payment":
         return f"Payment ₹{obj.amount:,.2f} from {obj.party} ({obj.received_on:%d %b %Y})"
     return f"{'Tax' if obj.kind == 'tax' else 'Reimbursement'} invoice (draft)"
@@ -74,6 +77,11 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
         ship = _all(db, Shipment).filter(Shipment.id == obj.shipment_id).first()
         if ship and ship.is_deleted:
             raise HTTPException(status_code=400, detail="Its shipment is deleted — restore the shipment first")
+    if kind == "container":
+        again = db.query(ShipmentContainer).filter(ShipmentContainer.shipment_id == obj.shipment_id,
+                                                   ShipmentContainer.container_no == obj.container_no).first()
+        if again:
+            raise HTTPException(status_code=400, detail=f"{obj.container_no} is already back on this shipment")
     if kind == "final_invoice":
         clash = db.query(FinalInvoice).filter(FinalInvoice.proforma_id == obj.proforma_id,
                                               FinalInvoice.kind == obj.kind,
