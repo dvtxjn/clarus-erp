@@ -1,4 +1,5 @@
 import IdleLogout from "./IdleLogout";
+import UpdateCheck from "./UpdateCheck";
 import ClarusLogo from "./ClarusLogo";
 import { useEffect, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -249,6 +250,7 @@ export default function AppLayout() {
         <SidebarSlotContext.Provider value={collapsed ? null : slot}>
           <Outlet />
           <IdleLogout />
+          <UpdateCheck />
         </SidebarSlotContext.Provider>
       </main>
     </div>

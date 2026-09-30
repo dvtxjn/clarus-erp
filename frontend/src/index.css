@@ -1976,3 +1976,11 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 @media (max-width: 720px) {
   .key-ids .key-id-keys, .key-ids .key-id-flags { flex-basis: auto; }
 }
+
+/* a new deploy is live: reload (UpdateCheck) */
+.update-banner {
+  position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: var(--z-tray);
+  display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; max-width: calc(100vw - 32px);
+  background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); font-size: 13px;
+}
+@media (max-width: 767px) { .update-banner { bottom: calc(72px + env(safe-area-inset-bottom)); } }
