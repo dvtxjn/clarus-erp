@@ -56,10 +56,14 @@ def start() -> None:
     from app import sheets_mirror
 
     asyncio.create_task(_every("sheets-mirror", 900, sheets_mirror.run_job))  # view-only Sheets copy, 15 min
+    from app.icegate_mail import gmail
+
+    asyncio.create_task(_every("gmail", 900, gmail.run_job))  # ICEGATE mailbox catch-up (push is instant)
 
 
 JOBS = {"backup": "app.backups:backup_if_due", "drive-retry": "app.storage:retry_pending",
-        "icegate": "app.igm.batch:run_auto", "sheets-mirror": "app.sheets_mirror:run_job"}
+        "icegate": "app.igm.batch:run_auto", "sheets-mirror": "app.sheets_mirror:run_job",
+        "gmail": "app.icegate_mail.gmail:run_job"}
 
 
 def run_named(name: str) -> bool:

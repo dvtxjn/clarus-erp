@@ -105,7 +105,7 @@ URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value
 
 echo "== 10. timers: backup check hourly (makes one every 12 h), Drive retry every 15 min"
 TOKEN=$(gcloud secrets versions access latest --secret=job-token)
-for j in "erp-backup|7 * * * *|backup" "erp-drive-retry|*/15 * * * *|drive-retry" "erp-icegate|20 */6 * * *|icegate" "erp-sheets-mirror|*/15 * * * *|sheets-mirror"; do
+for j in "erp-backup|7 * * * *|backup" "erp-drive-retry|*/15 * * * *|drive-retry" "erp-icegate|20 */6 * * *|icegate" "erp-sheets-mirror|*/15 * * * *|sheets-mirror" "erp-gmail|*/15 * * * *|gmail"; do
   IFS='|' read -r NAME CRON JOB <<<"$j"
   exists gcloud scheduler jobs describe "$NAME" --location "$REGION" || \
     gcloud scheduler jobs create http "$NAME" --location "$REGION" --schedule "$CRON" --time-zone "Asia/Kolkata" \

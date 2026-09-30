@@ -148,3 +148,85 @@ def link_mail(mail_id: int, payload: LinkIn, db: Session = Depends(get_db), user
     mail_apply.link(db, m, user)
     db.commit()
     return _out(m, s, user)
+
+
+# --- the ICEGATE mailbox, read automatically (admin connects it once) ---
+import os  # noqa: E402
+import time as _time  # noqa: E402
+
+from fastapi import Request  # noqa: E402
+from fastapi.responses import RedirectResponse  # noqa: E402
+from jose import JWTError, jwt  # noqa: E402
+
+from app.core.security import ALGORITHM, SECRET_KEY  # noqa: E402
+from app.icegate_mail import gmail  # noqa: E402
+
+CALLBACK = "/oauth/gmail/callback"
+
+
+def _backend_base(request: Request) -> str:
+    return (os.getenv("PUBLIC_URL") or str(request.base_url)).rstrip("/")
+
+
+def _site() -> str:
+    return (os.getenv("PUBLIC_URL") or "http://localhost:5173").rstrip("/")
+
+
+def _reader_out(db: Session) -> dict:
+    _, st = gmail.state(db)
+    return {"mailbox": st.get("mailbox"), "connected": bool(st.get("token")), "connected_at": st.get("connected_at"),
+            "last_run": st.get("last_run"), "last_error": st.get("last_error"), "last_new": st.get("last_new"),
+            "instant": bool(gmail.topic_name()), "watch_expires": st.get("watch_expires"),
+            "ready": bool(gmail.client_id() and os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"))}
+
+
+@router.get("/gmail-reader")
+def reader_status(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    return _reader_out(db)
+
+
+@router.get("/gmail-reader/connect")
+def reader_connect(request: Request, login_hint: Optional[str] = None, user: User = Depends(require_admin)):
+    """The Google sign-in link for the mailbox (read-only permission)."""
+    if not gmail.client_id() or not os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"):
+        raise HTTPException(status_code=400, detail="Google sign-in isn't set up on the server yet (see the setup steps)")
+    token = jwt.encode({"sub": str(user.id), "purpose": "gmail", "exp": int(_time.time()) + 600}, SECRET_KEY, algorithm=ALGORITHM)
+    return {"url": gmail.auth_url(_backend_base(request) + CALLBACK, token, login_hint)}
+
+
+@router.get(CALLBACK, include_in_schema=False)
+def reader_callback(request: Request, code: str = "", state: str = "", error: str = "", db: Session = Depends(get_db)):
+    """Google sends the admin back here after they allow read access."""
+    back = _site() + "/settings"
+    try:
+        claims = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+        if claims.get("purpose") != "gmail":
+            raise JWTError("wrong purpose")
+        admin = db.get(User, int(claims["sub"]))
+        if admin is None or admin.role.value != "admin":
+            raise JWTError("not admin")
+    except (JWTError, KeyError, ValueError):
+        return RedirectResponse(back + "?mailbox=expired#mailbox")
+    if error or not code:
+        return RedirectResponse(back + "?mailbox=cancelled#mailbox")
+    try:
+        body = gmail.exchange(code, _backend_base(request) + CALLBACK)
+        gmail.connect(db, body)
+    except gmail.GmailError:
+        return RedirectResponse(back + "?mailbox=failed#mailbox")
+    gmail.sync(db, topic=gmail.topic_name())  # the last 30 days of ICEGATE mails, and start the instant push
+    return RedirectResponse(back + "?mailbox=connected#mailbox")
+
+
+@router.post("/gmail-reader/sync")
+def reader_sync(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    gmail.sync(db, topic=gmail.topic_name())
+    return _reader_out(db)
+
+
+@router.post("/gmail-reader/disconnect")
+def reader_disconnect(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    """Forget the mailbox (the ERP stops reading). Mails already read stay."""
+    row, st = gmail.state(db)
+    gmail.save(db, row, {"mailbox": st.get("mailbox"), "disconnected": True})
+    return _reader_out(db)

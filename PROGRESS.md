@@ -866,3 +866,10 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
 - UI: Customs mail page (/customs-mail, upload .eml / Gmail zip), Customs timeline on the shipment Overview,
   "ICEGATE" in Needs attention. Migration 0044 (icegate_mails).
 - Real samples (44 mails): 34 matched; jobs 174/175 not in the local tracker yet.
+- 2026-09-30: **mailbox read automatically** (`app/icegate_mail/gmail.py`): admin connects ONE company mailbox in Settings →
+  ICEGATE mailbox (Google sign-in, gmail.readonly, refresh token encrypted with BACKUP_ENCRYPTION_KEY). New mail: Gmail
+  watch -> Pub/Sub topic icegate-mail -> push /internal/gmail/push?token=JOB_TOKEN (instant) + erp-gmail scheduler every
+  15 min (catch-up, renews the 7-day watch). history id based: read/unread never matters; fingerprint skips repeats;
+  first connect reads the last 30 days. Needs: Gmail filter forwarding from:icegate.gov.in (bharatgtanna@gmail.com) to a
+  Workspace mailbox; OAuth consent screen Internal; redirect URI /oauth/gmail/callback; secret google-oauth-secret.
+- Next discussed: ICEGATE login using OTPs — ask what the login is for; no CAPTCHA bypass.

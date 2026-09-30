@@ -17,6 +17,11 @@ ENV="APP_ENV=production,AUTO_MIGRATE=0,JOBS_ENABLED=0,STORAGE_BACKEND=drive,PUBL
 ENV="$ENV,DRIVE_ROOT_FOLDER_ID=$DRIVE_ROOT_FOLDER_ID,DRIVE_INVOICES_FOLDER_ID=$DRIVE_INVOICES_FOLDER_ID"
 ENV="$ENV,DRIVE_BACKUPS_FOLDER_ID=$DRIVE_BACKUPS_FOLDER_ID,DRIVE_SHIPMENTS_FOLDER_ID=$DRIVE_SHIPMENTS_FOLDER_ID"
 SECRETS="DATABASE_URL=database-url:latest,JWT_SECRET_KEY=jwt-secret:latest,BACKUP_ENCRYPTION_KEY=backup-key:latest,JOB_TOKEN=job-token:latest,/secrets/drive/key.json=drive-sa-key:latest"
+# ICEGATE mailbox (read-only Gmail): the OAuth client's secret, once it's been saved as google-oauth-secret
+ENV="$ENV,GOOGLE_OAUTH_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID,GMAIL_PUBSUB_TOPIC=projects/$PROJECT/topics/icegate-mail"
+if gcloud secrets describe google-oauth-secret >/dev/null 2>&1; then
+  SECRETS="$SECRETS,GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-secret:latest"
+fi
 
 echo "== 2/3 back up + migrate"
 gcloud run jobs deploy erp-migrate --image "$TAG" --region "$REGION" --service-account "$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" \
@@ -37,7 +42,23 @@ if ! gcloud scheduler jobs describe erp-icegate --location "$REGION" >/dev/null 
     --uri "$URL/internal/jobs/icegate" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 1800s --quiet
 fi
 # Google Sheets copy of the tracker every 15 min (Sheets API on, job created once)
-gcloud services enable sheets.googleapis.com picker.googleapis.com drive.googleapis.com --quiet
+gcloud services enable sheets.googleapis.com picker.googleapis.com drive.googleapis.com gmail.googleapis.com pubsub.googleapis.com --quiet
+# ICEGATE mailbox: Gmail tells Pub/Sub about new mail -> Pub/Sub pushes to the ERP at once (created once)
+if ! gcloud pubsub topics describe icegate-mail >/dev/null 2>&1; then
+  gcloud pubsub topics create icegate-mail --quiet
+  gcloud pubsub topics add-iam-policy-binding icegate-mail \
+    --member serviceAccount:gmail-api-push@system.gserviceaccount.com --role roles/pubsub.publisher --quiet >/dev/null
+fi
+if ! gcloud pubsub subscriptions describe icegate-mail-push >/dev/null 2>&1; then
+  TOKEN=$(gcloud secrets versions access latest --secret=job-token)
+  gcloud pubsub subscriptions create icegate-mail-push --topic icegate-mail --ack-deadline 120 \
+    --push-endpoint "$PUBLIC_URL/internal/gmail/push?token=$TOKEN" --quiet
+fi
+if ! gcloud scheduler jobs describe erp-gmail --location "$REGION" >/dev/null 2>&1; then
+  TOKEN=$(gcloud secrets versions access latest --secret=job-token)
+  gcloud scheduler jobs create http erp-gmail --location "$REGION" --schedule "*/15 * * * *" --time-zone "Asia/Kolkata" \
+    --uri "$URL/internal/jobs/gmail" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 600s --quiet
+fi
 if ! gcloud scheduler jobs describe erp-sheets-mirror --location "$REGION" >/dev/null 2>&1; then
   TOKEN=$(gcloud secrets versions access latest --secret=job-token)
   gcloud scheduler jobs create http erp-sheets-mirror --location "$REGION" --schedule "*/15 * * * *" --time-zone "Asia/Kolkata" \

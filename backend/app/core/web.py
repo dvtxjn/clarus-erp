@@ -52,7 +52,7 @@ class SpaFallback(BaseHTTPMiddleware):
                 return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"}
                                     if "/assets/" in path else None)
             wants_page = "text/html" in request.headers.get("accept", "")
-            if wants_page and not path.startswith(("/docs", "/redoc", "/openapi.json")):
+            if wants_page and not path.startswith(("/docs", "/redoc", "/openapi.json", "/oauth/")):
                 return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})
         return await call_next(request)
 

@@ -5,7 +5,7 @@ import os
 import sys
 
 from fastapi import Depends, FastAPI, Header, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm.exc import StaleDataError
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -96,6 +96,17 @@ def run_job(name: str, x_job_token: str = Header(default="")):
     if name not in jobs.JOBS:
         return JSONResponse(status_code=404, content={"detail": "no such job"})
     return {"job": name, "ran": jobs.run_named(name)}
+
+
+@app.post("/internal/gmail/push", include_in_schema=False)
+def gmail_push(token: str = ""):
+    """Pub/Sub: Gmail says the ICEGATE mailbox has new mail -> read it now. The token is JOB_TOKEN (in the
+    push subscription's URL). Any 2xx acknowledges the message; on errors Pub/Sub simply retries."""
+    expected = os.getenv("JOB_TOKEN", "")
+    if not expected or not hmac.compare_digest(token, expected):
+        return JSONResponse(status_code=403, content={"detail": "forbidden"})
+    jobs.run_named("gmail")
+    return Response(status_code=204)
 
 
 @app.get("/health")

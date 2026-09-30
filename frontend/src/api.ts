@@ -954,3 +954,32 @@ export async function linkIcegateMail(id: number, shipmentId: number): Promise<I
   const { data } = await client.post(`/icegate-mails/${id}/link`, { shipment_id: shipmentId });
   return data;
 }
+
+// Settings → ICEGATE mailbox (read automatically, read-only)
+export interface MailboxStatus {
+  mailbox: string | null;
+  connected: boolean;
+  connected_at: string | null;
+  last_run: string | null;
+  last_error: string | null;
+  last_new: number | null;
+  instant: boolean;
+  watch_expires: string | null;
+  ready: boolean;
+}
+export async function getMailbox(): Promise<MailboxStatus> {
+  const { data } = await client.get("/gmail-reader");
+  return data;
+}
+export async function mailboxConnectUrl(loginHint?: string): Promise<string> {
+  const { data } = await client.get("/gmail-reader/connect", { params: loginHint ? { login_hint: loginHint } : {} });
+  return data.url;
+}
+export async function syncMailbox(): Promise<MailboxStatus> {
+  const { data } = await client.post("/gmail-reader/sync");
+  return data;
+}
+export async function disconnectMailbox(): Promise<MailboxStatus> {
+  const { data } = await client.post("/gmail-reader/disconnect");
+  return data;
+}
