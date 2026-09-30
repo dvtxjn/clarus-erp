@@ -197,7 +197,7 @@ export default function CustomsMailPage() {
                     </td>
                     <td>
                       {m.shipment_id ? (
-                        <Link to={`/shipments/${m.shipment_id}#customs`}>{m.shipment_job ? `Job ${m.shipment_job}` : "Open"}</Link>
+                        <Link to={`/shipments/${m.shipment_id}?tab=customs`}>{m.shipment_job ? `Job ${m.shipment_job}` : "Open"}</Link>
                       ) : m.kind === "otp" ? (
                         "—"
                       ) : (

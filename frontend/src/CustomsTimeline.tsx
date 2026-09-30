@@ -24,7 +24,7 @@ export default function CustomsTimeline({ shipmentId }: { shipmentId: number }) 
       {rows === null ? (
         <p className="field-note">Loading ICEGATE mails…</p>
       ) : rows.length === 0 ? (
-        <p className="field-note">No ICEGATE mails for this shipment yet. They appear here once the mails are read (Customs mail page).</p>
+        <p className="field-note">No ICEGATE mails for this shipment yet. They appear here once the mails are read on the Customs mail page.</p>
       ) : (
         <ol className="customs-list">
           {rows.map((m) => {

@@ -11,7 +11,7 @@ import ProformaPanel from "./ProformaPanel";
 import FpodContainers from "./FpodContainers";
 import { formatPort, usePorts } from "./ports";
 
-type Tab = "overview" | "documents" | "proforma";
+type Tab = "overview" | "customs" | "documents" | "proforma";
 
 // sea ports: free days start at the POD inward; every other port is inland (ICD) — client, 2026-09-30
 const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
@@ -33,7 +33,7 @@ function fmtMoney(v: string | null): string | null {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-const TABS: Tab[] = ["overview", "documents", "proforma"];
+const TABS: Tab[] = ["overview", "customs", "documents", "proforma"];
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -153,6 +153,9 @@ export function ShipmentDetail({
         <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
           Overview
         </button>
+        <button role="tab" aria-selected={tab === "customs"} className={tab === "customs" ? "tab active" : "tab"} onClick={() => setTab("customs")}>
+          Customs timeline
+        </button>
         <button role="tab" aria-selected={tab === "documents"} className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
           Documents
         </button>
@@ -164,6 +167,7 @@ export function ShipmentDetail({
       </div>
 
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
+      {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} />}
       {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
     </div>
@@ -416,7 +420,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD — at the bottom,
           its length varies with the number of containers (client, 2026-09-30) */}
       {inland && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} portLabel={formatPort(s.port, ports) || s.port!} onRefreshed={onChange} />}
-      <CustomsTimeline shipmentId={s.id} />
     </div>
   );
 }

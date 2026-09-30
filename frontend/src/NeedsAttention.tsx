@@ -74,7 +74,7 @@ export default function NeedsAttention() {
                 <span className="attention-sev">{SEVERITY[a.severity]}</span>
                 <span className="attention-who">
                   <span className="attention-line">
-                    <Link className="attention-job" to={`/shipments/${a.shipment_id}${a.kind === "documents" ? "?tab=documents" : a.kind === "icegate" ? "#customs" : ""}`}>
+                    <Link className="attention-job" to={`/shipments/${a.shipment_id}${a.kind === "documents" ? "?tab=documents" : a.kind === "icegate" ? "?tab=customs" : ""}`}>
                       {a.job ? `Job ${a.job}` : "No job no."}
                     </Link>
                     <span className="attention-client">{a.client || a.consignee || "—"}</span>
