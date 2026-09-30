@@ -121,13 +121,15 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
           </div>
         </div>
         <div className="daily-actions">
-          {status.icegate_ready && (
-            <button onClick={fromIcegate} disabled={fetching || busy}>
-              {fetching ? "Reading ICEGATE…" : "Read from ICEGATE"}
-            </button>
-          )}
+          <button
+            onClick={fromIcegate}
+            disabled={!status.icegate_ready || fetching || busy}
+            title={status.icegate_ready ? undefined : "Save the ICEGATE login on the Customs mail page first"}
+          >
+            {fetching ? "Reading ICEGATE…" : "Read from ICEGATE"}
+          </button>
           <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={(e) => onFile(e.target.files?.[0])} />
-          <button className={status.icegate_ready ? "btn-secondary" : undefined} onClick={() => fileRef.current?.click()} disabled={busy}>
+          <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={busy}>
             {busy ? "Reading…" : "Upload challan list"}
           </button>
           <button className="btn-secondary" onClick={() => setManual((m) => !m)}>
