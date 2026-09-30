@@ -1281,7 +1281,7 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       const h = Math.round(Math.max(480, window.innerHeight - top - 12));
       // only real changes: a 1-2 px wobble (scrollbar coming and going) must not re-lay out
       setPaneH((old) => (Math.abs(old - h) > 2 ? h : old));
-      const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 44) / A4_H);
+      const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 28) / A4_H);
       const next = mode === "fit" ? Math.round(Math.max(0.3, fit) * 50) / 50 : 1;
       setPageScale((old) => (Math.abs(old - next) >= 0.02 ? next : old));
     };
@@ -1316,7 +1316,8 @@ function InvoicePreview({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="invoice-preview" ref={pane} style={{ height: paneH }}>
+    <>
+      {/* outside the grey pane: on the tabs row next to Proforma / Final invoices */}
       <div className="invoice-preview-zoom">
         <button type="button" className={mode === "fit" ? "on" : ""} onClick={() => pick("fit")}>
           Fit page
@@ -1325,16 +1326,18 @@ function InvoicePreview({ children }: { children: ReactNode }) {
           100 %
         </button>
       </div>
-      {/* the A4 sheet, scaled to the pane */}
-      <div className="a4-frame" style={{ width: A4_W * pageScale, height: A4_H * pageScale }}>
-        <div className="a4-page" style={{ zoom: pageScale }}>
-          {/* the invoice, shrunk to fit one page when it's longer */}
-          <div ref={content} className="a4-content">
-            {children}
+      <div className="invoice-preview" ref={pane} style={{ height: paneH }}>
+        {/* the A4 sheet, scaled to the pane */}
+        <div className="a4-frame" style={{ width: A4_W * pageScale, height: A4_H * pageScale }}>
+          <div className="a4-page" style={{ zoom: pageScale }}>
+            {/* the invoice, shrunk to fit one page when it's longer */}
+            <div ref={content} className="a4-content">
+              {children}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
