@@ -327,7 +327,7 @@ export default function DocumentManagerPanel({
                     </td>
                     <td>
                       <span className={`status-pill ${row.uploaded ? "status-cleared" : row.required && !row.optional ? "status-missing" : ""}`}>
-                        {row.uploaded ? "Uploaded" : !row.required ? "Not needed" : row.optional ? "Optional" : "Missing"}
+                        {row.uploaded ? "Uploaded" : !row.required ? "Not needed" : row.optional ? "Optional" : "Not attached"}
                       </span>
                       {coveredByCombined && (
                         <span className="tracker-subtitle"> in {DOCUMENT_TYPE_LABELS[row.document!.document_type]}</span>

@@ -5,7 +5,7 @@ import { getAlerts, type AlertKind, type ShipmentAlert } from "./api";
 const KINDS: { id: AlertKind; label: string }[] = [
   { id: "deadline", label: "Deadlines" },
   { id: "free_days", label: "Free days" },
-  { id: "documents", label: "Documents" },
+  { id: "documents", label: "Not attached" },
 ];
 const SEVERITY = { overdue: "Overdue", urgent: "Urgent", soon: "Soon" } as const;
 const SHOWN = 6;

@@ -8,7 +8,8 @@ Three kinds, all for live shipments (no Cleared Date yet):
              the free days start on arrival at the FPOD after the rail leg — counted later from the
              client's FPOD inward sheet (P5).
 - documents: BE not filed yet, the ship is close (ETA within 7 days, or already inward) and
-             basic documents on the shipment's checklist are still missing.
+             basic documents on the checklist aren't attached in the ERP yet. Wording is "not attached",
+             never "missing": the papers have arrived, they just aren't uploaded (client, 2026-09-30).
 
 Pure functions (no DB) so they're easy to test; the router feeds them.
 """
@@ -129,7 +130,7 @@ def documents_alert(s, required: Iterable[tuple], uploaded: set, today: date) ->
     when = "arrived" if inw or left < 0 else ("ETA today" if left == 0 else f"ETA in {_days(left)}")
     return {**_base(s), "kind": "documents", "severity": "urgent" if inw or left <= 2 else "soon",
             "days_left": left, "due": s.eta.isoformat() if s.eta else None,
-            "text": f"BE not filed, {when}: missing {names}", "missing": [t.value for t in missing]}
+            "text": f"Not attached yet: {names} (BE not filed, {when})", "missing": [t.value for t in missing]}
 
 
 _ORDER = {"overdue": 0, "urgent": 1, "soon": 2}
