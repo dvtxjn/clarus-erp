@@ -33,3 +33,31 @@ def test_due_rules(client, admin_headers):
         db.close()
     assert sea_due in ids and sea_nobox in ids and icd_new in ids and icd_half in ids
     assert sea_in not in ids and sea_far not in ids and icd_done not in ids
+
+
+def test_failure_recorded_and_retried(client, admin_headers, monkeypatch):
+    import httpx
+    from app.igm import refresh
+    from app.models.shipment import Shipment
+
+    sid = client.post("/shipments", json={"mbl": "FAILRETRY1", "job": "8901"}, headers=admin_headers).json()["id"]
+    calls = []
+
+    def boom(db, s, _):
+        calls.append(1)
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(refresh, "refresh", boom)
+    monkeypatch.setattr(batch, "PAUSE_SECONDS", 0)
+    db = SessionLocal()
+    s = db.get(Shipment, sid)
+    s.icegate = {"fetched_at": "2026-09-29T08:00", "sea_found": True}
+    db.commit()
+    try:
+        batch._refresh_with_retry(db, s)
+    except httpx.HTTPError as e:
+        batch.record_failure(db, s, e)
+    assert len(calls) == 2
+    db.refresh(s)
+    assert s.icegate["error"] == "ICEGATE didn't answer" and s.icegate["sea_found"]  # last good read kept
+    db.close()

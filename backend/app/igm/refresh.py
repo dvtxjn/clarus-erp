@@ -111,6 +111,9 @@ def refresh(db: Session, s: Shipment, user_id: Optional[int]) -> dict:
         }
         record["differences"] = differences
         summary["differences"] = differences
+    if got and got["found"] and not got["containers"] and sea_data.get("containers"):
+        summary["notes"].append("Containers are in the IGM but not at the ICD yet (the ICD lists them when they arrive)")
+    record["sea_found"], record["icd_found"] = summary["sea_found"], summary["icd_found"]
     record["notes"] = summary["notes"]
     s.icegate = record
     return summary

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAlerts, type AlertKind, type ShipmentAlert } from "./api";
+import { getAlerts, refreshIcegate, type AlertKind, type ShipmentAlert } from "./api";
 
 const KINDS: { id: AlertKind; label: string }[] = [
   { id: "deadline", label: "Deadlines" },
@@ -26,6 +26,24 @@ export default function NeedsAttention() {
       .then(setAlerts)
       .catch(() => setFailed(true));
   }, []);
+
+  const [looking, setLooking] = useState<number | null>(null);
+  const [looked, setLooked] = useState<Record<number, string>>({});
+
+  // the fix sits on the flagged row itself (client: buttons next to the task)
+  async function lookUp(id: number) {
+    setLooking(id);
+    try {
+      const { summary } = await refreshIcegate(id);
+      const found = summary.sea_found || summary.icd_found;
+      setLooked((m) => ({ ...m, [id]: found ? "Found on ICEGATE — updated." : "Still not found. Check the BL no. on the shipment." }));
+      setAlerts(await getAlerts());
+    } catch {
+      setLooked((m) => ({ ...m, [id]: "ICEGATE didn't answer — try again in a minute." }));
+    } finally {
+      setLooking(null);
+    }
+  }
 
   const count = (k: AlertKind) => alerts?.filter((a) => a.kind === k).length ?? 0;
   const list = (alerts ?? []).filter((a) => !kind || a.kind === kind);
@@ -64,7 +82,7 @@ export default function NeedsAttention() {
         <p className="field-note">Checking deadlines, free days and documents…</p>
       ) : alerts.length === 0 ? (
         <p className="attention-empty">
-          All clear: no “d” deadlines, free-day limits, missing documents or open ICEGATE queries.
+          All clear: no “d” deadlines, free-day limits, missing documents, ICEGATE queries or IGMs missing near the ETA.
         </p>
       ) : (
         <>
@@ -83,7 +101,21 @@ export default function NeedsAttention() {
                     BL {a.mbl || "—"} · BE {a.be_no || "not filed"}
                   </span>
                 </span>
-                <span className="attention-text">{a.text}</span>
+                <span className="attention-text">
+                  {a.text}
+                  {a.lookup && a.mbl && (
+                    <span className="attention-action">
+                      <button type="button" className="btn-secondary btn-small" disabled={looking !== null} onClick={() => lookUp(a.shipment_id)}>
+                        {looking === a.shipment_id ? "Looking up…" : "Look up again"}
+                      </button>
+                      {looked[a.shipment_id] && (
+                        <span role="status" aria-live="polite" className="field-note">
+                          {looked[a.shipment_id]}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

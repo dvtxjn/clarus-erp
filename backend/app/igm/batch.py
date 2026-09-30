@@ -48,6 +48,30 @@ def due(db: Session, today: Optional[date] = None) -> list[Shipment]:
     return picked
 
 
+def _refresh_with_retry(db: Session, s: Shipment) -> dict:
+    """ICEGATE sometimes drops a request: one more try after a pause before calling it a failure."""
+    try:
+        return refresh.refresh(db, s, None)
+    except (httpx.HTTPError, ValueError):
+        db.rollback()
+        time.sleep(PAUSE_SECONDS * 4)
+        return refresh.refresh(db, s, None)
+
+
+def failure_text(e: Exception) -> str:
+    if isinstance(e, httpx.HTTPStatusError):
+        return f"ICEGATE answered {e.response.status_code}"
+    if isinstance(e, httpx.HTTPError):
+        return "ICEGATE didn't answer"
+    return "ICEGATE's answer couldn't be read"
+
+
+def record_failure(db: Session, s: Shipment, e: Exception) -> None:
+    """Keep the last good read-out; add the failure (cleared by the next good lookup). Flagged on the dashboard."""
+    s.icegate = {**(s.icegate or {}), "error": failure_text(e), "error_at": datetime.now().isoformat(timespec="minutes")}
+    db.commit()
+
+
 def run_auto() -> dict:
     """The 6-hourly job. Never raises for one bad shipment; returns (and stores) a summary."""
     db = SessionLocal()
@@ -57,17 +81,18 @@ def run_auto() -> dict:
         for s in due(db):
             result["checked"] += 1
             try:
-                summary = refresh.refresh(db, s, None)
+                summary = _refresh_with_retry(db, s)
                 db.commit()
                 if summary["changed"] or summary.get("containers", {}).get("updated") or summary.get("containers", {}).get("added"):
                     result["filled"] += 1
                     result["jobs"].append(s.job or s.mbl)
                 if not summary["sea_found"] and not summary["icd_found"]:
                     result["not_found"] += 1
-            except (httpx.HTTPError, ValueError):
+            except (httpx.HTTPError, ValueError) as e:
                 db.rollback()
                 result["errors"] += 1
                 log.warning("icegate: %s failed", s.mbl, exc_info=True)
+                record_failure(db, s, e)
             time.sleep(PAUSE_SECONDS)
         row = db.get(AppSetting, "icegate_last_run") or AppSetting(key="icegate_last_run")
         row.value = result

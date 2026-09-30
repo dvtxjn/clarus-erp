@@ -218,6 +218,7 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
             alerts.free_days_alert(s, today),
             alerts.fpod_alert(s, boxes[s.id], today),
             alerts.documents_alert(s, required, uploaded[s.id], today),
+            alerts.lookup_alert(s, today),
         ):
             if alert:
                 found.append(alert)

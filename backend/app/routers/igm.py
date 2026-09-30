@@ -22,8 +22,9 @@ def refresh_from_icegate(shipment_id: int, db: Session = Depends(get_db), user: 
         raise HTTPException(status_code=400, detail="This shipment has no MBL")
     try:
         summary = igm_refresh.refresh(db, s, user.id)
-    except httpx.HTTPError:
+    except httpx.HTTPError as e:
         db.rollback()
+        batch.record_failure(db, s, e)
         raise HTTPException(status_code=502, detail="ICEGATE didn't answer — try again in a minute")
     db.commit()
     db.refresh(s)

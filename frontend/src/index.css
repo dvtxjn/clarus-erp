@@ -1882,3 +1882,4 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .history-table .history-val { min-width: 120px; max-width: 280px; white-space: normal; overflow-wrap: break-word; font-variant-numeric: tabular-nums; }
 .history-auto { color: var(--color-text-muted); font-style: italic; }
 .history .customs-filters { margin-bottom: 8px; }
+.attention-action { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; }

@@ -146,6 +146,7 @@ export interface ShipmentAlert {
   port: string | null;
   missing?: string[];
   mail_id?: number;
+  lookup?: boolean; // ICEGATE lookup flag: "Look up again" on the row
 }
 
 /** Dashboard "Needs attention": "d" deadlines, free days at the POD, documents before BE filing. */

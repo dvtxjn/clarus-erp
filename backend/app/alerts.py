@@ -22,6 +22,7 @@ DEADLINE_DAYS = 4        # move to CFS this many days before the ETA
 FREE_DAYS = 14           # free days at the POD, INW inclusive
 WARN_DAYS = 3            # start warning this many days ahead
 DOCS_BEFORE_ETA = 7      # chase missing documents from this many days before the ETA
+IGM_BEFORE_ETA = 2       # the IGM should be on ICEGATE by then; if not, the BL no. may be fed wrong
 
 # sea ports (client, 2026-09-30): the INW here is where the free days start.
 # Every other port (Panipat, Garhi, …) is inland and skipped until the FPOD inward sheet exists.
@@ -170,6 +171,35 @@ def documents_alert(s, required: Iterable[tuple], uploaded: set, today: date) ->
     return {**_base(s), "kind": "documents", "severity": "urgent" if inw or left <= 2 else "soon",
             "days_left": left, "due": s.eta.isoformat() if s.eta else None,
             "text": f"Not attached yet: {names} (BE not filed, {when})", "missing": [t.value for t in missing]}
+
+
+def lookup_alert(s, today: date) -> Optional[dict]:
+    """ICEGATE lookup (client, 2026-09-30: a miss costs money daily): within 2 days of the ETA (or past it) and
+    ICEGATE still hasn't given us the IGM — no BL entered, the lookup failing, or nothing found (the BL no. may
+    be fed wrong). Cleared by itself once a lookup finds it."""
+    if s.eta is None or s.be_no:
+        return None
+    left = (s.eta - today).days
+    if left > IGM_BEFORE_ETA:
+        return None
+    rec = s.icegate or {}
+    when = f"ETA passed {_days(-left)} ago" if left < 0 else ("ETA today" if left == 0 else f"ETA in {_days(left)}")
+    if not (s.mbl or "").strip():
+        text = f"No BL no. entered — ICEGATE can't be checked ({when})"
+    elif rec.get("error") and rec.get("error_at", "") >= rec.get("fetched_at", ""):
+        text = f"ICEGATE lookup failing: {rec['error']} ({when}) — try again"
+    elif s.igm or s.inw or rec.get("sea_found") or rec.get("icd_found"):
+        return None
+    else:
+        from app import liners  # late: keeps this module import-light
+
+        known = liners.identify(s.mbl)
+        hint = known["note"] if known and known["note"] else (
+            "BL format not recognised" if not known else "IGM may not be filed yet")
+        looked = f", last looked {rec['fetched_at'].replace('T', ' ')}" if rec.get("fetched_at") else ", not looked up yet"
+        text = f"IGM not found on ICEGATE ({when}{looked}) — check the BL no. ({hint})"
+    return {**_base(s), "kind": "icegate", "severity": _severity(left), "days_left": left,
+            "due": s.eta.isoformat(), "text": text, "lookup": True}
 
 
 _ORDER = {"overdue": 0, "urgent": 1, "soon": 2}

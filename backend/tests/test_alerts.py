@@ -97,3 +97,26 @@ def test_fpod_free_days_per_container():
     assert late["severity"] == "overdue" and "past free days" in late["text"]
     assert alerts.fpod_alert(s, [("B", date(2026, 9, 20), None)], TODAY) is None
     assert alerts.fpod_alert(ship(port="INMUN1"), boxes, TODAY) is None   # sea ports: POD rule instead
+
+
+# --- ICEGATE lookup: IGM still not found within 2 days of the ETA ---
+def lk(**kw):
+    return ship(**{"igm": None, "icegate": None, **kw})
+
+
+def test_lookup_quiet_when_far_or_filed():
+    assert alerts.lookup_alert(lk(eta=date(2026, 10, 3)), TODAY) is None  # 3 days away
+    assert alerts.lookup_alert(lk(eta=date(2026, 10, 1), be_no="123"), TODAY) is None
+    assert alerts.lookup_alert(lk(eta=date(2026, 10, 1), igm="2345"), TODAY) is None
+    assert alerts.lookup_alert(lk(eta=date(2026, 10, 1), icegate={"sea_found": True, "fetched_at": "2026-09-30T08:00"}), TODAY) is None
+
+
+def test_lookup_flags_no_bl_failure_and_not_found():
+    a = alerts.lookup_alert(lk(eta=date(2026, 10, 2), mbl=""), TODAY)
+    assert a["kind"] == "icegate" and a["lookup"] and "No BL no." in a["text"]
+    fail = {"fetched_at": "2026-09-29T08:00", "error": "ICEGATE answered 500", "error_at": "2026-09-30T08:00", "sea_found": True}
+    a = alerts.lookup_alert(lk(eta=date(2026, 10, 1), icegate=fail), TODAY)
+    assert "lookup failing" in a["text"] and a["severity"] == "urgent"
+    a = alerts.lookup_alert(lk(eta=date(2026, 9, 28), icegate={"fetched_at": "2026-09-30T08:00"}), TODAY)
+    assert "IGM not found" in a["text"] and a["severity"] == "overdue"
+    assert "not looked up yet" in alerts.lookup_alert(lk(eta=TODAY), TODAY)["text"]
