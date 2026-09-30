@@ -53,3 +53,11 @@ def get_user_allowed_ports(user: User) -> Optional[List[str]]:
     if not user.port_access:
         return None
     return [p.port for p in user.port_access]
+
+
+def require_icegate_access(current_user: User = Depends(get_current_user)) -> User:
+    """The ICEGATE login (the password resets periodically): the admin and import managers — they use ICEGATE
+    themselves (client, 2026-09-30)."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.IMPORT_MANAGER):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin or import manager only")
+    return current_user

@@ -1,12 +1,47 @@
 import { useEffect, useState } from "react";
 import { resolveIcegateMail, shipmentIcegateMails, type IcegateMail } from "./api";
 import { istTime } from "./customsMail";
+import type { Shipment } from "./types";
 
 /**
  * Shipment Overview → Customs timeline (client, 2026-09-30): every ICEGATE mail for this shipment, oldest
  * first — Ack, Examination Order, Processed B/E, Query, Out of Charge, Gate Pass — and what it changed.
  */
-export default function CustomsTimeline({ shipmentId }: { shipmentId: number }) {
+function BeStatusCard({ s }: { s: Shipment }) {
+  const b = s.icegate?.be_status;
+  if (!b) return null;
+  const t = (v?: string | null) => (v ? new Date(v.replace(" ", "T").replace(/\.0$/, "") + "+05:30").toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
+  const rows: [string, string][] = [
+    ["Status", b.label],
+    ["Appraisement", b.appraisement === "SYSTEM" ? "System (no officer)" : b.appraisement || "—"],
+    ["With", b.queue || "—"],
+    ["Assessed", t(b.assessed_at)],
+    ["Duty paid", t(b.paid_at)],
+    ["Examined", t(b.exam_at)],
+    ["OOC", t(b.ooc_at)],
+  ];
+  if (b.query) rows.push(["Query", b.query_reply ? `Replied ${t(b.reply_date)}: ${b.query_reply}` : "Raised — reply needed"]);
+  if (b.amendments?.length) rows.push(["Amendments", b.amendments.map((a) => `${a.date} ${a.status}`).join(", ")]);
+  return (
+    <div className="be-status-card">
+      <div className="be-status-head">
+        <b>On ICEGATE</b>
+        <span className="field-note">read {t(b.fetched_at)} · every 30 min, 8 am – 10 pm</span>
+      </div>
+      <dl className="be-status-grid">
+        {rows.map(([k, v]) => (
+          <div key={k}>
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {b.note && <p className="field-note">{b.note}</p>}
+    </div>
+  );
+}
+
+export default function CustomsTimeline({ shipmentId, shipment }: { shipmentId: number; shipment?: Shipment }) {
   const [rows, setRows] = useState<IcegateMail[] | null>(null);
 
   useEffect(() => {
@@ -21,6 +56,7 @@ export default function CustomsTimeline({ shipmentId }: { shipmentId: number }) 
   return (
     <section className="detail-section detail-wide customs" id="customs" aria-labelledby="customs-head">
       <h3 id="customs-head">Customs timeline</h3>
+      {shipment && <BeStatusCard s={shipment} />}
       {rows === null ? (
         <p className="field-note">Loading ICEGATE mails…</p>
       ) : rows.length === 0 ? (

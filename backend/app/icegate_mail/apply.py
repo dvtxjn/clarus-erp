@@ -64,7 +64,10 @@ def match(db: Session, m: IcegateMail) -> Optional[Shipment]:
         return rows[0] if len(rows) == 1 else None
 
     if m.be_no:
-        s = one(db.query(Shipment).filter(Shipment.be_no == m.be_no))
+        q = db.query(Shipment).filter(Shipment.be_no == m.be_no)
+        if m.be_date:  # BE numbers are reused every year (client): the date must agree when both are known
+            q = q.filter((Shipment.be_dt == m.be_date) | (Shipment.be_dt.is_(None)))
+        s = one(q)
         if s:
             return s
     if m.job_no:

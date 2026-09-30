@@ -898,3 +898,17 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
   Compared running (job 140: SUP, unpaid) vs cleared (job 181: query+reply, paid EPAYMENT 29-09 16:51, OOC 29-09 20:50).
   Plan: "ICEGATE status" column + Duty Paid / OOC with exact times, refreshed every few hours for live BEs.
   Open question: tracker Duty Amount holds duty + interest (181: 252294 + 415) — keep them separate?
+
+## ICEGATE self-updater (2026-09-30) — code built, NOT connected yet (needs mailbox reader + password)
+- `app/icegate_portal/client.py` (portal calls as verified in a logged-in session: BETrack_Ices_action_Internal needs
+  licenseNo = CHA code ACGFA8615DCH001, beDt yyyymmdd, roleId 3; BeQueryReply {code}; challans with null dates = all).
+  Login/OTP/refresh-token follow the portal's JS — untested until the first real login.
+- `sync.py`: BE status every 30 min 08–22 IST (erp-icegate-status) for live BEs not yet OOC -> shipments.icegate.be_status
+  (tracker column "ICEGATE status", card in the Customs timeline tab) + Duty Paid / examined / OOC + OOC date (client:
+  ICEGATE is consistent, arrives before the copies). Queries -> B/E Query events (attention until ICEGATE shows the reply),
+  matched on BE no + BE date + port (numbers reused yearly). Challans daily 09:00 (erp-icegate-challans) -> DutyChallan
+  (source icegate), only when a BE's figure changes; duty comes only from here.
+- Password resets periodically (client): entered on the Customs mail page by admin or import managers, encrypted,
+  never shown; a refused password sets password_bad and stops all logins (no lockout) until a new one is entered.
+  ICEGATE ID / CHA code: admin sets them there too.
+- Open: latest_challan() matches challans by BE no only (pre-existing) — BE numbers repeat yearly; add the BE date.

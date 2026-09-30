@@ -113,6 +113,27 @@ export interface Shipment {
     icd?: Record<string, string>;
     differences?: { field: string; igm: string; icd: string }[];
     notes?: string[];
+    /** BE status on ICEGATE, read every 30 min (08–22 IST): the tracker's "ICEGATE status" column. */
+    be_status?: {
+      fetched_at: string;
+      changed_at?: string;
+      label: string;
+      queue?: string | null;
+      appraisement?: string | null;
+      assessed_at?: string | null;
+      paid_at?: string | null;
+      exam_at?: string | null;
+      ooc_at?: string | null;
+      query?: string | null;
+      query_reply?: string | null;
+      reply_date?: string | null;
+      first_check?: string | null;
+      sec48?: string | null;
+      group?: string | null;
+      amendments?: { date: string; status: string }[];
+      edocs?: string[];
+      note?: string;
+    };
   } | null;
   // Cleared = Cleared Date + Duty, CFS Inv, Line, OOC, DO all ticked
   is_fully_cleared: boolean;

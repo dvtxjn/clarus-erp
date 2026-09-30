@@ -102,7 +102,7 @@ function loadView(): ViewMode {
 const COLUMN_VIEWS = {
   clearance: {
     label: "Clearance",
-    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "remarks", "cleared_date"],
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "be_no", "be_dt", "checklist", "icegate_status", "remarks", "cleared_date"],
   },
   movement: {
     label: "Movement",
@@ -469,6 +469,19 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       valueGetter: (p) => (p.data ? FLAGS.map(([f, l]) => `${l}:${p.data![f] ? "Y" : "N"}`).join(" ") : ""),
       cellRenderer: ChecklistCell,
       cellRendererParams: { flags: FLAGS },
+    },
+    {
+      // ICEGATE's own BE status, read every 30 min (08–22 IST) — e.g. "Assessed 26-Sep (system) · with SUP"
+      colId: "icegate_status",
+      headerName: "ICEGATE status",
+      width: 200,
+      editable: false,
+      headerTooltip: "Bill of entry status on ICEGATE, read automatically every 30 minutes (8 am – 10 pm)",
+      valueGetter: (p) => p.data?.icegate?.be_status?.label ?? "",
+      tooltipValueGetter: (p) => {
+        const b = p.data?.icegate?.be_status;
+        return b ? `${b.label}\nRead ${new Date(b.fetched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : "";
+      },
     },
     text("igm", "IGM", 78),
     { ...text("delivery_status", "Deliv", 86), headerTooltip: "Delivery" },

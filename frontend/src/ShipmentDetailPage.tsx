@@ -172,7 +172,7 @@ export function ShipmentDetail({
       </div>
 
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
-      {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} />}
+      {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} />}
       {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
     </div>

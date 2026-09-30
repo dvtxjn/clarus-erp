@@ -1,0 +1,373 @@
+"""
+The self-updater (client, 2026-09-30): ICEGATE portal -> shipments, on its own.
+
+  every 30 min, 08:00–22:00 IST   BE status of every live BE not yet out of charge (+ once more after OOC),
+                                  then the query list
+  daily, 09:00 IST                pending duty challans -> the daily challan list (duty comes ONLY from here)
+
+BE status -> shipments.icegate["be_status"] (the ICEGATE status column) and evidence ICEGATE is consistent on
+(client): paid -> Duty Paid; examined -> under examination + when; OOC -> OOC + OOC date (+ Duty Paid). Identifiers
+and dates already typed are never overwritten — a different value is noted.
+Queries -> "B/E Query" events (Needs attention until ICEGATE shows a reply), matched on BE no + BE date + port:
+BE numbers are reused every year (client), so the number alone never matches.
+Payment details on the BE status page are NOT used for duty (client: duty = the daily challan list).
+"""
+from __future__ import annotations
+
+import hashlib
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
+from typing import Callable, Optional
+
+import httpx
+from sqlalchemy.orm import Session
+
+from app.core.audit import record_change
+from app.core.status_rules import status_after_evidence_change
+from app.icegate_portal.client import ROLE_CB, BadPassword, Portal, PortalError, SessionLapsed, day, na, ts
+from app.models.settings import AppSetting
+from app.models.shipment import Shipment
+
+KEY = "icegate_portal"  # app_settings: session (encrypted), last_login, last_status, last_challans, last_error
+LOGIN_KEY = "icegate_login"  # app_settings: icegate_id, cha_code, password (encrypted), password_set_at / _by, password_bad
+IST = timezone(timedelta(hours=5, minutes=30))
+HOURS = range(8, 22)   # 08:00–21:59 IST
+OTP_WAIT = 180         # seconds
+
+
+# --- saved state ---
+def _state(db: Session) -> tuple[AppSetting, dict]:
+    row = db.get(AppSetting, KEY)
+    if row is None:
+        row = AppSetting(key=KEY, value={})
+        db.add(row)
+        db.flush()  # a second lookup in the same session finds it
+    return row, dict(row.value or {})
+
+
+def _save(db: Session, row: AppSetting, st: dict) -> None:
+    row.value = st
+    db.commit()
+
+
+def _fernet():
+    from app.icegate_mail.gmail import _fernet as f
+
+    return f()
+
+
+def _load_session(st: dict) -> dict:
+    import json
+
+    if not st.get("session"):
+        return {}
+    try:
+        return json.loads(_fernet().decrypt(st["session"].encode()))
+    except Exception:  # noqa: BLE001 — key changed / garbage: log in again
+        return {}
+
+
+def _store_session(st: dict, session: dict) -> None:
+    import json
+
+    st["session"] = _fernet().encrypt(json.dumps(session).encode()).decode() if session else None
+
+
+def otp_from_mailbox(db: Session) -> Callable[[datetime], Optional[str]]:
+    """Wait for the ICEGATE login OTP mail (read by the mailbox reader) that came after `since`."""
+    from app.icegate_mail import gmail
+    from app.models.icegate_mail import IcegateMail
+    import time
+
+    def wait(since: datetime) -> Optional[str]:
+        deadline = time.time() + OTP_WAIT
+        while time.time() < deadline:
+            gmail.sync(db)  # don't wait for the push: read the mailbox now
+            rows = (db.query(IcegateMail).filter(IcegateMail.kind == "otp")
+                    .order_by(IcegateMail.received_at.desc()).limit(3).all())
+            for m in rows:
+                got = m.received_at if (m.received_at and m.received_at.tzinfo) else (m.received_at or datetime.min).replace(tzinfo=timezone.utc)
+                if got >= since - timedelta(seconds=30) and (m.detail or {}).get("otp"):
+                    return m.detail["otp"]
+            time.sleep(5)
+        return None
+
+    return wait
+
+
+def login_state(db: Session) -> tuple[AppSetting, dict]:
+    row = db.get(AppSetting, LOGIN_KEY)
+    if row is None:
+        row = AppSetting(key=LOGIN_KEY, value={})
+        db.add(row)
+        db.flush()
+    return row, dict(row.value or {})
+
+
+def credentials(db: Session) -> dict:
+    import os
+
+    _, lg = login_state(db)
+    pw = ""
+    if lg.get("password"):
+        try:
+            pw = _fernet().decrypt(lg["password"].encode()).decode()
+        except Exception:  # noqa: BLE001 — key changed: needs entering again
+            pw = ""
+    return {"icegate_id": lg.get("icegate_id") or os.getenv("ICEGATE_ID", ""), "cha_code": lg.get("cha_code") or os.getenv("ICEGATE_CHA_CODE", ""),
+            "password": pw, "role_id": int(os.getenv("ICEGATE_ROLE_ID", ROLE_CB)), "password_bad": bool(lg.get("password_bad"))}
+
+
+def set_password(db: Session, password: str, user_id: int) -> None:
+    """New ICEGATE password (it resets periodically). Clears the "needs updating" stop."""
+    row, lg = login_state(db)
+    lg.update(password=_fernet().encrypt(password.encode()).decode(), password_bad=False, bad_since=None,
+              password_set_at=datetime.now(timezone.utc).isoformat(timespec="seconds"), password_set_by=user_id)
+    row.value = lg
+    record_change(db, "app_settings", 0, LOGIN_KEY, None, "ICEGATE password changed", user_id)  # never the value
+    prow, st = _state(db)
+    st["session"] = None  # log in afresh with the new password
+    prow.value = st
+    db.commit()
+
+
+def ready(db: Session) -> bool:
+    c = credentials(db)
+    return bool(c["icegate_id"] and c["cha_code"] and c["password"] and not c["password_bad"])
+
+
+def portal_session(db: Session, portal: Optional[Portal] = None) -> Portal:
+    """A logged-in portal: the saved session kept alive, or a fresh login (OTP from the mailbox)."""
+    row, st = _state(db)
+    p = portal or Portal(credentials(db), _load_session(st))
+    try:
+        p.keep_alive()
+    except SessionLapsed:
+        try:
+            p.login(otp_from_mailbox(db))
+        except BadPassword:
+            lrow, lg = login_state(db)
+            lg.update(password_bad=True, bad_since=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+            lrow.value = lg
+            db.commit()
+            raise
+        row, st = _state(db)
+        st["last_login"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    _store_session(st, p.session)
+    _save(db, row, st)
+    return p
+
+
+# --- BE status ---
+def _label(cs: dict) -> str:
+    """One line for the tracker column, most advanced step first."""
+    if ts(cs.get("oocDate")):
+        return f"OOC {ts(cs['oocDate']).strftime('%d-%b %H:%M')}"
+    parts = []
+    if na(cs.get("queryRaised")):
+        parts.append("Query replied" if na(cs.get("queryReply")) else "Query raised — reply needed")
+    if ts(cs.get("examDate")):
+        parts.append(f"Examined {ts(cs['examDate']).strftime('%d-%b')}")
+    if ts(cs.get("pymtDate")):
+        parts.append(f"Duty paid {ts(cs['pymtDate']).strftime('%d-%b')}")
+    elif ts(cs.get("assessDate")):
+        parts.append(f"Assessed {ts(cs['assessDate']).strftime('%d-%b')}" + (" (system)" if cs.get("appraisement") == "SYSTEM" else ""))
+    q = na(cs.get("currentQueue"))
+    if q:
+        parts.append(f"with {q}")
+    return " · ".join(parts) or "Filed — not assessed yet"
+
+
+def apply_be_status(db: Session, s: Shipment, data: dict, now: datetime) -> list[str]:
+    cs = (data.get("currentStatusModel") or [{}])[0]
+    bd = (data.get("beDetailsModel") or [{}])[0]
+    record = {
+        "fetched_at": now.isoformat(timespec="seconds"), "label": _label(cs),
+        "queue": na(cs.get("currentQueue")), "appraisement": na(cs.get("appraisement")),
+        "assessed_at": na(cs.get("assessDate")), "paid_at": na(cs.get("pymtDate")), "exam_at": na(cs.get("examDate")),
+        "ooc_at": na(cs.get("oocDate")), "query": na(cs.get("queryRaised")), "query_reply": na(cs.get("queryReply")),
+        "reply_date": na(cs.get("replyDate")), "first_check": na(bd.get("firstCheck")), "sec48": na(bd.get("sec48")),
+        "group": na(bd.get("appraisingGroup")),
+        "amendments": [{"date": a.get("amendmentDate"), "status": a.get("amendmentStatus")} for a in data.get("beAmendmentModel") or []],
+        "edocs": [d.get("docDescription") for d in data.get("edocValidityModel") or [] if d.get("validity") == "Y"],
+    }
+    notes: list[str] = []
+
+    def set_(field, value):
+        old = getattr(s, field)
+        if value is None or old == value:
+            return
+        record_change(db, "shipments", s.id, field, old, value, None)
+        setattr(s, field, value)
+        notes.append(field)
+
+    paid, exam, ooc = ts(cs.get("pymtDate")), ts(cs.get("examDate")), ts(cs.get("oocDate"))
+    if paid or ooc:
+        set_("duty_paid", True)
+    if exam:
+        set_("under_examination", True)
+        if not s.examination_at:
+            set_("examination_at", exam.strftime("%d/%m/%Y %H:%M"))
+    if ooc:
+        set_("ooc", True)
+        if s.ooc_date is None:
+            set_("ooc_date", ooc.date())
+        elif s.ooc_date != ooc.date():
+            record["note"] = f"ICEGATE OOC date {ooc.date():%d-%m-%Y}; tracker has {s.ooc_date:%d-%m-%Y} — not changed"
+    new = status_after_evidence_change(s)
+    if new:
+        record_change(db, "shipments", s.id, "status", s.status, new, None)
+        s.status = new
+    prev = (s.icegate or {}).get("be_status") or {}
+    if prev.get("label") != record["label"]:
+        record["changed_at"] = record["fetched_at"]
+    else:
+        record["changed_at"] = prev.get("changed_at") or record["fetched_at"]
+    s.icegate = {**(s.icegate or {}), "be_status": record}
+    return notes
+
+
+def due_for_status(db: Session) -> list[Shipment]:
+    """Live BEs we can look up (BE no + date + port), not yet out of charge — or OOC in the tracker but
+    ICEGATE's OOC time not read yet."""
+    rows = (db.query(Shipment).filter(Shipment.is_archived.is_(False), Shipment.cleared_date.is_(None),
+                                      Shipment.be_no.isnot(None), Shipment.be_dt.isnot(None), Shipment.port.isnot(None)).all())
+    out = []
+    for s in rows:
+        bs = (s.icegate or {}).get("be_status") or {}
+        if not bs.get("ooc_at"):
+            out.append(s)
+    return out
+
+
+# --- queries ---
+def apply_queries(db: Session, rows: list[dict], now: datetime) -> dict:
+    """One "B/E Query" event per query (location + BE no + BE date + query no). Open until ICEGATE shows a reply."""
+    from app.models.icegate_mail import IcegateMail
+
+    out = {"new": 0, "replied": 0}
+    for q in rows:
+        be, be_dt, loc, qno = str(q.get("beNo") or ""), day(q.get("beDt")), (q.get("location") or "").upper(), str(q.get("queryNumber") or "")
+        if not be or be_dt is None:
+            continue
+        s = (db.query(Shipment).filter(Shipment.be_no == be, Shipment.be_dt == be_dt).all())
+        s = [x for x in s if (x.port or "").upper() == loc] or s
+        ship = s[0] if len(s) == 1 else None
+        if ship is None and (now.date() - be_dt).days > 60:
+            continue  # an old BE with the same number (numbers are reused every year) — not ours to track
+        fp = hashlib.sha256(f"portal-query:{loc}:{be}:{be_dt}:{qno}".encode()).hexdigest()
+        reply = na(q.get("reply"))
+        m = db.query(IcegateMail).filter(IcegateMail.fingerprint == fp).first()
+        if m is None:
+            m = IcegateMail(fingerprint=fp, kind="be_query", label="B/E Query", subject=f"ICEGATE query {qno} on BE {be}",
+                            received_at=ts(q.get("queryDt")) or now, be_no=be, be_date=be_dt, port=loc,
+                            shipment_id=ship.id if ship else None, applied=True, attention=True,
+                            summary=f"Query {qno}: {(q.get('queryText') or '').strip()}",
+                            detail={"source": "icegate portal", "query": q.get("queryText"), "query_no": qno})
+            db.add(m)
+            out["new"] += 1
+        d = dict(m.detail or {})
+        if reply and d.get("reply") != reply:
+            d["reply"] = reply
+            m.notes = [f"Replied: {reply}"]
+            if m.resolved_at is None:
+                m.resolved_at, m.resolved_note = now, "Replied on ICEGATE"
+                out["replied"] += 1
+        m.detail = d
+        # the mail about the same query closes too once ICEGATE shows the reply
+        if reply:
+            for x in db.query(IcegateMail).filter(IcegateMail.kind == "be_query", IcegateMail.be_no == be,
+                                                  IcegateMail.resolved_at.is_(None), IcegateMail.id != m.id):
+                if x.be_date in (None, be_dt):
+                    x.resolved_at, x.resolved_note = now, "Replied on ICEGATE"
+    return out
+
+
+# --- challans ---
+def apply_challans(db: Session, rows: list[dict], now: datetime) -> dict:
+    """Pending challans -> the daily duty challan list. A row is added only when ICEGATE's figure differs from
+    the BE's latest one (so a quiet day adds nothing)."""
+    from app.invoice.build import latest_challan
+    from app.models.challan import DutyChallan
+
+    added = 0
+    for c in rows:
+        be = str(c.get("boeNumber") or "").strip()
+        try:
+            amount = Decimal(str(c.get("dutyAmount")))
+        except (InvalidOperation, TypeError):
+            continue
+        if not be:
+            continue
+        last = latest_challan(db, be)
+        if last and last.challan_no == str(c.get("challanNumber")) and Decimal(last.due_amount) == amount:
+            continue
+        db.add(DutyChallan(be_no=be, be_date=c.get("boeDate"), location_code=c.get("locationCode"), iec=c.get("iecCode"),
+                           challan_no=str(c.get("challanNumber") or ""), due_amount=amount, source="icegate",
+                           filename="ICEGATE (automatic)", uploaded_at=now.replace(tzinfo=None)))
+        added += 1
+    db.flush()
+    if added:
+        from app.routers.challans import _match, _refresh
+
+        matched, _ = _match(db, [str(c.get("boeNumber")) for c in rows])
+        _refresh(db, matched)
+    return {"pending": len(rows), "added": added}
+
+
+# --- runs ---
+def run(db: Session, what: str = "status", portal: Optional[Portal] = None, force: bool = False) -> dict:
+    """what = "status" (BE status + queries) or "challans". Returns (and stores) a summary."""
+    row, st = _state(db)
+    now = datetime.now(timezone.utc)
+    if portal is None and not ready(db):
+        return st  # not set up, or the password needs updating (no retries: the account must not get locked)
+    if what == "status" and not force and now.astimezone(IST).hour not in HOURS:
+        return st
+    summary: dict = {"at": now.isoformat(timespec="seconds"), "what": what}
+    try:
+        p = portal_session(db, portal)
+        if what == "challans":
+            summary.update(apply_challans(db, p.challans(), now))
+        else:
+            checked = changed = 0
+            for s in due_for_status(db):
+                data = p.be_status(s.port, s.be_no, s.be_dt)
+                checked += 1
+                if data is None:
+                    s.icegate = {**(s.icegate or {}), "be_status": {"fetched_at": now.isoformat(timespec="seconds"),
+                                                                   "label": "Not found on ICEGATE (check BE no / date / port)"}}
+                    continue
+                before = ((s.icegate or {}).get("be_status") or {}).get("label")
+                apply_be_status(db, s, data, now)
+                changed += before != s.icegate["be_status"]["label"]
+                db.commit()
+            summary.update(checked=checked, changed=changed, **{f"queries_{k}": v for k, v in apply_queries(db, p.queries(), now).items()})
+        db.commit()
+        row, st = _state(db)
+        _store_session(st, p.session)
+        st.update(last_error=None, **{f"last_{what}": summary})
+    except BadPassword:
+        db.rollback()
+        row, st = _state(db)
+        st.update(last_error="ICEGATE password has been reset — enter the new one on the Customs mail page")
+    except (PortalError, httpx.HTTPError) as e:
+        db.rollback()
+        row, st = _state(db)
+        st.update(last_error=f"{now.astimezone(IST):%d-%b %H:%M} {e}"[:300])
+    _save(db, row, st)
+    return st
+
+
+def run_status() -> None:
+    from app.core.database import SessionLocal
+
+    with SessionLocal() as db:
+        run(db, "status")
+
+
+def run_challans() -> None:
+    from app.core.database import SessionLocal
+
+    with SessionLocal() as db:
+        run(db, "challans")

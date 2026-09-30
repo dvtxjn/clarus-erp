@@ -147,6 +147,7 @@ def _state(db: Session) -> tuple[AppSetting, dict]:
     if row is None:
         row = AppSetting(key=KEY, value={})
         db.add(row)
+        db.flush()  # a second lookup in the same session finds it
     return row, dict(row.value or {})
 
 

@@ -64,4 +64,14 @@ if ! gcloud scheduler jobs describe erp-sheets-mirror --location "$REGION" >/dev
   gcloud scheduler jobs create http erp-sheets-mirror --location "$REGION" --schedule "*/15 * * * *" --time-zone "Asia/Kolkata" \
     --uri "$URL/internal/jobs/sheets-mirror" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 300s --quiet
 fi
+# ICEGATE portal lookups (created once): BE status + queries every 30 min 08–22 IST, duty challans every morning.
+# They do nothing until the ICEGATE login is entered on the Customs mail page.
+for j in "erp-icegate-status|*/30 8-21 * * *|icegate-status" "erp-icegate-challans|0 9 * * *|icegate-challans"; do
+  IFS='|' read -r NAME CRON JOB <<< "$j"
+  if ! gcloud scheduler jobs describe "$NAME" --location "$REGION" >/dev/null 2>&1; then
+    TOKEN=$(gcloud secrets versions access latest --secret=job-token)
+    gcloud scheduler jobs create http "$NAME" --location "$REGION" --schedule "$CRON" --time-zone "Asia/Kolkata" \
+      --uri "$URL/internal/jobs/$JOB" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 900s --quiet
+  fi
+done
 echo "Released: $URL"
