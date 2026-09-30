@@ -182,6 +182,12 @@ class Shipment(SoftDeleteMixin, Base):
     proformas = relationship("Proforma", back_populates="shipment", cascade="all, delete-orphan")
 
     @property
+    def line_from_bl(self) -> Optional[dict]:
+        """Shipping line worked out from the MBL's format (app/liners.py) — never stored."""
+        from app.liners import identify
+        return identify(self.mbl)
+
+    @property
     def days(self) -> str:
         """The sheet's Day formula, referencing the inward date:
         blank/not a date -> 'Pending'; otherwise diff = today - INW, counted

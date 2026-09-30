@@ -15,7 +15,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app import alerts
+from app import alerts, liners
 from app.igm import apply as igm_apply, icd, sea
 from app.models.shipment import Shipment
 
@@ -53,12 +53,19 @@ def refresh(db: Session, s: Shipment, user_id: Optional[int]) -> dict:
 
     inland = (s.port or "").upper() not in alerts.SEA_PORTS
     summary: dict = {"inland": inland, "sea_found": False, "icd_found": False, "changed": {}, "notes": []}
+    known = liners.identify(s.mbl)
+    if known and known["note"]:
+        summary["hint"] = known["note"]  # e.g. HMM without HDMU, an HBL in the MBL column
+    # HMM typed without HDMU: search ICEGATE with the prefix (client, 2026-09-30); the MBL itself isn't changed
+    mbl = (known or {}).get("icegate_mbl") or s.mbl
+    if mbl != s.mbl:
+        summary["looked_up_as"] = mbl
     record: dict = {"fetched_at": datetime.now().isoformat(timespec="minutes")}
 
     location = s.port
     icd_bl = None
     if inland:
-        got = icd.fetch(s.mbl)
+        got = icd.fetch(mbl)
         summary["icd_found"] = got["found"]
         if got["found"]:
             icd_bl = {k: _dmy(v) for k, v in got["bls"][0].items()}
@@ -66,7 +73,7 @@ def refresh(db: Session, s: Shipment, user_id: Optional[int]) -> dict:
             added, updated, kept = merge_icd(db, s.id, got["containers"], user_id)
             summary["containers"] = {"added": added, "updated": updated, "kept_manual": kept}
 
-    sea_data = sea.fetch(s.mbl, location) if location else {"status": "IGM Not Filed"}
+    sea_data = sea.fetch(mbl, location) if location else {"status": "IGM Not Filed"}
     summary["sea_found"] = sea_data.get("status") == "IGM Filed"
     if summary["sea_found"]:
         if inland:

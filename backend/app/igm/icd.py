@@ -23,6 +23,15 @@ HEADERS = {
 NA = {"", "N.A.", "NA", "-"}
 
 
+def _json(r: httpx.Response) -> list:
+    """ICEGATE answers "nothing found" with an empty body, not []."""
+    try:
+        data = r.json()
+    except ValueError:
+        return []
+    return data if isinstance(data, list) else []
+
+
 def _d(v: Optional[str]) -> Optional[date]:
     """ICEGATE writes '21 SEP 2026'."""
     v = (v or "").strip()
@@ -48,7 +57,7 @@ def fetch(mbl: str, client: Optional[httpx.Client] = None) -> dict:
     try:
         r = client.post(API + "publicblstatus-action", json={"mawbNumber": mbl.strip()})
         r.raise_for_status()
-        rows = r.json() or []
+        rows = _json(r)
         if not isinstance(rows, list) or not rows:
             return {"found": False}
         bls, containers = [], {}
@@ -68,7 +77,7 @@ def fetch(mbl: str, client: Optional[httpx.Client] = None) -> dict:
                 "customerSite": x.get("fileName"), "lineNo": x.get("lineNo"),
             })
             c.raise_for_status()
-            for y in c.json() or []:
+            for y in _json(c):
                 no = _s(y.get("contNo"))
                 if not no:
                     continue

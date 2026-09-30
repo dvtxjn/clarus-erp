@@ -7,7 +7,7 @@ from typing import Optional
 
 import httpx
 
-from app.igm.icd import HEADERS
+from app.igm.icd import HEADERS, _json
 
 API = "https://foservices.icegate.gov.in/enquiry/"
 NA = {"", "N.A.", "NA", "-"}
@@ -37,7 +37,7 @@ def fetch(mbl: str, port: str, client: Optional[httpx.Client] = None) -> dict:
     try:
         r = client.post(API + "enquiryatices/SeaIgmEnq", json={"location": port, "masterBlNo": mbl.strip()})
         r.raise_for_status()
-        rows = r.json() or []
+        rows = _json(r)
         if not isinstance(rows, list) or not rows:
             return {"status": "IGM Not Filed"}
         bl = rows[0]
@@ -56,15 +56,15 @@ def fetch(mbl: str, port: str, client: Optional[httpx.Client] = None) -> dict:
         if out["igm_no"] and bl.get("igmDate"):
             m = client.post(API + "publicEnquiries/SeaIgmMorePublicDetails", json={
                 "masterBlNo": mbl.strip(), "location": port, "igmNo": out["igm_no"], "igmDate": bl.get("igmDate")})
-            if m.is_success and m.json():
-                x = m.json()[0]
+            if m.is_success and _json(m):
+                x = _json(m)[0]
                 out.update(inw_date=_dmy(x.get("inwardDate")), voyage_no=_s(x.get("voyageNo")),
                            vessel_code=_s(x.get("vesselCode")), imo_no=_s(x.get("imoNo")))
             c = client.post(API + "publicEnquiries/SeaIgmContPublicDetails", json={
                 "lineNo": bl.get("lineNo"), "subLineNo": bl.get("subLineNo"), "igmNo": out["igm_no"], "location": port})
             if c.is_success:
                 out["containers"] = [{"container": _s(y.get("contDetails")), "status": _s(y.get("contStatus"))}
-                                     for y in c.json() or [] if _s(y.get("contDetails"))]
+                                     for y in _json(c) if _s(y.get("contDetails"))]
         return out
     finally:
         if own:

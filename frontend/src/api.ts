@@ -854,6 +854,8 @@ export interface IcegateSummary {
   icd_found: boolean;
   changed: Record<string, [string | null, string]>;
   notes: string[];
+  looked_up_as?: string; // HMM typed without HDMU: the number ICEGATE was searched with
+  hint?: string; // e.g. "HMM MBL without its HDMU prefix — ICEGATE needs HDMU…"
   differences?: { field: string; igm: string; icd: string }[];
   containers?: { added: number; updated: number; kept_manual: number };
 }

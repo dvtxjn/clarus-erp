@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app import alerts
+from app import alerts, liners
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import get_current_user, get_user_allowed_ports
@@ -111,6 +111,8 @@ def add_container(shipment_id: int, payload: ContainerIn, db: Session = Depends(
                   user: User = Depends(get_current_user)):
     _shipment(db, shipment_id, user)
     no = _norm(payload.container_no)
+    if not liners.container_ok(no):
+        raise HTTPException(status_code=422, detail=f"{no} isn't a container number (4 letters + 7 digits, e.g. MRKU5032093)")
     if any(c.container_no == no for c in _list(db, shipment_id)):
         raise HTTPException(status_code=409, detail=f"{no} is already on this shipment")
     c = ShipmentContainer(shipment_id=shipment_id, container_no=no, status=payload.status,
@@ -147,6 +149,8 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
         changes["tracking_status"] = (changes["tracking_status"] or "").strip() or None
     if "container_no" in changes and changes["container_no"]:
         changes["container_no"] = _norm(changes["container_no"])
+        if not liners.container_ok(changes["container_no"]):
+            raise HTTPException(status_code=422, detail="Container number: 4 letters + 7 digits, e.g. MRKU5032093")
     for field, value in changes.items():
         old = getattr(c, field)
         if old == value:

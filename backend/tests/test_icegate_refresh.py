@@ -61,6 +61,15 @@ def test_differences_are_listed(client, admin_headers, fake, monkeypatch):
     assert s["icegate"]["differences"] == [{"field": "Packages", "igm": "253", "icd": "250"}]
 
 
+def test_hmm_without_prefix_is_looked_up_with_hdmu(client, admin_headers, fake, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(sea, "fetch", lambda mbl, port: seen.setdefault("mbl", mbl) and dict(SEA))
+    r = client.post("/shipments", json={"mbl": "BHMA05154200", "port": "INMUN1"}, headers=admin_headers)
+    body = client.post(f"/shipments/{r.json()['id']}/icegate/refresh", headers=admin_headers).json()
+    assert seen["mbl"] == "HDMUBHMA05154200" and body["summary"]["looked_up_as"] == "HDMUBHMA05154200"
+    assert body["shipment"]["mbl"] == "BHMA05154200"   # the stored MBL stays as typed
+
+
 def test_sea_port_reads_only_the_sea_igm(client, admin_headers, fake, monkeypatch):
     monkeypatch.setattr(icd, "fetch", lambda mbl: pytest.fail("no ICD read for a sea port"))
     sid = make(client, admin_headers, port="INMUN1")

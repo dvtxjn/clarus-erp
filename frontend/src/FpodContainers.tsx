@@ -147,7 +147,17 @@ export default function FpodContainers({
       )}
       {adding && (
         <form className="fpod-add" onSubmit={add}>
-          <input aria-label="Container number" placeholder="Container no, e.g. MRKU5032093…" value={newNo} onChange={(e) => setNewNo(e.target.value)} required autoComplete="off" spellCheck={false} />
+          <input
+            aria-label="Container number"
+            placeholder="Container no, e.g. MRKU5032093…"
+            value={newNo}
+            onChange={(e) => setNewNo(e.target.value)}
+            required
+            autoComplete="off"
+            spellCheck={false}
+            pattern="\s*[A-Za-z]{4}\s*\d{7}\s*"
+            title="4 letters + 7 digits, e.g. MRKU5032093"
+          />
           <input aria-label="Arrival at FPOD" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
           <button type="submit">Add</button>
         </form>

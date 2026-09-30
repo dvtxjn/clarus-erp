@@ -96,3 +96,11 @@ def test_tracking_status_is_typed(client, admin_headers, inland):
     r = client.patch(f"{base}/{c['id']}", json={"tracking_status": "  On rail  "}, headers=admin_headers).json()
     assert r["tracking_status"] == "On rail"
     assert client.patch(f"{base}/{c['id']}", json={"tracking_status": ""}, headers=admin_headers).json()["tracking_status"] is None
+
+
+def test_empty_reply_means_not_found():
+    # ICEGATE answers an unknown MBL with an empty body, not []
+    empty = httpx.Client(transport=httpx.MockTransport(lambda req: httpx.Response(200, content=b"")), headers=icd.HEADERS)
+    assert icd.fetch("BHMA48789200", client=empty) == {"found": False}
+    from app.igm import sea
+    assert sea.fetch("BHMA48789200", "INMUN1", client=empty) == {"status": "IGM Not Filed"}

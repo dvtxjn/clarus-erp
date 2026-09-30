@@ -103,6 +103,8 @@ export interface Shipment {
   hss_buyer: string | null;
   is_archived: boolean;
   days: string; // computed server-side: today - INW + 1, or "Pending"
+  /** Shipping line worked out from the MBL's format; note = why ICEGATE may not find it as typed. */
+  line_from_bl?: { line: string; note: string | null } | null;
   /** ICEGATE read-out (on command): gateway IGM for inland, vessel, FPOD ICD BL details, differences. */
   icegate?: {
     fetched_at?: string;

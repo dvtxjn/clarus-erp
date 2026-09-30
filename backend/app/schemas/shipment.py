@@ -66,7 +66,6 @@ class ShipmentBase(BaseModel):
     port: Optional[str] = None
     hs_code_id: Optional[int] = None
     custom_fields: dict[str, Any] = Field(default_factory=dict)
-    icegate: Optional[dict[str, Any]] = None
 
 
 class ShipmentCreate(ShipmentBase):
@@ -148,6 +147,8 @@ class ShipmentUpdate(BaseModel):
 
 
 class ShipmentOut(ShipmentBase):
+    icegate: Optional[dict[str, Any]] = None       # ICEGATE read-out (read only)
+    line_from_bl: Optional[dict[str, Any]] = None  # {"line", "note"} from the MBL's format (computed)
     model_config = ConfigDict(from_attributes=True)
 
     id: int

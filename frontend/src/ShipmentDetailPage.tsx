@@ -218,7 +218,13 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             <EditField label="POC" field="poc" s={s} onChange={onChange} />
             <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
             <EditField label="Shipping Line" field="shipping_line" s={s} onChange={onChange} />
+            <Field
+              label="Line (from BL)"
+              value={s.line_from_bl?.line ?? null}
+              hint="Worked out from the MBL's format (e.g. 9 digits = Maersk, HDMU = HMM)"
+            />
         </div>
+        {s.line_from_bl?.note && <p className="bl-note">{s.line_from_bl.note}</p>}
         {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30). Filled on command
             from ICEGATE's Sea IGM (MBL + port; inland: at the gateway the ICD names) or typed in. */}
         <IcegateBar s={s} onChange={onChange} />
@@ -1057,9 +1063,19 @@ function IcegateBar({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => v
       onChange(shipment);
       const n = Object.keys(summary.changed).length;
       if (!summary.sea_found && !summary.icd_found) {
-        setMsg({ ok: false, text: `ICEGATE has nothing for MBL ${s.mbl}. Check it's the full MBL with the line's prefix (e.g. HMM: HDMU…).` });
+        // not found usually means the IGM isn't filed yet (ship not in); a wrong MBL is the other reason
+        const days = s.eta ? Math.round((new Date(`${s.eta}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000) : null;
+        const check = summary.hint ? `${summary.hint[0].toUpperCase()}${summary.hint.slice(1)}.` : "Check it's the full MBL with the line's prefix (e.g. HMM: HDMU…).";
+        setMsg({
+          ok: false,
+          text:
+            days != null && days > 0
+              ? `IGM not filed yet on ICEGATE (ETA ${fmtDate(s.eta)}, in ${days} day${days === 1 ? "" : "s"}). Fetch again after arrival.${summary.hint ? ` Also: ${summary.hint}.` : ""}`
+              : `ICEGATE has nothing for MBL ${s.mbl} yet: either the IGM isn't filed, or the MBL isn't the one filed. ${check}`,
+        });
       } else {
         const parts = [
+          summary.looked_up_as ? `searched as ${summary.looked_up_as}` : null,
           summary.sea_found ? (n ? `${n} IGM field${n === 1 ? "" : "s"} filled` : "IGM details already up to date") : "sea IGM not found",
           summary.inland ? (summary.icd_found ? "ICD BL read" : "not at the ICD yet") : null,
           summary.differences?.length ? `${summary.differences.length} difference${summary.differences.length === 1 ? "" : "s"} to check` : null,
