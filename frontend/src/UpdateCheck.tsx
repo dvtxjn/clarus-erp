@@ -50,7 +50,17 @@ export default function UpdateCheck() {
     document.addEventListener("visibilitychange", check);
     window.addEventListener("focus", check);
     // a page of the old build whose files are gone after the deploy: load the new one
-    const preload = () => window.location.reload();
+    // (once a minute at most, so a server that's down mid-deploy can't cause a reload loop)
+    const preload = () => {
+      try {
+        const at = Number(sessionStorage.getItem("clarus.preloadReload") || 0);
+        if (Date.now() - at < 60_000) return;
+        sessionStorage.setItem("clarus.preloadReload", String(Date.now()));
+      } catch {
+        return;
+      }
+      window.location.reload();
+    };
     window.addEventListener("vite:preloadError", preload);
     return () => {
       window.clearInterval(timer);

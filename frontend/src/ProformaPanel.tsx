@@ -1289,12 +1289,21 @@ function InvoicePreview({ children }: { children: ReactNode }) {
     fitContent();
     // Refit when the invoice's own text/rows change, before the paint (no flash). Changes that
     // don't alter its text or rows (e.g. a browser extension touching the page) are skipped.
-    const soon = () => fitContent();
+    // Not while a cell is being edited: the page would jump under the cursor. Refit after.
+    const editing = () => {
+      const a = document.activeElement;
+      return !!a && c.contains(a) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName);
+    };
+    const soon = () => {
+      if (!editing()) fitContent();
+    };
     const mo = new MutationObserver(soon);
     mo.observe(c, { childList: true, subtree: true, characterData: true });
     const refit = () => ((fitted = ""), soon());
     document.fonts?.ready.then(refit).catch(() => undefined);
     c.addEventListener("load", refit, true); // a logo image arriving late
+    const done = () => setTimeout(soon); // after the edit closes (focus has left the cell)
+    c.addEventListener("focusout", done);
     const ro = new ResizeObserver(() => (measure(), soon()));
     ro.observe(el);
     window.addEventListener("resize", measure);
@@ -1302,6 +1311,7 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       mo.disconnect();
       ro.disconnect();
       c.removeEventListener("load", refit, true);
+      c.removeEventListener("focusout", done);
       window.removeEventListener("resize", measure);
     };
   }, [mode]);
