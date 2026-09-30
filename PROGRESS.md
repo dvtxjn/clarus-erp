@@ -693,6 +693,9 @@ The client will pick features they like from other software and feed them in. Re
 - ✅ Cost-inclusion rule, final (client, 2026-09-30), every line: freight / surcharges in foreign currency out (ocean
   freight, emergency bunker, war surcharge…); known destination heads in, any currency (THC, docs, DO, ISPS, haulage…);
   unknown foreign-currency lines out + flagged; per-line manual tick on the Overview. Sandbox and credit / debit notes: scrapped.
+- ✅ Backup restore test (2026-09-30): `bash deploy/gcp/restore_test.sh` (Cloud Shell) — fresh scratch database
+  erp_restore_check, newest Drive backup restored into it (Cloud Run job erp-restore-test, scripts/restore_check.py),
+  every table's row count compared with the manifest, scratch database removed. Live erp_db and Drive untouched.
 - Invoices page (admin, 2026-09-30): every tax / reimbursement invoice across shipments; filter by FY, month, type,
   status, client, number / job / MBL / BE / IRN; totals; tick invoices → one PDF to print (or all filtered);
   register as Excel. API: GET /final-invoices, /final-invoices/export.pdf?ids=, /final-invoices/register.xlsx.
