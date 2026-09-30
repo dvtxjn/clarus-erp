@@ -1229,29 +1229,61 @@ function InvoicePreview({ children }: { children: ReactNode }) {
     }
   });
   const [pageScale, setPageScale] = useState(0.7);
-  const [inner, setInner] = useState(1); // content shrunk to fit one A4 page
   const [paneH, setPaneH] = useState(800);
 
   useLayoutEffect(() => {
     const el = pane.current;
     const c = content.current;
     if (!el || !c) return;
+    const limit = A4_H - 76; // page margins + a little air
+    // Shrink the invoice to one page: the largest zoom z where the content, laid out z times
+    // wider, is at most one page tall. Measured unzoomed and written straight to the DOM, so
+    // the result doesn't feed back into the next measurement (that was the shaking).
+    const fitContent = () => {
+      c.style.zoom = "1";
+      c.style.width = "100%";
+      let z = 1;
+      for (let i = 0; i < 4; i++) {
+        const h = c.scrollHeight;
+        if (h * z <= limit) break;
+        z = Math.floor((limit / h) * 1000) / 1000;
+        c.style.width = `${100 / z}%`;
+      }
+      // the widened layout is shorter, so a slightly larger zoom may fit: settle downwards only
+      z = Math.min(1, Math.floor(Math.min(z, limit / c.scrollHeight) * 1000) / 1000);
+      c.style.width = z < 1 ? `${100 / z}%` : "100%";
+      c.style.zoom = String(z);
+    };
+    let lastH = -1;
+    let lastW = -1;
     const measure = () => {
       const top = el.getBoundingClientRect().top + window.scrollY;
       const h = Math.max(480, window.innerHeight - top - 12);
       setPaneH(h);
-      const natural = c.scrollHeight; // at the content's own (unscaled) size
-      setInner(Math.min(1, (A4_H - 76) / Math.max(1, natural))); // page margins + a little air
       const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 44) / A4_H);
-      setPageScale(mode === "fit" ? Math.max(0.3, fit) : 1);
+      setPageScale(mode === "fit" ? Math.round(Math.max(0.3, fit) * 100) / 100 : 1);
+    };
+    const onContent = () => {
+      // only refit when the invoice itself changed, not because of our own zoom/width
+      const w = c.getBoundingClientRect().width;
+      const sh = c.scrollHeight;
+      if (sh === lastH && Math.abs(w - lastW) < 1) return;
+      fitContent();
+      lastH = c.scrollHeight;
+      lastW = c.getBoundingClientRect().width;
     };
     measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(c);
-    ro.observe(el);
+    fitContent();
+    lastH = c.scrollHeight;
+    lastW = c.getBoundingClientRect().width;
+    const roPane = new ResizeObserver(measure);
+    roPane.observe(el);
+    const roContent = new ResizeObserver(onContent);
+    roContent.observe(c);
     window.addEventListener("resize", measure);
     return () => {
-      ro.disconnect();
+      roPane.disconnect();
+      roContent.disconnect();
       window.removeEventListener("resize", measure);
     };
   }, [mode]);
@@ -1277,13 +1309,9 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       </div>
       {/* the A4 sheet, scaled to the pane */}
       <div className="a4-frame" style={{ width: A4_W * pageScale, height: A4_H * pageScale }}>
-        <div className="a4-page" style={{ transform: `scale(${pageScale})` }}>
+        <div className="a4-page" style={{ zoom: pageScale }}>
           {/* the invoice, shrunk to fit one page when it's longer */}
-          <div
-            ref={content}
-            className="a4-content"
-            style={inner < 1 ? { transform: `scale(${inner})`, width: `${100 / inner}%` } : undefined}
-          >
+          <div ref={content} className="a4-content">
             {children}
           </div>
         </div>

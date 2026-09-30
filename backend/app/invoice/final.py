@@ -160,7 +160,7 @@ def lines_for(proforma: Proforma, kind: str) -> list[dict]:
         if kind == "tax" and li.category == ChargeCategory.SERVICE:
             out.append({"description": li.description, "sub_description": None, "sac": li.sac_code, "tax_type": "T",
                         "non_gst_value": "0", "taxable_value": _money(li.amount),
-                        "gst_rate": str(Decimal(li.gst_rate).normalize())})
+                        "gst_rate": format(Decimal(li.gst_rate).normalize(), "f")})
         elif kind == "reimbursement" and li.category == ChargeCategory.REIMBURSEMENT and code != GST_DIFFERENCE_CODE:
             out.append({"description": li.description, "sub_description": None, "sac": li.sac_code, "tax_type": "P",
                         "non_gst_value": _money(li.total), "taxable_value": "0", "gst_rate": "0"})
@@ -255,12 +255,12 @@ def compute(inv: FinalInvoice) -> dict:
         half = (tax / 2).quantize(Decimal("0.01"), ROUND_HALF_UP)
         total = non + taxable + tax
         lines.append({**ln, "sr": i, "non_gst_value": _money(non), "taxable_value": _money(taxable),
-                      "gst_rate": str(rate.normalize()), "tax": _money(tax),
+                      "gst_rate": format(rate.normalize(), "f"), "tax": _money(tax),
                       "cgst": _money(half) if intra else None, "sgst": _money(tax - half) if intra else None,
                       "igst": None if intra else _money(tax), "total": _money(total)})
         sub_non, sub_taxable, sub_tax = sub_non + non, sub_taxable + taxable, sub_tax + tax
         if taxable:
-            k = (ln.get("sac") or "", str(rate.normalize()))
+            k = (ln.get("sac") or "", format(rate.normalize(), "f"))
             s = sac.setdefault(k, {"sac": k[0], "rate": k[1], "taxable": ZERO, "tax": ZERO})
             s["taxable"] += taxable
             s["tax"] += tax

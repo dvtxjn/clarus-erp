@@ -357,8 +357,8 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
             "title": SECTION_TITLES[cat],
             "lines": [{
                 "id": li.id, "description": li.description, "sac_code": li.sac_code,
-                "rate": _money(li.rate), "quantity": str(Decimal(li.quantity).normalize()),
-                "amount": _money(li.amount), "gst_rate": str(Decimal(li.gst_rate).normalize()),
+                "rate": _money(li.rate), "quantity": format(Decimal(li.quantity).normalize(), "f"),
+                "amount": _money(li.amount), "gst_rate": format(Decimal(li.gst_rate).normalize(), "f"),
                 "gst_amount": _money(li.gst_amount), "gst_is_actual": li.gst_is_actual, "is_manual": li.is_manual,
                 "total": _money(li.total),
             } for li in rows],
