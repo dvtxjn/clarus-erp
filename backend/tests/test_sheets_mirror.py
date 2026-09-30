@@ -28,7 +28,7 @@ def grid_of(fake):
         row = []
         for c in r["values"]:
             v = c.get("userEnteredValue", {})
-            row.append(v.get("boolValue", v.get("stringValue", "")))
+            row.append(v.get("formulaValue", v.get("numberValue", v.get("stringValue", ""))))
         out.append(row)
     return out
 
@@ -53,7 +53,8 @@ def test_refuses_deletes():
 def test_mirror_writes_live_rows_and_blanks_leftovers(client, admin_headers):
     ids = []
     for mbl in ("MIRROR-1", "MIRROR-2"):
-        r = client.post("/shipments", json={"mbl": mbl, "client": "ZZ Mirror"}, headers=admin_headers)
+        r = client.post("/shipments", json={"mbl": mbl, "client": "ZZ Mirror", "inw": "27-Aug-2026", "eta": "2026-08-25"},
+                        headers=admin_headers)
         ids.append(r.json()["id"])
     db = SessionLocal()
     try:
@@ -70,7 +71,12 @@ def test_mirror_writes_live_rows_and_blanks_leftovers(client, admin_headers):
         mbls = [r[1] for r in rows]
         assert "MIRROR-1" in mbls and "MIRROR-2" in mbls
         duty = rows[0].index("duty paid?")
-        assert all(isinstance(r[duty], bool) for r in rows[1:] if r[1])  # tick boxes
+        assert all(r[duty] in ("Yes", "No") for r in rows[1:] if r[1])  # tick boxes holding Yes / No, like the office sheet
+        # real dates, and the office sheet's own day formula pointing at the same row's INW
+        i, inw, eta = next((n, r) for n, r in enumerate(rows) if r[1] == "MIRROR-1"), rows[0].index("inw"), rows[0].index("eta")
+        n, r = i
+        assert r[inw] == 46261 and r[eta] == 46259  # 27-Aug-2026 / 25-Aug-2026 as Sheets date numbers
+        assert r[rows[0].index("day")].startswith(f'=IF(E{n + 1}="","Pending"')
         req = fake.batches[0]
         assert req[1]["updateSheetProperties"]["properties"]["gridProperties"]["frozenColumnCount"] == 2
         first = st["rows"]

@@ -10,6 +10,9 @@ office still sees every live shipment. Written every 15 minutes by the ERP's ser
 - Laid out like the office's own Google Sheets tracker (client, 2026-09-30): same columns and order, frozen
   Job / MBL, dark green header with filters, rows by client, tick boxes for Duty / CFS Inv / Line / OOC / DO,
   coloured POD, HSS consignee in green, Cleared Date in bold.
+- With the office sheet's own rules (read from it, 2026-09-30): dates are real dates (dd-Mmm-yyyy), the
+  Yes/No columns are tick boxes that hold "Yes" / "No", and "day" is the sheet's own formula counting
+  from the INW (INW = day 1, "Pending" until there is one) — so the copy keeps working like the tracker.
 """
 from __future__ import annotations
 
@@ -30,8 +33,6 @@ SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 TAB = "Tracker"
 KEY = "sheets_mirror"  # app_settings: {"sheet_id", "last_run", "last_error", "rows", "cols"}
 
-TAB = "Tracker"
-
 GREEN_HEAD = {"red": 0.24, "green": 0.42, "blue": 0.31}
 WHITE = {"red": 1, "green": 1, "blue": 1}
 POD_COLOURS = {  # like the office tracker's POD chips
@@ -42,8 +43,17 @@ POD_COLOURS = {  # like the office tracker's POD chips
 HSS_GREEN = {"red": 0.72, "green": 0.88, "blue": 0.73}
 
 
-def _dmy(v) -> str:
-    return v.strftime("%d-%b-%Y") if v else ""
+def _inw(v):
+    """The INW is free text in the ERP ('Pending', '19-Sep-2026'): a real date when it reads as one."""
+    from app.alerts import parse_inw
+
+    return parse_inw(v) or (v or "")
+
+
+# the office sheet's "day" formula, word for word; {inw} = the INW cell of the same row
+DAY_FORMULA = ('=IF({inw}="","Pending",IF(ISNUMBER({inw}),LET(d,{inw},diff,TODAY()-d,adj,IF(diff>=0,diff+1,diff),'
+               'adj & IF(ABS(adj)=1," day"," days")),"Pending"))')
+SHEETS_EPOCH = date(1899, 12, 30)
 
 
 def _mbl(s) -> str:
@@ -59,14 +69,14 @@ def _mbl(s) -> str:
 # (header, value, kind) in the office tracker's order. kind: text | check | date | cleared | pod | consignee
 COLUMNS: list[tuple[str, object, str]] = [
     ("Job", lambda s: s.job or "", "text"), ("mbl", _mbl, "text"), ("be description", lambda s: s.be_description or "", "text"),
-    ("eta", lambda s: _dmy(s.eta), "date"), ("inw", lambda s: s.inw or "", "text"), ("day", lambda s: s.days or "", "text"),
+    ("eta", lambda s: s.eta, "date"), ("inw", lambda s: _inw(s.inw), "date"), ("day", lambda s: "", "day"),
     ("License", lambda s: s.license or "", "text"), ("client", lambda s: s.client or "", "text"),
     ("consignee", lambda s: s.consignee or "", "consignee"), ("pod", lambda s: s.pod or s.port or "", "pod"),
     ("cntr status", lambda s: s.container_status or "", "text"), ("cfs", lambda s: s.cfs or "", "text"),
-    ("be no", lambda s: s.be_no or "", "text"), ("be dt", lambda s: _dmy(s.be_dt), "date"),
+    ("be no", lambda s: s.be_no or "", "text"), ("be dt", lambda s: s.be_dt, "date"),
     ("cntr", lambda s: s.container or "", "text"), ("gross wt", lambda s: s.gross_wt or "", "text"),
     ("remark", lambda s: s.remark or "", "text"), ("POC", lambda s: s.poc or "", "text"),
-    ("remarks", lambda s: s.remarks or "", "text"), ("Cleared Date", lambda s: _dmy(s.cleared_date), "cleared"),
+    ("remarks", lambda s: s.remarks or "", "text"), ("Cleared Date", lambda s: s.cleared_date, "cleared"),
     ("duty paid?", lambda s: bool(s.duty_paid), "check"), ("cfs inv?", lambda s: bool(s.cfs_inv_received), "check"),
     ("line paid?", lambda s: bool(s.line_paid), "check"), ("ooc?", lambda s: bool(s.ooc), "check"),
     ("do?", lambda s: bool(s.do), "check"), ("igm", lambda s: s.igm or "", "text"),
@@ -163,14 +173,23 @@ def build_rows(db: Session) -> tuple[list[str], list[list[tuple]]]:
     return headers, rows
 
 
-def _cell(value, kind: str, s=None) -> dict:
-    """One Google Sheets cell: value + look (+ a tick box for the Yes/No columns)."""
+def _cell(value, kind: str, s=None, inw_ref: Optional[str] = None) -> dict:
+    """One Google Sheets cell: value + look (+ a tick box for the Yes/No columns). inw_ref = this row's INW
+    cell (e.g. "E7") for the day formula."""
     fmt: dict = {"verticalAlignment": "MIDDLE", "textFormat": {"fontSize": 10}}
     cell: dict = {}
     if kind == "check":
-        cell["userEnteredValue"] = {"boolValue": bool(value)}
-        cell["dataValidation"] = {"condition": {"type": "BOOLEAN"}}
+        # the office sheet's tick boxes hold "Yes" / "No"
+        cell["userEnteredValue"] = {"stringValue": "Yes" if value else "No"}
+        cell["dataValidation"] = {"condition": {"type": "BOOLEAN", "values": [{"userEnteredValue": "Yes"},
+                                                                              {"userEnteredValue": "No"}]}}
         fmt["horizontalAlignment"] = "CENTER"
+    elif kind == "day":
+        cell["userEnteredValue"] = {"formulaValue": DAY_FORMULA.format(inw=inw_ref)} if inw_ref else {"stringValue": ""}
+        fmt["horizontalAlignment"] = "CENTER"
+    elif isinstance(value, date):
+        cell["userEnteredValue"] = {"numberValue": (value - SHEETS_EPOCH).days}
+        fmt["numberFormat"] = {"type": "DATE", "pattern": "dd-mmm-yyyy"}
     else:
         cell["userEnteredValue"] = {"stringValue": str(value or "")}
     if kind == "cleared":
@@ -225,8 +244,10 @@ def mirror(db: Session, client: Optional[SheetsClient] = None) -> dict:
         width = max(len(headers), st.get("cols") or 0)
         height = max(len(rows) + 1, st.get("rows") or 0)  # rows left over from last time are blanked
         grid = [{"values": [_header_cell(h) for h in headers] + [{} for _ in range(width - len(headers))]}]
-        for r in rows:
-            grid.append({"values": [_cell(v, k, s) for v, k, s in r] + [{} for _ in range(width - len(r))]})
+        inw_col = _col(headers.index("inw") + 1) if "inw" in headers else None
+        for n, r in enumerate(rows, start=2):
+            ref = f"{inw_col}{n}" if inw_col else None
+            grid.append({"values": [_cell(v, k, s, ref) for v, k, s in r] + [{} for _ in range(width - len(r))]})
         grid += [{"values": [{} for _ in range(width)]} for _ in range(height - len(grid))]
         gid = c.ensure_tab(TAB)
         c.batch([
