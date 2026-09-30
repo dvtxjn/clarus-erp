@@ -754,3 +754,24 @@ The client will pick features they like from other software and feed them in. Re
   pkg code, containers; remarks on HBL / container-count / non-KGS mismatches. Only rows without INW, ETA ≤ 4 days.
 - ERP version: read shipments from the ERP (no Google Sheet), write the fields above, run **every ~6 h** (Cloud
   Scheduler → job endpoint). **FPOD IGM** (a second IGM for inland) — later.
+
+## ✅ ICEGATE read-out, FPOD containers, liner from BL, formula bar (2026-09-30)
+- **ICEGATE, no browser** (plain JSON calls): Sea IGM (`app/igm/sea.py`, MBL + port) and ICD BL status
+  (`app/igm/icd.py`, MBL only). `app/igm/refresh.py` reads both for one shipment: IGM details from the sea IGM
+  (inland: at the gateway the ICD names; the tracker's IGM column = the ICD IGM, kept); FPOD ICD BL details =
+  only what the IGM details don't hold (ICD IGM, SMTP, gateway, BE location, importer); shared values compared →
+  differences listed. `shipments.icegate` JSON (0043). Button: Overview → IGM details → Fetch from ICEGATE.
+- **Automatic every 6 h**: Cloud Scheduler `erp-icegate` → /internal/jobs/icegate (`app/igm/batch.py`): sea = no INW
+  + ETA ≤ 4 days; inland = ETA ≤ 4 days + not every container arrived. Last run in app_settings. Settings → ICEGATE:
+  last run, what's due, **backfill on command** (page walks every shipment, progress, ~2 s each).
+- **Containers at FPOD** (inland, bottom of Overview; `shipment_containers` 0041/0042): arrival at the ICD from
+  ICEGATE or typed (typed kept on refresh), status (typed), days free per container (**Panipat INDWN6 = 21 days
+  ground rent**, others 14; `alerts.ICD_FREE_DAYS`), free until editable, Copy as image (PNG for the client).
+- **Alerts**: inland free days per container → one dashboard line per shipment; details on the Overview.
+- **Liner from BL** (`app/liners.py`, client's rules): 9 digits Maersk, HDMU/BHMA HMM (BHMA searched as HDMU…,
+  stored MBL unchanged), ACLJ NAVIO, CJHR Chartering RORO (an HBL!), OOLU OOCL, LPL/NAM/CYP CMA CGM, CSX Cordelia,
+  HLCU Hapag, ONEY ONE. Container no = 4 letters + 7 digits. ICEGATE "not found" ≈ IGM not filed yet (ETA ahead).
+- **Tracker formula bar** (Excel-style): selected cell's full value to copy / type over (text cells).
+- 📝 Receipt agent — PARKED (client will build later). Bank credit e-mails arrive in the company Gmail; the client
+  can set up forwarding / mailbox reading when we start.
+- Day column for inland stays per container on the Overview (containers arrive on different days).

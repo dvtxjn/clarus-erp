@@ -1764,3 +1764,6 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .detail-wide > .grid-toast { margin: 4px 0; }
 .icegate-diffs { margin: 6px 0 0; padding: 8px 12px 8px 28px; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-fg); font-size: 12.5px; }
 .bl-note { margin: 6px 0 0; padding: 6px 10px; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-fg); font-size: 12.5px; }
+.icegate-settings { padding: 0; }
+.icegate-progress { height: 4px; border-radius: 2px; background: var(--color-subtle); overflow: hidden; }
+.icegate-progress span { display: block; height: 100%; background: var(--color-accent); transition: width .3s; }

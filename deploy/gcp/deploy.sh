@@ -29,4 +29,11 @@ gcloud run deploy "$SERVICE" --image "$TAG" --region "$REGION" --service-account
   --add-cloudsql-instances "$CONN" --set-env-vars "$ENV" --set-secrets "$SECRETS" \
   --memory 1Gi --cpu 1 --timeout 3600 --concurrency 80 --min-instances 0 --max-instances 3 \
   --no-invoker-iam-check --quiet
-echo "Released: $(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
+URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
+# ICEGATE read every 6 h (created once; later deploys leave it as is)
+if ! gcloud scheduler jobs describe erp-icegate --location "$REGION" >/dev/null 2>&1; then
+  TOKEN=$(gcloud secrets versions access latest --secret=job-token)
+  gcloud scheduler jobs create http erp-icegate --location "$REGION" --schedule "20 */6 * * *" --time-zone "Asia/Kolkata" \
+    --uri "$URL/internal/jobs/icegate" --http-method POST --headers "X-Job-Token=$TOKEN" --attempt-deadline 1800s --quiet
+fi
+echo "Released: $URL"

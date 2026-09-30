@@ -11,6 +11,7 @@ from app.core.enums import ShipmentStatus, UserRole
 from app.invoice.autofill import refresh_draft_proformas
 from app import alerts
 from app.models.audit import AuditLogEntry
+from app.models.container import ShipmentContainer
 from app.models.document import ShipmentDocument
 from app.routers.documents import COMBINED_DOCUMENTS
 from app.models.shipment import Shipment
@@ -204,6 +205,10 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
         ):
             uploaded[shipment_id].add(doc_type)
             uploaded[shipment_id].update(COMBINED_DOCUMENTS.get(doc_type, ()))
+    boxes: dict[int, list] = {s.id: [] for s in live}
+    if live:
+        for c in db.query(ShipmentContainer).filter(ShipmentContainer.shipment_id.in_(list(boxes))):
+            boxes[c.shipment_id].append((c.container_no, c.arrival_date, c.free_days))
     today = date.today()
     found = []
     for s in live:
@@ -211,6 +216,7 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
         for alert in (
             alerts.deadline_alert(s, today),
             alerts.free_days_alert(s, today),
+            alerts.fpod_alert(s, boxes[s.id], today),
             alerts.documents_alert(s, required, uploaded[s.id], today),
         ):
             if alert:

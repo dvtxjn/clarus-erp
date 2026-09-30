@@ -79,10 +79,11 @@ def _shipment(db: Session, shipment_id: int, user: User) -> Shipment:
     return s
 
 
-def _out(c: ShipmentContainer, today: Optional[date] = None) -> ContainerOut:
+def _out(c: ShipmentContainer, port: Optional[str], today: Optional[date] = None) -> ContainerOut:
     o = ContainerOut.model_validate(c)
     today = today or date.today()
-    o.free_days = c.free_days if c.free_days is not None else alerts.FREE_DAYS
+    # typed for this container, else the ICD's standard (Panipat 21, others 14)
+    o.free_days = c.free_days if c.free_days is not None else alerts.icd_free_days(port)
     o.free_days_typed = c.free_days is not None
     if c.arrival_date:
         o.day = (today - c.arrival_date).days + 1 if today >= c.arrival_date else None
@@ -102,14 +103,14 @@ def _norm(no: str) -> str:
 
 @router.get("", response_model=list[ContainerOut])
 def list_containers(shipment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    _shipment(db, shipment_id, user)
-    return [_out(c) for c in _list(db, shipment_id)]
+    s = _shipment(db, shipment_id, user)
+    return [_out(c, s.port) for c in _list(db, shipment_id)]
 
 
 @router.post("", response_model=ContainerOut, status_code=201)
 def add_container(shipment_id: int, payload: ContainerIn, db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
-    _shipment(db, shipment_id, user)
+    s = _shipment(db, shipment_id, user)
     no = _norm(payload.container_no)
     if not liners.container_ok(no):
         raise HTTPException(status_code=422, detail=f"{no} isn't a container number (4 letters + 7 digits, e.g. MRKU5032093)")
@@ -121,13 +122,13 @@ def add_container(shipment_id: int, payload: ContainerIn, db: Session = Depends(
     db.flush()
     record_change(db, "shipment_containers", c.id, "container_no", None, no, user.id)
     db.commit()
-    return _out(c)
+    return _out(c, s.port)
 
 
 @router.patch("/{container_id}", response_model=ContainerOut)
 def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch, db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    _shipment(db, shipment_id, user)
+    s = _shipment(db, shipment_id, user)
     c = db.query(ShipmentContainer).filter(ShipmentContainer.id == container_id,
                                            ShipmentContainer.shipment_id == shipment_id).first()
     if not c:
@@ -160,7 +161,7 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
         if field == "arrival_date":
             c.is_manual = True  # typed by hand: an ICEGATE refresh keeps it
     db.commit()
-    return _out(c)
+    return _out(c, s.port)
 
 
 @router.delete("/{container_id}", status_code=204)
@@ -217,10 +218,10 @@ def refresh_from_icegate(shipment_id: int, db: Session = Depends(get_db), user: 
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="ICEGATE didn't answer — try again in a minute")
     if not data["found"]:
-        return RefreshOut(found=False, containers=[_out(c) for c in _list(db, shipment_id)])
+        return RefreshOut(found=False, containers=[_out(c, s.port) for c in _list(db, shipment_id)])
     added, updated, kept = merge_icd(db, shipment_id, data["containers"], user.id)
     db.commit()
     bl = data["bls"][0]
     return RefreshOut(found=True, added=added, updated=updated, kept_manual=kept,
                       bl={k: (v.isoformat() if isinstance(v, date) else v) for k, v in bl.items()},
-                      containers=[_out(c) for c in _list(db, shipment_id)])
+                      containers=[_out(c, s.port) for c in _list(db, shipment_id)])

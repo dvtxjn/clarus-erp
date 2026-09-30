@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
 import { EInvoicing, InvoiceNumbering } from "./RatesPage";
+import IcegateSettings from "./IcegateSettings";
 
 /**
  * Settings (client, 2026-09-30, P0): what used to be fixed in the code — company and bank
@@ -86,6 +87,9 @@ export default function SettingsPage() {
         <p className="field-note">
           Standard rates, licences and HSS rules: <Link to="/rates">Rates</Link>.
         </p>
+      </Section>
+      <Section title="ICEGATE" hint="IGM and ICD BL status read automatically; backfill on command.">
+        <IcegateSettings />
       </Section>
       <Section title="Storage & backups" hint="Set on the server — shown here so you can check them.">
         {sys ? (

@@ -50,9 +50,13 @@ def start() -> None:
 
     asyncio.create_task(_every("drive-retry", 300, storage.retry_pending))
     asyncio.create_task(_every("backup", 3600, backups.backup_if_due))  # 12-hourly, checked hourly
+    from app.igm import batch
+
+    asyncio.create_task(_every("icegate", 6 * 3600, batch.run_auto))  # IGM / ICD read-out, every 6 h
 
 
-JOBS = {"backup": "app.backups:backup_if_due", "drive-retry": "app.storage:retry_pending"}
+JOBS = {"backup": "app.backups:backup_if_due", "drive-retry": "app.storage:retry_pending",
+        "icegate": "app.igm.batch:run_auto"}
 
 
 def run_named(name: str) -> bool:

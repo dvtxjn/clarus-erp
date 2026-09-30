@@ -27,6 +27,13 @@ DOCS_BEFORE_ETA = 7      # chase missing documents from this many days before th
 # Every other port (Panipat, Garhi, …) is inland and skipped until the FPOD inward sheet exists.
 SEA_PORTS = {"INMUN1", "INNSA1"}
 
+# free days at an inland ICD from each container's arrival (ground rent); anything not listed: FREE_DAYS
+ICD_FREE_DAYS = {"INDWN6": 21}  # Panipat: 21 days (client, 2026-09-30)
+
+
+def icd_free_days(port: Optional[str]) -> int:
+    return ICD_FREE_DAYS.get((port or "").upper(), FREE_DAYS)
+
 # the documents needed to file the BE (the "Basic" group in the Document Manager)
 BASIC_DOCUMENTS = {
     DocumentType.BL_COPY, DocumentType.HBL_COPY, DocumentType.COMMERCIAL_INVOICE, DocumentType.PACKING_LIST,
@@ -116,6 +123,32 @@ def free_days_alert(s, today: date) -> Optional[dict]:
         text = f"Day {day}: free days end {last_free:%d %b} ({_days(left)} left)"
     return {**_base(s), "kind": "free_days", "severity": _severity(left), "days_left": left,
             "due": last_free.isoformat(), "text": text}
+
+
+def fpod_alert(s, containers: Iterable[tuple], today: date) -> Optional[dict]:
+    """Inland: free days run per container from its arrival at the ICD (Panipat 21, typed per container
+    otherwise). containers = (container_no, arrival_date, free_days or None). One line for the shipment;
+    the per-container detail is on the Overview."""
+    if (s.port or "").upper() in SEA_PORTS:
+        return None
+    standard = icd_free_days(s.port)
+    arrived = [(no, arr + timedelta(days=(fd if fd is not None else standard) - 1)) for no, arr, fd in containers if arr]
+    if not arrived:
+        return None
+    close = sorted(((last - today).days, last, no) for no, last in arrived if (last - today).days <= WARN_DAYS)
+    if not close:
+        return None
+    left, last, _ = close[0]
+    n, total = len(close), len(arrived)
+    who = f"{n} of {total} container{'s' if total != 1 else ''}"
+    if left < 0:
+        text = f"{who} at the ICD past free days (ended {last:%d %b}, {_days(-left)} over)"
+    elif left == 0:
+        text = f"{who} at the ICD: last free day today"
+    else:
+        text = f"{who} at the ICD: free days end {last:%d %b} ({_days(left)} left)"
+    return {**_base(s), "kind": "free_days", "severity": _severity(left), "days_left": left,
+            "due": last.isoformat(), "text": text}
 
 
 def documents_alert(s, required: Iterable[tuple], uploaded: set, today: date) -> Optional[dict]:
