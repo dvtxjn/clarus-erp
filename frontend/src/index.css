@@ -1750,3 +1750,10 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .fpod-over { color: var(--bad-fg); font-weight: 600; }
 .fpod-src { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: var(--radius-sm); background: var(--info-bg); color: var(--info-fg); }
 .fpod-src.is-manual { background: var(--warn-bg); color: var(--warn-fg); }
+.fpod { grid-column: 1 / -1; }
+.fpod-cell { padding: 2px 6px; font-size: 12.5px; background: transparent; border-color: transparent; }
+.fpod-cell:hover:not(:disabled) { border-color: var(--color-border); background: var(--color-surface); }
+.fpod-cell:disabled { opacity: .5; }
+.fpod-status { width: 100%; min-width: 130px; }
+.fpod-days { width: 64px; text-align: right; }
+.fpod-days.is-typed { color: var(--warn-fg); font-weight: 600; }

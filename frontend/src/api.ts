@@ -810,10 +810,14 @@ export interface ShipmentContainer {
   status: string | null;
   arrival_date: string | null;
   arrival_status: string | null;
+  tracking_status: string | null; // typed, e.g. "On rail"
   source: "icegate" | "manual";
   is_manual: boolean;
+  free_days: number; // this container's free days (typed, or the standard 14)
+  free_days_typed: boolean;
   day: number | null;
   last_free_day: string | null;
+  days_left: number | null;
 }
 export interface IcdRefresh {
   found: boolean;
@@ -835,7 +839,15 @@ export async function addContainer(shipmentId: number, body: { container_no: str
 export async function editContainer(
   shipmentId: number,
   id: number,
-  body: { container_no?: string; arrival_date?: string | null; clear_arrival?: boolean },
+  body: {
+    container_no?: string;
+    arrival_date?: string | null;
+    clear_arrival?: boolean;
+    tracking_status?: string;
+    free_days?: number;
+    free_until?: string;
+    clear_free_days?: boolean;
+  },
 ): Promise<ShipmentContainer> {
   const { data } = await client.patch(`/shipments/${shipmentId}/containers/${id}`, body);
   return data;

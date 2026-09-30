@@ -240,8 +240,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           </div>
         </div>
       </section>
-      {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD (client, 2026-09-30) */}
-      {s.port && !SEA_PORTS.has(s.port) && <FpodContainers shipmentId={s.id} portLabel={formatPort(s.port, ports) || s.port} />}
       <div className="detail-col">
         <section className="detail-section">
           <h3>Customs duty</h3>
@@ -364,6 +362,9 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           </label>
         </section>
       </div>
+      {/* inland (ICD) shipments: free days run per container from its arrival at the FPOD — at the bottom,
+          its length varies with the number of containers (client, 2026-09-30) */}
+      {s.port && !SEA_PORTS.has(s.port) && <FpodContainers shipment={s} portLabel={formatPort(s.port, ports) || s.port} />}
     </div>
   );
 }

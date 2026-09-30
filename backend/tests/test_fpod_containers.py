@@ -71,3 +71,28 @@ def test_add_and_remove_by_hand(client, admin_headers, inland):
     assert client.post(base, json={"container_no": "ABCU1234567"}, headers=admin_headers).status_code == 409
     assert client.delete(f"{base}/{r.json()['id']}", headers=admin_headers).status_code == 204
     assert client.get(base, headers=admin_headers).json() == []
+
+
+def test_days_free_and_free_until_per_container(client, admin_headers, inland):
+    base = f"/shipments/{inland}/containers"
+    c = client.post(base, json={"container_no": "FREE1234567", "arrival_date": "2026-09-21"}, headers=admin_headers).json()
+    assert c["free_days"] == 14 and not c["free_days_typed"] and c["last_free_day"] == "2026-10-04"
+    r = client.patch(f"{base}/{c['id']}", json={"free_days": 21}, headers=admin_headers).json()
+    assert r["free_days_typed"] and r["last_free_day"] == "2026-10-11"
+    # typing the date instead stores it as days from the arrival
+    r = client.patch(f"{base}/{c['id']}", json={"free_until": "2026-10-06"}, headers=admin_headers).json()
+    assert r["free_days"] == 16 and r["last_free_day"] == "2026-10-06"
+    r = client.patch(f"{base}/{c['id']}", json={"clear_free_days": True}, headers=admin_headers).json()
+    assert r["free_days"] == 14 and not r["free_days_typed"]
+    # no arrival yet: days free can still be set, a date can't
+    n = client.post(base, json={"container_no": "NOAR1234567"}, headers=admin_headers).json()
+    assert client.patch(f"{base}/{n['id']}", json={"free_days": 21}, headers=admin_headers).json()["free_days"] == 21
+    assert client.patch(f"{base}/{n['id']}", json={"free_until": "2026-10-06"}, headers=admin_headers).status_code == 400
+
+
+def test_tracking_status_is_typed(client, admin_headers, inland):
+    base = f"/shipments/{inland}/containers"
+    c = client.post(base, json={"container_no": "RAIL1234567"}, headers=admin_headers).json()
+    r = client.patch(f"{base}/{c['id']}", json={"tracking_status": "  On rail  "}, headers=admin_headers).json()
+    assert r["tracking_status"] == "On rail"
+    assert client.patch(f"{base}/{c['id']}", json={"tracking_status": ""}, headers=admin_headers).json()["tracking_status"] is None

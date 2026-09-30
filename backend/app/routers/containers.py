@@ -3,7 +3,7 @@ Containers of a shipment and their arrival at the FPOD (client, 2026-09-30): for
 days run per container from its arrival at the ICD. Fetched from ICEGATE's ICD BL status on command, or
 typed in; every change is audited, removal is a soft delete.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 import httpx
@@ -31,11 +31,16 @@ class ContainerOut(BaseModel):
     status: Optional[str] = None
     arrival_date: Optional[date] = None
     arrival_status: Optional[str] = None
+    tracking_status: Optional[str] = None
     source: str
     is_manual: bool
-    # free days at the FPOD: day N counted from the arrival (arrival = day 1), last free day
+    # free days at the FPOD: day N counted from the arrival (arrival = day 1). free_days = this container's
+    # free days (typed when it differs from the standard 14; free_days_typed), last_free_day = arrival + free_days - 1
+    free_days: Optional[int] = None
+    free_days_typed: bool = False
     day: Optional[int] = None
     last_free_day: Optional[date] = None
+    days_left: Optional[int] = None
 
 
 class ContainerIn(BaseModel):
@@ -48,7 +53,11 @@ class ContainerPatch(BaseModel):
     container_no: Optional[str] = Field(None, min_length=4, max_length=20)
     status: Optional[str] = None
     arrival_date: Optional[date] = None
-    clear_arrival: bool = False  # set arrival_date back to empty
+    tracking_status: Optional[str] = Field(None, max_length=120)
+    free_days: Optional[int] = Field(None, ge=0, le=365)
+    free_until: Optional[date] = None  # typed as a date: stored as days from the arrival
+    clear_arrival: bool = False        # set arrival_date back to empty
+    clear_free_days: bool = False      # back to the standard free days
 
 
 class RefreshOut(BaseModel):
@@ -72,10 +81,13 @@ def _shipment(db: Session, shipment_id: int, user: User) -> Shipment:
 
 def _out(c: ShipmentContainer, today: Optional[date] = None) -> ContainerOut:
     o = ContainerOut.model_validate(c)
+    today = today or date.today()
+    o.free_days = c.free_days if c.free_days is not None else alerts.FREE_DAYS
+    o.free_days_typed = c.free_days is not None
     if c.arrival_date:
-        today = today or date.today()
         o.day = (today - c.arrival_date).days + 1 if today >= c.arrival_date else None
-        o.last_free_day = alerts.last_free_day(c.arrival_date)
+        o.last_free_day = c.arrival_date + timedelta(days=o.free_days - 1)
+        o.days_left = (o.last_free_day - today).days
     return o
 
 
@@ -121,6 +133,18 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
     changes = payload.model_dump(exclude_unset=True)
     if changes.pop("clear_arrival", False):
         changes["arrival_date"] = None
+    if changes.pop("clear_free_days", False):
+        changes["free_days"] = None
+    free_until = changes.pop("free_until", None)
+    if free_until is not None:
+        arrival = changes.get("arrival_date", c.arrival_date)
+        if arrival is None:
+            raise HTTPException(status_code=400, detail="Enter the arrival date first, or type the days free instead")
+        if free_until < arrival:
+            raise HTTPException(status_code=400, detail="Free until can't be before the arrival")
+        changes["free_days"] = (free_until - arrival).days + 1
+    if "tracking_status" in changes:
+        changes["tracking_status"] = (changes["tracking_status"] or "").strip() or None
     if "container_no" in changes and changes["container_no"]:
         changes["container_no"] = _norm(changes["container_no"])
     for field, value in changes.items():
