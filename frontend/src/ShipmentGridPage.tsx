@@ -56,7 +56,10 @@ ModuleRegistry.registerModules([AllCommunityModule]);
  * an Enterprise (paid) feature.
  */
 
-const COLUMN_STATE_KEY = "tracker.columnState.v6"; // v6: widths fitted to the data (2026-09-30)  // + "." + tab
+const COLUMN_STATE_KEY = "tracker.columnState.v7"; // v7: widths auto-fit like Excel; hand-set ones kept  // + "." + tab
+// Excel-style widths (client, 2026-09-30): every column fits its longest value (or its title); a width
+// dragged by hand is kept. Auto-fit stops here — longer text shows "…", full value on hover / formula bar.
+const MAX_AUTO_WIDTH = 360;
 const TAB_KEY = "tracker.tab";
 // Ongoing = no Cleared Date yet (live tracking). Cleared = has a Cleared Date;
 // removing the date sends the shipment back to Ongoing.
@@ -459,9 +462,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       // Duty Paid? / CFS Inv? / Line Paid? / OOC? / DO? as one row of click-to-toggle chips
       colId: "checklist",
       headerName: "Checklist",
-      // all five chips on one line, ticked or not — a saved narrower width can't cut them
-      width: 290,
-      minWidth: 290,
+      width: 290, // starting width; auto-fit then sizes it to the chips actually shown
       editable: false,
       sortable: false,
       headerTooltip: "Click a chip to toggle it. Filter with e.g. OOC:N",
@@ -943,23 +944,69 @@ export default function ShipmentGridPage() {
     saveColumnState();
   };
 
-  /** Excel-style autosize: each column as narrow as its longest value (or its title) allows. */
+  const fitting = useRef(false);
+  const edgeDoubleClick = useRef<string | null>(null); // column whose resize edge was just double-clicked
+  // columns whose width someone dragged by hand (per tab) — auto-fit leaves them alone
+  const manualKey = `${columnStateKey}.manual`;
+  const manualWidths = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      manualWidths.current = new Set(JSON.parse(localStorage.getItem(manualKey) ?? "[]"));
+    } catch {
+      manualWidths.current = new Set();
+    }
+  }, [manualKey]);
+  // re-fit when the data or the view changes (like Excel keeping columns readable as rows arrive)
+  const fitTimer = useRef<number | undefined>(undefined);
+  const scheduleFit = (ms = 300) => {
+    window.clearTimeout(fitTimer.current);
+    fitTimer.current = window.setTimeout(() => autoFitAll(), ms);
+  };
+  useEffect(() => {
+    if (!shipments) return;
+    scheduleFit(350);
+    const again = window.setTimeout(() => autoFitAll(), 1300); // after slow renders settle
+    return () => window.clearTimeout(again);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shipments, tab, view, colView]);
+  const saveManual = () => {
+    try {
+      localStorage.setItem(manualKey, JSON.stringify([...manualWidths.current]));
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  /** Excel-style autofit: each column as wide as its title or its longest value in any client section
+   *  (capped at MAX_AUTO_WIDTH), measured on what's actually drawn (chips, badges included). */
   function fitToContent(ids: string[]) {
     const header = headerRef.current?.api;
-    if (!header) return;
+    if (!header || !ids.length || fitting.current) return;
+    fitting.current = true; // our own autosize calls fire resize events too
     const need = new Map<string, number>();
-    const measure = (api: GridApi<Shipment>, skipHeader: boolean) => {
-      api.autoSizeColumns(ids, skipHeader);
-      for (const c of api.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, Math.max(need.get(c.colId) ?? 0, c.width ?? 0));
-    };
-    // the title's width first (the header grid just autosized to it), then every section's rows
+    header.autoSizeColumns(ids, false); // the header grid has no rows: this is the title's width
     for (const c of header.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, c.width ?? 0);
     const apis = sectionApis();
-    apis.forEach((api) => measure(api, true));
-    const state = ids.map((colId) => ({ colId, width: need.get(colId) ?? 60 }));
+    for (const api of apis) {
+      api.autoSizeColumns(ids, true);
+      for (const c of api.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, Math.max(need.get(c.colId) ?? 0, c.width ?? 0));
+    }
+    const state = ids.map((colId) => ({ colId, width: Math.min(MAX_AUTO_WIDTH, Math.max(40, need.get(colId) ?? 60)) }));
     header.applyColumnState({ state });
     apis.forEach((api) => api.applyColumnState({ state }));
+    fitting.current = false;
     saveColumnState();
+  }
+
+  /** Autofit every shown column that nobody has sized by hand. */
+  function autoFitAll() {
+    const header = headerRef.current?.api;
+    if (!header) return;
+    const ids = header
+      .getColumnState()
+      .filter((c) => !c.hide && !manualWidths.current.has(c.colId))
+      .map((c) => c.colId);
+    fitToContent(ids);
   }
 
   function saveColumnState() {
@@ -993,8 +1040,10 @@ export default function ShipmentGridPage() {
 
   function resetLayout() {
     rememberColView("grid");
+    manualWidths.current = new Set(); // back to auto-fit everywhere
     try {
       localStorage.removeItem(columnStateKey);
+      localStorage.removeItem(manualKey);
     } catch {
       /* ignore */
     }
@@ -1004,6 +1053,7 @@ export default function ShipmentGridPage() {
     sectionApis().forEach((api) => api.resetColumnState());
     setQuickFilter("");
     syncHidden();
+    window.setTimeout(autoFitAll, 50);
   }
 
   // --- undo / redo (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y) ---
@@ -1474,7 +1524,13 @@ export default function ShipmentGridPage() {
               )}
             </div>
           )}
-          <div className="client-grid-header">
+          <div
+            className="client-grid-header"
+            onDoubleClickCapture={(e) => {
+              const edge = (e.target as Element).closest(".ag-header-cell-resize");
+              edgeDoubleClick.current = edge?.closest(".ag-header-cell")?.getAttribute("col-id") ?? null;
+            }}
+          >
             <FormulaBar cell={fx ? formulaCell(sectionRefs.current.get(fx.client)?.current?.api, fx.rowId, fx.colId) : null} />
             <AgGridReact<Shipment>
               ref={headerRef}
@@ -1491,13 +1547,28 @@ export default function ShipmentGridPage() {
               onSortChanged={onHeaderSortChanged}
               onColumnMoved={saveColumnState}
               onColumnResized={(e) => {
-                if (!e.finished) return;
-                // Autosize (double-click a column edge, or the column menu) on the header grid
-                // only sees the header — size to the rows in every client section instead
-                if (e.source === "autosizeColumns" && e.columns?.length) fitToContent(e.columns.map((c) => c.getColId()));
-                else saveColumnState();
+                // only a person's resize counts; the ERP's own auto-fits (source "autosizeColumns" / "api",
+                // reported a moment later) are ignored — reacting to them looped
+                if (!e.finished || !e.columns?.length) return;
+                const ids = e.columns.map((c) => c.getColId());
+                const dbl = edgeDoubleClick.current;
+                if (dbl && ids.includes(dbl)) {
+                  // double-click on the column edge: back to auto-fit, measured on every client section
+                  // (the grid alone would size it to the title only)
+                  edgeDoubleClick.current = null;
+                  manualWidths.current.delete(dbl);
+                  saveManual();
+                  window.setTimeout(() => fitToContent([dbl]), 0);
+                  return;
+                }
+                if (e.source !== "uiColumnResized") return;
+                // dragged by hand: keep that width, like Excel
+                ids.forEach((id) => manualWidths.current.add(id));
+                saveManual();
+                saveColumnState();
               }}
               onColumnPinned={saveColumnState}
+              onColumnVisible={() => scheduleFit(120)}
             />
           </div>
 
