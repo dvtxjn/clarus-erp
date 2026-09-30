@@ -46,7 +46,7 @@ class MailOut(BaseModel):
 OTP_VALID = timedelta(minutes=10)
 
 
-def _out(m: IcegateMail, s: Optional[Shipment], user: Optional[User] = None) -> MailOut:
+def _out(m: IcegateMail, s: Optional[Shipment], user: Optional[User] = None, days: Optional[int] = None) -> MailOut:
     o = MailOut.model_validate(m, from_attributes=True)
     if m.kind == "otp":
         # login code: admin only, and only while ICEGATE says it's valid
@@ -61,7 +61,7 @@ def _out(m: IcegateMail, s: Optional[Shipment], user: Optional[User] = None) -> 
     if s:
         o.shipment_job, o.shipment_mbl, o.shipment_be_no, o.client = s.job, s.mbl, s.be_no, s.client
         o.port_of_shipment = s.port
-    o.live = (not s.is_archived) if s is not None else (m.shipment_id is None and not mail_apply.is_history(m))
+    o.live = (not s.is_archived) if s is not None else (m.shipment_id is None and not mail_apply.is_history(m, days))
     return o
 
 
@@ -98,6 +98,7 @@ def list_mails(attention: bool = Query(False, description="Open attention items 
                                   description="live = on a live tracker shipment, or recent and not matched yet; "
                                               "history = old mails / shipments no longer in the tracker"),
                kind: Optional[str] = Query(None, description="comma-separated kinds, e.g. be_query,out_of_charge"),
+               source: Optional[str] = Query(None, pattern="^(icegate|odex)$"),
                port: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
                db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """The feed, newest first, filtered on the server (before the limit). Port-scoped users see their ports'
@@ -108,14 +109,21 @@ def list_mails(attention: bool = Query(False, description="Open attention items 
         dt = dt.astimezone(timezone.utc)
         return dt.replace(tzinfo=None) if db.bind.dialect.name == "sqlite" else dt
 
+    from app import auto_rules
+
+    days = auto_rules.history_days(db)
     q = db.query(IcegateMail)
     if attention:
         q = q.filter(IcegateMail.attention.is_(True), IcegateMail.resolved_at.is_(None))
     if unmatched:
         q = q.filter(IcegateMail.shipment_id.is_(None))
+    if source == "odex":
+        q = q.filter(IcegateMail.kind.like("odex%"))
+    elif source == "icegate":
+        q = q.filter(~IcegateMail.kind.like("odex%"))
     if scope != "all":
         live_ids = [i for (i,) in db.query(Shipment.id).filter(Shipment.is_archived.is_(False))]  # deleted: never live
-        recent = datetime.now(timezone.utc) - timedelta(days=mail_apply.HISTORY_DAYS)
+        recent = datetime.now(timezone.utc) - timedelta(days=days)
         # (shipment_id IS NOT NULL first: NOT on "NULL IN (…)" would drop unmatched mails from History)
         live = or_(and_(IcegateMail.shipment_id.isnot(None), IcegateMail.shipment_id.in_(live_ids)),
                    and_(IcegateMail.shipment_id.is_(None), IcegateMail.received_at.isnot(None),
@@ -141,7 +149,7 @@ def list_mails(attention: bool = Query(False, description="Open attention items 
             continue
         if m.kind == "otp" and user.role.value != "admin":
             continue
-        out.append(_out(m, s, user))
+        out.append(_out(m, s, user, days))
     return out
 
 
@@ -219,13 +227,35 @@ def _reader_out(db: Session) -> dict:
     return {"mailbox": st.get("mailbox"), "connected": bool(st.get("token")), "connected_at": st.get("connected_at"),
             "last_run": st.get("last_run"), "last_error": st.get("last_error"), "last_new": st.get("last_new"),
             "paused": st.get("paused"), "waiting": len(st.get("queue") or []),
-            "instant": bool(gmail.topic_name()) and bool(st.get("watch_expires")) and not st.get("push_error"),
+            "instant": gmail.push_wanted(st) and bool(gmail.topic_name()) and bool(st.get("watch_expires")) and not st.get("push_error"),
+            "push_wanted": gmail.push_wanted(st), "push_error": st.get("push_error"),
+            "push_available": bool(gmail.topic_name()),
             "watch_expires": st.get("watch_expires"),
             "ready": bool(gmail.client_id() and os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"))}
 
 
 @router.get("/gmail-reader")
 def reader_status(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    return _reader_out(db)
+
+
+class PushIn(BaseModel):
+    enabled: bool
+
+
+@router.put("/gmail-reader/push")
+def reader_push(payload: PushIn, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    """Admin: instant mail (Gmail push) on / off. Off = the 15-minute check only. On = ask Gmail to push
+    now, so the page shows at once whether Google allows it (the org policy may still block it)."""
+    row, st = gmail.state(db)
+    st["push"] = payload.enabled
+    if not payload.enabled:
+        st.update(watch_expires=None, push_error=None)
+    else:
+        st["watch_expires"] = None  # ask again at once
+    gmail.save(db, row, st)
+    if payload.enabled:
+        gmail.try_push(db)
     return _reader_out(db)
 
 

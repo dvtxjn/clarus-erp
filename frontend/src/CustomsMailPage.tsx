@@ -36,6 +36,7 @@ export default function CustomsMailPage() {
   // inbox brought years of mails for jobs no longer in the tracker (client, 2026-09-30)
   const scope = (params.get("scope") as "live" | "history" | "all") || "live";
   const kind = params.get("kind") ?? "";
+  const source = (params.get("source") as "icegate" | "odex" | null) ?? "";
   const port = params.get("port") ?? "";
   const from = params.get("from") ?? "";
   const to = params.get("to") ?? "";
@@ -51,6 +52,7 @@ export default function CustomsMailPage() {
       attention: view === "attention",
       unmatched: view === "unmatched",
       scope,
+      source: source || undefined,
       kind: kind || undefined,
       port: port || undefined,
       date_from: from || undefined,
@@ -58,7 +60,7 @@ export default function CustomsMailPage() {
     })
       .then(setRows)
       .catch(() => setRows([]));
-  }, [view, scope, kind, port, from, to]);
+  }, [view, scope, source, kind, port, from, to]);
 
   useEffect(() => {
     icegateMailKinds().then(setKinds).catch(() => setKinds([]));
@@ -70,7 +72,7 @@ export default function CustomsMailPage() {
     else p.delete(key);
     setParams(p, { replace: true });
   }
-  const filtered = !!(kind || port || from || to || clientF || scope !== "live");
+  const filtered = !!(kind || source || port || from || to || clientF || scope !== "live");
 
   useEffect(() => {
     load();
@@ -152,7 +154,8 @@ export default function CustomsMailPage() {
       <div>
         <h1>Customs mail</h1>
         <p className="field-note">
-          ICEGATE mails, matched to their shipments by BE no, job no or BL. Acks fill the BE no; BE, OOC and gate pass copies are
+          ICEGATE and ODeX mails, matched to their shipments by BE no, job no or BL. ODeX’s DO released ticks DO; a rejected DO
+          request goes to Needs attention. Acks fill the BE no; BE, OOC and gate pass copies are
           added as documents; queries and rejections go to Needs attention. Times are India time.
         </p>
       </div>
@@ -213,10 +216,18 @@ export default function CustomsMailPage() {
           </select>
         </label>
         <label>
+          <span>From</span>
+          <select value={source} onChange={(e) => setFilter("source", e.target.value)}>
+            <option value="">ICEGATE and ODeX</option>
+            <option value="icegate">ICEGATE</option>
+            <option value="odex">ODeX (DO / line invoices)</option>
+          </select>
+        </label>
+        <label>
           <span>Type</span>
           <select value={kind} onChange={(e) => setFilter("kind", e.target.value)}>
             <option value="">All types</option>
-            {kinds.map((k) => (
+            {kinds.filter((k) => !source || (source === "odex") === k.kind.startsWith("odex")).map((k) => (
               <option key={k.kind} value={k.kind}>
                 {k.label}
               </option>
@@ -246,11 +257,11 @@ export default function CustomsMailPage() {
           </select>
         </label>
         <label>
-          <span>From</span>
+          <span>Received from</span>
           <input type="date" value={from} onChange={(e) => setFilter("from", e.target.value)} />
         </label>
         <label>
-          <span>To</span>
+          <span>Received to</span>
           <input type="date" value={to} onChange={(e) => setFilter("to", e.target.value)} />
         </label>
         {filtered && (
@@ -259,7 +270,7 @@ export default function CustomsMailPage() {
             className="link-button"
             onClick={() => {
               const p = new URLSearchParams(params);
-              ["scope", "kind", "port", "from", "to", "client"].forEach((k) => p.delete(k));
+              ["scope", "source", "kind", "port", "from", "to", "client"].forEach((k) => p.delete(k));
               setParams(p, { replace: true });
             }}
           >

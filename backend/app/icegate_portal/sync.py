@@ -203,15 +203,23 @@ def apply_be_status(db: Session, s: Shipment, data: dict, now: datetime) -> list
         setattr(s, field, value)
         notes.append(field)
 
+    from app import auto_rules  # each step is a rule the admin can switch off (Settings → Automatic rules)
+
     paid, exam, ooc = ts(cs.get("pymtDate")), ts(cs.get("examDate")), ts(cs.get("oocDate"))
-    if paid or ooc:
+    if (paid or ooc) and auto_rules.on(db, "status.duty_paid"):
         set_("duty_paid", True)
     # queue INS = with the inspection (examination) officer: under examination (client, 2026-09-30)
-    if exam or (na(cs.get("currentQueue")) or "").upper() == "INS":
+    if (exam or (na(cs.get("currentQueue")) or "").upper() == "INS") and auto_rules.on(db, "status.examination"):
         set_("under_examination", True)
-    if exam and not s.examination_at:
-        set_("examination_at", exam.strftime("%d/%m/%Y %H:%M"))
-    if ooc:
+        if exam and not s.examination_at:
+            set_("examination_at", exam.strftime("%d/%m/%Y %H:%M"))
+    # the admin's own rules on the queue code
+    for r in auto_rules.matching_queue_rules(db, na(cs.get("currentQueue"))):
+        if r.get("field"):
+            set_(r["field"], True)
+        if r.get("attention"):
+            _rule_attention(db, s, r, now)
+    if ooc and auto_rules.on(db, "status.ooc"):
         set_("ooc", True)
         if s.ooc_date is None:
             set_("ooc_date", ooc.date())
@@ -249,11 +257,28 @@ def due_for_status(db: Session) -> list[Shipment]:
 
 
 # --- queries ---
+def _rule_attention(db: Session, s: Shipment, rule: dict, now: datetime) -> None:
+    """An admin's queue rule raised Needs attention: one item per BE + queue (not one every half hour)."""
+    from app.models.icegate_mail import IcegateMail
+
+    fp = hashlib.sha256(f"queue-rule:{rule.get('id')}:{s.id}:{s.be_no}:{s.be_dt}:{rule['queue']}".encode()).hexdigest()
+    if db.query(IcegateMail.id).filter(IcegateMail.fingerprint == fp).first():
+        return
+    db.add(IcegateMail(fingerprint=fp, kind="other", label=f"BE status: queue {rule['queue']}",
+                       subject=f"BE {s.be_no} is in queue {rule['queue']}", received_at=now, be_no=s.be_no, be_date=s.be_dt,
+                       port=s.port, shipment_id=s.id, applied=True, attention=True,
+                       summary=f"ICEGATE shows BE {s.be_no} in queue {rule['queue']} (your automatic rule)",
+                       detail={"source": "icegate portal", "rule": rule.get("id")}))
+
+
 def apply_queries(db: Session, rows: list[dict], now: datetime) -> dict:
     """One "B/E Query" event per query (location + BE no + BE date + query no). Open until ICEGATE shows a reply."""
+    from app import auto_rules
     from app.models.icegate_mail import IcegateMail
 
     out = {"new": 0, "replied": 0}
+    if not auto_rules.on(db, "status.queries"):
+        return out
     for q in rows:
         be, be_dt, loc, qno = str(q.get("beNo") or ""), day(q.get("beDt")), (q.get("location") or "").upper(), str(q.get("queryNumber") or "")
         if not be or be_dt is None:

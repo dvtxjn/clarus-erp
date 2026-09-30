@@ -133,3 +133,28 @@ def run_sheets_mirror(db: Session = Depends(get_db), _admin: User = Depends(requ
 
     sheets_mirror.mirror(db)
     return _mirror_out(db)
+
+
+# --- automatic update rules (client, 2026-09-30): IF … THEN …, admin-editable ---
+@router.get("/auto-rules")
+def get_auto_rules(db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
+    from app import auto_rules
+
+    return auto_rules.describe(db)
+
+
+@router.put("/auto-rules")
+def put_auto_rules(body: dict[str, Any], db: Session = Depends(get_db), admin: User = Depends(require_admin)):
+    from app import auto_rules
+
+    try:
+        new = auto_rules.validate(body)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    row = db.get(AppSetting, auto_rules.KEY)
+    old = row.value if row else None
+    db.merge(AppSetting(key=auto_rules.KEY, value=new))
+    record_change(db, "app_settings", 0, auto_rules.KEY, str(old), str(new), admin.id)
+    db.commit()
+    return auto_rules.describe(db)
+

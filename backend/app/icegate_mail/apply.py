@@ -85,8 +85,13 @@ def match(db: Session, m: IcegateMail) -> Optional[Shipment]:
 
 
 def _apply(db: Session, m: IcegateMail, s: Shipment, user: Optional[User]) -> list[str]:
+    """What a mail changes on its shipment — each step is an automatic rule the admin can switch off
+    (Settings → Automatic rules, app/auto_rules.py), plus the admin's own rules for this mail type."""
+    from app import auto_rules
+
     notes: list[str] = []
     uid = user.id if user else None
+    notes += _custom_rules(db, m, s, uid)
 
     def fill(field: str, value) -> None:
         if value in (None, ""):
@@ -99,20 +104,33 @@ def _apply(db: Session, m: IcegateMail, s: Shipment, user: Optional[User]) -> li
         elif _norm(str(old)) != _norm(str(value)):
             notes.append(f"ICEGATE says {field.replace('_', ' ').upper()} {value}; tracker has {old} — not changed")
 
-    if m.kind == "be_ack":
+    if m.kind == "odex_do_released":
+        if auto_rules.on(db, "odex.do_released"):
+            d = m.detail or {}
+            note = auto_rules.tick(db, s, "do", "ODeX DO released", uid)
+            notes.append(note or "DO already ticked")
+            if d.get("do_no"):
+                notes.append(f"DO {d['do_no']} dated {d.get('do_date') or '—'}")
+    elif m.kind == "odex_cfs":
+        d = m.detail or {}
+        if auto_rules.on(db, "odex.cfs_fill") and d.get("status") == "Confirmed" and d.get("cfs_name"):
+            fill("cfs", d["cfs_name"])
+    elif m.kind.startswith("odex_"):
+        pass  # on the timeline
+    elif m.kind == "be_ack" and auto_rules.on(db, "mail.be_ack"):
         fill("be_no", m.be_no)
         fill("be_dt", m.be_date)
         new = status_after_evidence_change(s)
         if new:
             record_change(db, "shipments", s.id, "status", s.status, new, uid)
             s.status = new
-    elif m.kind == "exam_order":
+    elif m.kind == "exam_order" and auto_rules.on(db, "mail.exam_order"):
         prescribed = bool((m.detail or {}).get("prescribed"))
         if s.under_examination is None or (prescribed and not s.under_examination):
             record_change(db, "shipments", s.id, "under_examination", s.under_examination, prescribed, uid)
             s.under_examination = prescribed
             notes.append("Examination ordered" if prescribed else "No examination")
-    elif m.pdf and user is not None:
+    elif m.pdf and user is not None and auto_rules.on(db, "mail.documents"):
         from app.routers.documents import _store_document
 
         doc_type = DocumentType[(m.detail or {}).get("doc_type") or ""]
@@ -135,6 +153,24 @@ def _apply(db: Session, m: IcegateMail, s: Shipment, user: Optional[User]) -> li
     return notes
 
 
+def _custom_rules(db: Session, m: IcegateMail, s: Shipment, uid: Optional[int]) -> list[str]:
+    """The admin's own rules: IF a mail of this type [containing …] THEN tick a box / Needs attention."""
+    from app import auto_rules
+
+    notes = []
+    text = " ".join(x for x in (m.subject, m.summary) if x)
+    for r in auto_rules.matching_mail_rules(db, m.kind, text):
+        label = f"{m.label}{' containing “' + r['contains'] + '”' if r.get('contains') else ''}"
+        if r.get("field"):
+            note = auto_rules.tick(db, s, r["field"], label, uid)
+            if note:
+                notes.append(note)
+        if r.get("attention") and not m.resolved_at:
+            m.attention = True
+            notes.append(f"Needs attention (rule: {label})")
+    return notes
+
+
 def _ts(d: Optional[datetime]) -> datetime:
     """Comparable time (SQLite hands back naive datetimes; those are UTC)."""
     if d is None:
@@ -144,6 +180,10 @@ def _ts(d: Optional[datetime]) -> datetime:
 
 def _settle(db: Session, m: IcegateMail) -> None:
     """A later mail that settles an open attention item closes it."""
+    from app import auto_rules
+
+    if not auto_rules.on(db, "mail.settle"):
+        return
     now = datetime.now(timezone.utc)
     q = db.query(IcegateMail).filter(IcegateMail.attention.is_(True), IcegateMail.resolved_at.is_(None),
                                      IcegateMail.id != m.id)
@@ -154,10 +194,15 @@ def _settle(db: Session, m: IcegateMail) -> None:
     if m.kind in ("out_of_charge", "gate_pass") and m.be_no:
         for x in q.filter(IcegateMail.kind == "be_query", IcegateMail.be_no == m.be_no):
             x.resolved_at, x.resolved_note = now, "Out of charge given"
+    if m.kind == "odex_do_released" and m.mbl:  # the DO came after all: an earlier rejection is settled
+        for x in q.filter(IcegateMail.kind == "odex_do_rejected", IcegateMail.mbl == m.mbl):
+            if _ts(x.received_at) <= _ts(m.received_at):
+                x.resolved_at, x.resolved_note = now, "DO released"
 
 
-def is_history(m: IcegateMail) -> bool:
-    return m.received_at is not None and datetime.now(timezone.utc) - _ts(m.received_at) > timedelta(days=HISTORY_DAYS)
+def is_history(m: IcegateMail, days: Optional[int] = None) -> bool:
+    """Older than the admin's old-mail limit (Settings → Automatic rules; default 45 days)."""
+    return m.received_at is not None and datetime.now(timezone.utc) - _ts(m.received_at) > timedelta(days=days or HISTORY_DAYS)
 
 
 def link(db: Session, m: IcegateMail, user: Optional[User]) -> None:
@@ -170,7 +215,9 @@ def link(db: Session, m: IcegateMail, user: Optional[User]) -> None:
     if m.applied:
         return
     s = db.get(Shipment, m.shipment_id)
-    if is_history(m) or s.is_archived or s.is_billed:
+    from app import auto_rules
+
+    if is_history(m, auto_rules.history_days(db)) or s.is_archived or s.is_billed:
         m.notes = ["Older mail / finished shipment — on the timeline only, nothing changed"]
         m.pdf = None
         m.applied = True
@@ -181,7 +228,17 @@ def link(db: Session, m: IcegateMail, user: Optional[User]) -> None:
     m.applied = True
 
 
+def _attention_on(db: Session, kind: str) -> bool:
+    from app import auto_rules
+
+    rule = {"odex_do_rejected": "odex.do_rejected", "odex_kyc_pending": "odex.kyc_pending"}.get(kind, "mail.attention")
+    return auto_rules.on(db, rule)
+
+
 def import_mails(db: Session, raws: Iterable[bytes], user: Optional[User]) -> dict:
+    from app import auto_rules
+
+    days = auto_rules.history_days(db)
     out = {"read": 0, "new": 0, "duplicates": 0, "ignored": 0, "matched": 0, "attention": 0}
     for raw in raws:
         out["read"] += 1
@@ -203,8 +260,10 @@ def import_mails(db: Session, raws: Iterable[bytes], user: Optional[User]) -> di
                         be_date=ev["be_date"], job_no=ev["job_no"], port=ev["port"], mbl=ev["mbl"], detail=detail,
                         attention=ev["attention"], imported_by_id=user.id if user else None,
                         pdf_name=ev["pdf"]["name"] if ev["pdf"] else None, pdf=ev["pdf"]["data"] if ev["pdf"] else None)
-        if is_history(m):  # old: no "Needs attention", and no PDF kept waiting in the database
+        if is_history(m, days):  # old: no "Needs attention", and no PDF kept waiting in the database
             m.attention, m.pdf = False, None
+        elif m.attention and not _attention_on(db, m.kind):
+            m.attention = False  # the admin switched that rule off
         db.add(m)
         db.flush()
         out["new"] += 1

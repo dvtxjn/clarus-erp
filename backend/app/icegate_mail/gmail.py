@@ -27,7 +27,7 @@ API = "https://gmail.googleapis.com/gmail/v1/users/me"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 KEY = "gmail_reader"  # app_settings: mailbox, token (encrypted), history_id, watch_expires, last_run, last_error, …
-QUERY = "from:icegate.gov.in"  # first connect: the last 30 days of ICEGATE mails
+QUERY = "from:(icegate.gov.in OR odexservices.com)"  # first connect / catch-up: ICEGATE and ODeX mails
 FIRST_LIMIT = 300   # first connect reads at most this many (newest last)
 PACE = 0.3          # seconds between mails: ~200 a minute, far below Gmail's per-user limit
 RUN_SECONDS = 240   # one check reads for at most 4 minutes; the rest next time
@@ -233,7 +233,7 @@ def sync(db: Session, gm: Optional[Gmail] = None, topic: Optional[str] = None) -
         st.update(last_run=now, last_error=None, last_new=new, paused=None)
         if not st.get("queue"):
             st["history_id"] = st.pop("pending_history", None) or st.get("history_id")
-        if topic and (not st.get("watch_expires") or int(st["watch_expires"]) / 1000 - time.time() < 2 * 86400):
+        if topic and push_wanted(st) and (not st.get("watch_expires") or int(st["watch_expires"]) / 1000 - time.time() < 2 * 86400):
             try:
                 w = gm.watch(topic)
                 st["watch_expires"], st["push_error"] = w.get("expiration"), None
@@ -251,6 +251,32 @@ def sync(db: Session, gm: Optional[Gmail] = None, topic: Optional[str] = None) -
         st.update(last_run=now, last_error=str(e)[:300])
     save(db, row, st)
     return st
+
+
+def push_wanted(st: dict) -> bool:
+    """The admin's switch (Settings → Mailbox): instant push on unless switched off."""
+    return st.get("push", True) is not False
+
+
+def try_push(db: Session) -> None:
+    """Ask Gmail to push new mail now (after the admin switched it on); the result lands in push_error."""
+    from cryptography.fernet import InvalidToken
+
+    row, st = state(db)
+    topic = topic_name()
+    if not topic:
+        st["push_error"] = "Instant mail isn't set up on the server (no Pub/Sub topic) — the 15-minute check reads"
+        save(db, row, st)
+        return
+    try:
+        gm = reader(st)
+        if gm is None:
+            return
+        w = gm.watch(topic)
+        st["watch_expires"], st["push_error"] = w.get("expiration"), None
+    except (GmailError, InvalidToken, httpx.HTTPError) as e:
+        st["push_error"] = str(e)[:200]
+    save(db, row, st)
 
 
 def topic_name() -> Optional[str]:

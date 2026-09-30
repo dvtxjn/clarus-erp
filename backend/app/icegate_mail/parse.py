@@ -1,6 +1,7 @@
 """
 Read one ICEGATE e-mail (.eml bytes) into an event (client, 2026-09-30, P1). Only mails from
-@icegate.gov.in are read; anything else comes back as None and is never stored.
+@icegate.gov.in — and ODeX's own notifications (parse_odex.py) — are read; anything else comes back as None
+and is never stored.
 
 Kinds use LiveImpex's ICEGATE communicator names, so the office sees the words it knows. Built from
 real mails (samples/icegate-mails, kept out of git):
@@ -32,6 +33,8 @@ from email import policy
 from email.utils import parsedate_to_datetime
 from typing import Optional
 
+from app.icegate_mail import parse_odex
+
 LABELS = {
     "be_submitted": "Submit B/E",
     "be_ack": "B/E Acknowledgement",
@@ -50,6 +53,8 @@ LABELS = {
     "otp": "ICEGATE login OTP",
 }
 ATTENTION = {"be_nak", "be_query", "filing_failed"}
+ICEGATE_KINDS = set(LABELS)
+LABELS.update(parse_odex.LABELS)  # ODeX (DO / line invoices) mails are read too — app/icegate_mail/parse_odex.py
 PDF_DOC = {"processed_be": "ASSESSED_BILL_OF_ENTRY", "out_of_charge": "OOC_BILL_OF_ENTRY",
            "gate_pass": "GATEPASS_BILL_OF_ENTRY"}
 SEP = "\x1d"  # ICEGATE flat files: group-separator between fields
@@ -114,9 +119,14 @@ def _flat_records(data: bytes, tag: str) -> list[list[str]]:
 def parse(raw: bytes) -> Optional[dict]:
     msg = email.message_from_bytes(raw, policy=policy.compat32)
     sender = (msg.get("From") or "").lower()
-    if "icegate.gov.in" not in sender:
+    if "icegate.gov.in" not in sender and not parse_odex.is_odex(sender):
         return None
     subject = re.sub(r"\s+", " ", str(email.header.make_header(email.header.decode_header(msg.get("Subject") or "")))).strip()
+    if parse_odex.is_odex(sender):
+        ev0 = {"message_id": (msg.get("Message-ID") or "").strip() or None, "received_at": _received(msg),
+               "subject": subject, "kind": None, "be_no": None, "be_date": None, "job_no": None, "port": None,
+               "mbl": None, "summary": None, "detail": {}, "pdf": None}
+        return parse_odex.parse(raw, ev0, subject)
     body, atts = _text(msg), _attachments(msg)
     ev: dict = {"message_id": (msg.get("Message-ID") or "").strip() or None, "received_at": _received(msg),
                 "subject": subject, "kind": None, "be_no": None, "be_date": None, "job_no": None, "port": None,

@@ -5,6 +5,7 @@ import { EInvoicing, InvoiceNumbering } from "./RatesPage";
 import IcegateSettings from "./IcegateSettings";
 import SheetsMirrorSettings from "./SheetsMirrorSettings";
 import MailboxSettings from "./MailboxSettings";
+import AutoRulesSettings from "./AutoRulesSettings";
 
 /**
  * Settings (client, 2026-09-30, P0): what used to be fixed in the code — company and bank
@@ -93,8 +94,11 @@ export default function SettingsPage() {
       <Section title="ICEGATE" hint="IGM and ICD BL status read automatically; backfill on command.">
         <IcegateSettings />
       </Section>
-      <Section title="ICEGATE mailbox" hint="ICEGATE mails read automatically, the moment they arrive (Customs mail page).">
+      <Section title="ICEGATE & ODeX mailbox" hint="ICEGATE and ODeX (DO / line invoice) mails read automatically (Customs mail page).">
         <MailboxSettings />
+      </Section>
+      <Section title="Automatic rules" hint="What the ERP updates by itself from mails and ICEGATE — switch any rule off, or add your own.">
+        <AutoRulesSettings />
       </Section>
       <Section title="Google Sheets copy" hint="A view-only copy of the tracker, so the office can still see shipments if the ERP is down.">
         <SheetsMirrorSettings />

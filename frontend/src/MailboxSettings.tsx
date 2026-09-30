@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { disconnectMailbox, getMailbox, mailboxConnectUrl, syncMailbox, type MailboxStatus } from "./api";
+import { disconnectMailbox, getMailbox, mailboxConnectUrl, setMailboxPush, syncMailbox, type MailboxStatus } from "./api";
 import { istTime } from "./customsMail";
 
 function errorText(e: unknown): string {
@@ -68,6 +68,29 @@ export default function MailboxSettings() {
             <span translate="no">{m.mailbox}</span>
             <span>New mail</span>
             <span>{m.instant ? "Read the moment it arrives, plus a check every 15 minutes" : "Checked every 15 minutes"}</span>
+            <span>Instant mail</span>
+            <span className="mailbox-push">
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={m.push_wanted}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    run(() => setMailboxPush(on));
+                  }}
+                />
+                <span>{m.push_wanted ? "On" : "Off — the 15-minute check only"}</span>
+              </label>
+              {m.push_wanted && m.push_error && (
+                <span className="field-note">
+                  Google hasn’t allowed it yet: {m.push_error}. Mail is still read every 15 minutes. It needs Google Cloud’s organisation
+                  policy “Domain restricted sharing” to allow Gmail’s push account (gmail-api-push@system.gserviceaccount.com) on the
+                  icegate-mail topic — then switch this off and on again.
+                </span>
+              )}
+              {m.push_wanted && m.instant && <span className="field-note">Working — new mail arrives in seconds.</span>}
+            </span>
             <span>Last check</span>
             <span>
               {istTime(m.last_run)}

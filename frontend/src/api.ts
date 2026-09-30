@@ -962,6 +962,7 @@ export interface MailFilters {
   attention?: boolean;
   unmatched?: boolean;
   scope?: "live" | "history" | "all"; // live = on a live tracker shipment (default); history = old / gone
+  source?: "icegate" | "odex";
   kind?: string; // comma-separated
   port?: string;
   date_from?: string;
@@ -1005,8 +1006,42 @@ export interface MailboxStatus {
   paused?: string | null;
   waiting?: number;
   instant: boolean;
+  push_wanted: boolean; // the admin's switch
+  push_available: boolean; // the server has a Pub/Sub topic
+  push_error: string | null;
   watch_expires: string | null;
   ready: boolean;
+}
+export async function setMailboxPush(enabled: boolean): Promise<MailboxStatus> {
+  const { data } = await client.put("/gmail-reader/push", { enabled });
+  return data;
+}
+
+// Automatic update rules (Settings → Automatic rules)
+export interface CustomRule {
+  id?: string;
+  source: "mail" | "be_queue";
+  kind?: string;
+  contains?: string;
+  queue?: string;
+  field: string | null;
+  attention: boolean;
+  enabled: boolean;
+}
+export interface AutoRules {
+  builtin: { id: string; when: string; then: string; enabled: boolean }[];
+  custom: CustomRule[];
+  history_days: number;
+  fields: { field: string; label: string }[];
+  kinds: { kind: string; label: string }[];
+}
+export async function getAutoRules(): Promise<AutoRules> {
+  const { data } = await client.get("/auto-rules");
+  return data;
+}
+export async function saveAutoRules(body: { off: string[]; custom: CustomRule[]; history_days: number }): Promise<AutoRules> {
+  const { data } = await client.put("/auto-rules", body);
+  return data;
 }
 export async function getMailbox(): Promise<MailboxStatus> {
   const { data } = await client.get("/gmail-reader");

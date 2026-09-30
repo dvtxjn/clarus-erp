@@ -1865,3 +1865,14 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .auth-notice { font-size: var(--text-sm); padding: 8px 10px; border-radius: var(--radius); background: var(--info-bg); color: var(--info-fg); }
 .idle-backdrop { z-index: calc(var(--z-modal) + 5); }
 .fpod-cell.is-inw { color: var(--color-text-muted); font-style: italic; }
+
+/* Settings → Automatic rules */
+.rules-table td { vertical-align: top; white-space: normal; }
+.rules-table td:first-child { width: 36px; text-align: center; }
+.rules-table tr.is-off td:not(:first-child), .rule-row.is-off > :not(input:first-child) { color: var(--color-text-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+.rules-sub { margin: 16px 0 6px; font-size: var(--text-sm); }
+.rule-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 0; border-bottom: 1px solid var(--color-border-soft); font-size: var(--text-sm); }
+.rule-row select, .rule-row input:not([type="checkbox"]) { height: 30px; max-width: 220px; }
+.rule-attn { display: inline-flex; align-items: center; gap: 4px; }
+.mailbox-push { display: flex; flex-direction: column; gap: 4px; }
+.mailbox-push .toggle-row { justify-content: flex-start; }
