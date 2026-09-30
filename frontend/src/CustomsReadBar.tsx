@@ -65,7 +65,7 @@ export default function CustomsReadBar({ isAdmin, onRead }: { isAdmin: boolean; 
             title={login.ready ? undefined : "Save the ICEGATE login above first"}
             onClick={() => go("be")}
           >
-            {busy === "be" ? "Reading ICEGATE…" : "Read BE status now"}
+            {busy === "be" ? "Reading ICEGATE (a login waits up to 3 min for the OTP)…" : "Read BE status now"}
           </button>
           <span className="field-note">
             {login.last_status ? `last ${istTime(login.last_status.at)}` : login.ready ? "not read yet" : "ICEGATE login not saved"}

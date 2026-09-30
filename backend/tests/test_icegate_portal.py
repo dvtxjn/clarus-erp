@@ -141,6 +141,7 @@ def test_password_mechanism(client, admin_headers, monkeypatch):
 
         def login(self, wait):
             raise pc.BadPassword("ICEGATE didn't accept the password")
+    monkeypatch.setattr(sync, "otp_from_mailbox", lambda db, icegate_id="": lambda since, tried: None)
     db = SessionLocal()
     try:
         st = sync.run(db, "status", portal=Refuses({}), force=True)
@@ -153,3 +154,141 @@ def test_password_mechanism(client, admin_headers, monkeypatch):
     assert client.post("/icegate-login/run", json={"what": "status"}, headers=h).status_code == 400
     r = client.put("/icegate-login/password", json={"password": "new-secret"}, headers=h).json()
     assert r["ready"] and not r["password_bad"] and r["password_set_by"]
+
+
+# --- login: the OTP is waited for and matched to this login's request (client, 2026-10-01) ---
+def _otp_mail(db, code, when, icegate_id="ACGFA8615DPCB000", used=False):
+    import uuid
+
+    from app.models.icegate_mail import IcegateMail
+
+    d = {"otp": code, "icegate_id": icegate_id, **({"used_at": "x"} if used else {})}
+    db.add(IcegateMail(fingerprint=uuid.uuid4().hex, kind="otp", label="ICEGATE login OTP", received_at=when,
+                       subject=f"OTP for email verification of ICEGATE ID {icegate_id}", detail=d))
+    db.commit()
+
+
+def _mailbox(monkeypatch, db, arrivals):
+    """A connected mailbox whose reads bring in `arrivals` [(read no, code, sent at, icegate id)], one read at a time."""
+    from app.icegate_mail import gmail
+
+    monkeypatch.setattr(gmail, "state", lambda _db: (None, {"token": "t"}))
+    reads = {"n": 0}
+
+    def fake_sync(_db, *a, **k):
+        reads["n"] += 1
+        for n, code, when, iid in arrivals:
+            if n == reads["n"]:
+                _otp_mail(db, code, when, iid)
+        return {}
+    monkeypatch.setattr(gmail, "sync", fake_sync)
+    return reads
+
+
+def test_otp_waits_for_the_mail_of_this_request(monkeypatch):
+    from datetime import timedelta
+
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        _otp_mail(db, "111111", now)                       # already in the mailbox before the request: not ours
+        reads = _mailbox(monkeypatch, db, [
+            (2, "222222", now - timedelta(hours=1), "ACGFA8615DPCB000"),  # an old login's mail, arriving late
+            (3, "333333", now, "SOMEONEELSE01"),                          # another ICEGATE ID
+            (4, "444444", now + timedelta(seconds=20), "ACGFA8615DPCB000"),  # ours, 4th read (the mail took a while)
+        ])
+        t = {"now": 0.0}
+        wait = sync.otp_from_mailbox(db, "ACGFA8615DPCB000", sleep=lambda s: t.__setitem__("now", t["now"] + s),
+                                     clock=lambda: t["now"])
+        assert wait(now, set()) == "444444" and reads["n"] == 4
+        assert wait(now, {"444444"}) is None  # used now; nothing else of ours arrives before the time is up
+        assert t["now"] >= sync.OTP_WAIT
+    finally:
+        db.close()
+
+
+def test_otp_not_waited_for_without_the_mailbox(monkeypatch):
+    from app.icegate_mail import gmail
+
+    monkeypatch.setattr(gmail, "state", lambda _db: (None, {}))
+    db = SessionLocal()
+    try:
+        try:
+            sync.otp_from_mailbox(db)
+            assert False
+        except pc.PortalError as e:
+            assert "mailbox isn't connected" in str(e)
+    finally:
+        db.close()
+
+
+def _fake_icegate(accept: str, calls: list):
+    import httpx
+
+    def handle(req: httpx.Request):
+        calls.append((req.url.path, req.headers.get_list("session_id"), req.content))
+        if req.url.path == "/identity/ext-login":
+            return httpx.Response(200, json={"sessionId": "SID", "token": "TOK", "email": "e", "mobile": "m"})
+        if req.url.path.startswith("/otp/Ext/otp/"):
+            return httpx.Response(200, json={"status": True})
+        if req.url.path.startswith("/otp/Ext/verify-otp/"):
+            import json
+
+            ok = json.loads(req.content)["otp"] == accept
+            return httpx.Response(200 if ok else 400, json={"token": "TOK2"} if ok else {"errors": ["Invalid OTP"]})
+        return httpx.Response(404)
+    return httpx.Client(base_url="https://icegate.test", transport=httpx.MockTransport(handle))
+
+
+def test_login_tries_the_next_code_when_one_is_refused():
+    calls: list = []
+    p = pc.Portal({"icegate_id": "ACGFA8615DPCB000", "password": "pw", "cha_code": "CH1", "role_id": 3},
+                  http=_fake_icegate("654321", calls))
+    codes = iter(["123456", "654321"])
+    seen = []
+
+    def wait(since, tried):
+        seen.append(set(tried))
+        return next(codes, None)
+    s = p.login(wait)
+    assert s["token"] == "TOK2" and s["sessionId"] == "SID"
+    assert seen == [set(), {"123456"}]
+    # the session id goes once (not "SID, SID"), on the OTP request and on each verify
+    assert all(h == ["SID"] for path, h, _ in calls if path.startswith("/otp/"))
+
+
+def test_login_says_when_no_otp_came():
+    calls: list = []
+    p = pc.Portal({"icegate_id": "ACGFA8615DPCB000", "password": "pw", "cha_code": "CH1", "role_id": 3},
+                  http=_fake_icegate("654321", calls))
+    try:
+        p.login(lambda since, tried: None)
+        assert False
+    except pc.PortalError as e:
+        assert "No ICEGATE OTP arrived" in str(e)
+
+
+def test_one_login_at_a_time(monkeypatch):
+    class Lapsed(FakePortal):
+        cfg = {"icegate_id": "ACGFA8615DPCB000"}
+
+        def keep_alive(self):
+            raise pc.SessionLapsed("x")
+
+        def login(self, wait):
+            raise AssertionError("must not ask ICEGATE for a second OTP")
+    db = SessionLocal()
+    try:
+        row, st = sync._state(db)
+        st["login_started"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        sync._save(db, row, st)
+        try:
+            sync.portal_session(db, Lapsed({}))
+            assert False
+        except pc.PortalError as e:
+            assert "already waiting for its OTP" in str(e)
+    finally:
+        row, st = sync._state(db)
+        st["login_started"] = None
+        sync._save(db, row, st)
+        db.close()

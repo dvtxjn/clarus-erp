@@ -15,7 +15,7 @@ The ICEGATE portal (foservices.icegate.gov.in), logged in as the office's ICEGAT
             with nulls = every pending challan (the page's "items per page" only limits the display)
 
 Nothing here files, replies, pays or changes anything on ICEGATE. The login and OTP steps follow the portal's
-code and have not been run yet. The password resets periodically (client): it's entered in the ERP by the admin
+code; the OTP is waited for (it can take a while to arrive) and matched to this login's request. The password resets periodically (client): it's entered in the ERP by the admin
 or an import manager, kept encrypted, and a refused password stops all logins until a new one is entered (so the
 account never gets locked by repeated tries).
 """
@@ -74,8 +74,10 @@ class Portal:
             h["session_id"] = self.session["sessionId"]
         return h
 
-    def login(self, wait_for_otp: Callable[[datetime], Optional[str]]) -> dict:
-        """Full login: password -> OTP (mailed; wait_for_otp reads it from the mailbox) -> verify."""
+    def login(self, wait_for_otp: Callable[[datetime, set], Optional[str]]) -> dict:
+        """Full login: password -> OTP (mailed; wait_for_otp(since, tried) waits for the mail of THIS request and
+        returns a code not tried yet, or None when time is up) -> verify. A refused code (e.g. an older mail that
+        arrived late) is not the end: the next new code is tried, at most 3 in all."""
         c = self.cfg
         if not (c.get("icegate_id") and c.get("password") and c.get("cha_code")):
             raise PortalError("ICEGATE login isn't set up — enter the ICEGATE ID, CHA code and password on the Customs mail page")
@@ -91,20 +93,28 @@ class Portal:
         sid, token = b.get("sessionId"), b.get("token")
         if not sid:
             raise PortalError("ICEGATE's login answer had no session")
+        # one session header (sending it twice under two spellings reaches ICEGATE as "sid, sid")
+        h = {"session_id": sid, **({"Authorization": token} if token else {})}
         # ask for the OTP (the page does this right after the password)
-        self._http.post(f"/otp/Ext/otp/{c['icegate_id']}", json={"email": b.get("email"), "mobile": b.get("mobile") or b.get("mobileNo"),
-                                                                 "otpType": "L"}, headers={"Session_id": sid})
-        otp = wait_for_otp(started)
-        if not otp:
-            raise PortalError("No ICEGATE OTP arrived in the mailbox within 3 minutes")
-        v = self._http.post(f"/otp/Ext/verify-otp/{c['icegate_id']}", json={"otp": otp, "otpType": "L"},
-                            headers={"session_id": sid, "Session_id": sid})
-        if v.status_code != 200:
-            raise PortalError(f"ICEGATE didn't accept the OTP ({v.status_code}): {_err(v)}")
-        vb = v.json() if v.content else {}
-        self.session = {"token": vb.get("token") or token, "sessionId": sid,
-                        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-        return self.session
+        o = self._http.post(f"/otp/Ext/otp/{c['icegate_id']}", json={"email": b.get("email"), "mobile": b.get("mobile") or b.get("mobileNo"),
+                                                                     "otpType": "L"}, headers=h)
+        if o.status_code != 200:
+            raise PortalError(f"ICEGATE didn't send the login OTP ({o.status_code}): {_err(o)}")
+        tried: set = set()
+        last = ""
+        while len(tried) < 3:
+            otp = wait_for_otp(started, tried)
+            if not otp:
+                break
+            tried.add(otp)
+            v = self._http.post(f"/otp/Ext/verify-otp/{c['icegate_id']}", json={"otp": otp, "otpType": "L"}, headers=h)
+            if v.status_code == 200 and not _refused(v):
+                vb = v.json() if v.content else {}
+                self.session = {"token": (vb.get("token") if isinstance(vb, dict) else None) or token, "sessionId": sid,
+                                "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                return self.session
+            last = f"ICEGATE didn't accept the OTP ({v.status_code}): {_err(v)}"
+        raise PortalError(last or "No ICEGATE OTP arrived in the mailbox within 3 minutes")
 
     def keep_alive(self) -> None:
         """Refresh the saved session; SessionLapsed if ICEGATE no longer accepts it."""
@@ -162,6 +172,19 @@ class Portal:
         return self._post("/dashboard/challansGenerated/getChallanDetailsForCB/",
                           {"iecCode": None, "icegateId": c["icegate_id"], "roleId": c["role_id"], "startDate": None,
                            "endDate": None}) or []
+
+
+def _refused(r: httpx.Response) -> bool:
+    """A 200 whose body still says the OTP was wrong / expired."""
+    try:
+        b = r.json()
+    except ValueError:
+        return False
+    if not isinstance(b, dict):
+        return False
+    if b.get("status") in (False, "false", "FAILED", "failure") or b.get("success") is False:
+        return True
+    return bool(b.get("errors"))
 
 
 def _err(r: httpx.Response) -> str:

@@ -73,24 +73,57 @@ def _store_session(st: dict, session: dict) -> None:
     st["session"] = _fernet().encrypt(json.dumps(session).encode()).decode() if session else None
 
 
-def otp_from_mailbox(db: Session) -> Callable[[datetime], Optional[str]]:
-    """Wait for the ICEGATE login OTP mail (read by the mailbox reader) that came after `since`."""
-    from app.icegate_mail import gmail
-    from app.models.icegate_mail import IcegateMail
+OTP_POLL = 3          # seconds between mailbox reads while waiting
+OTP_SKEW = timedelta(minutes=2)  # ICEGATE's mail clock vs ours
+
+
+def _aware(d: Optional[datetime]) -> Optional[datetime]:
+    return None if d is None else (d if d.tzinfo else d.replace(tzinfo=timezone.utc))
+
+
+def otp_from_mailbox(db: Session, icegate_id: str = "", sleep: Callable[[float], None] = None,
+                     clock: Callable[[], float] = None) -> Callable[[datetime, set], Optional[str]]:
+    """Wait (up to OTP_WAIT in all) for the ICEGATE login OTP mail of THIS login request: a mail the reader
+    stored after the request was made (id above the mark taken now), sent no earlier than the request, for our
+    ICEGATE ID, never used before and not already tried. The newest one wins. The code is marked used."""
     import time
 
-    def wait(since: datetime) -> Optional[str]:
-        deadline = time.time() + OTP_WAIT
-        while time.time() < deadline:
+    from app.icegate_mail import gmail
+    from app.models.icegate_mail import IcegateMail
+
+    sleep = sleep or time.sleep
+    clock = clock or time.time
+    _, mb = gmail.state(db)
+    if not mb.get("token"):
+        raise PortalError("The ICEGATE mailbox isn't connected, so the login OTP can't be read — connect it in Settings → Mailbox")
+    mark = db.query(IcegateMail.id).order_by(IcegateMail.id.desc()).limit(1).scalar() or 0
+    deadline: list[float] = []
+
+    def wait(since: datetime, tried: set) -> Optional[str]:
+        if not deadline:
+            deadline.append(clock() + OTP_WAIT)
+        since = _aware(since)
+        while True:
             gmail.sync(db)  # don't wait for the push: read the mailbox now
-            rows = (db.query(IcegateMail).filter(IcegateMail.kind == "otp")
-                    .order_by(IcegateMail.received_at.desc()).limit(3).all())
+            db.expire_all()
+            rows = (db.query(IcegateMail).filter(IcegateMail.kind == "otp", IcegateMail.id > mark)
+                    .order_by(IcegateMail.received_at.desc(), IcegateMail.id.desc()).all())
             for m in rows:
-                got = m.received_at if (m.received_at and m.received_at.tzinfo) else (m.received_at or datetime.min).replace(tzinfo=timezone.utc)
-                if got >= since - timedelta(seconds=30) and (m.detail or {}).get("otp"):
-                    return m.detail["otp"]
-            time.sleep(5)
-        return None
+                d = dict(m.detail or {})
+                got = _aware(m.received_at)
+                if not d.get("otp") or d.get("used_at") or d["otp"] in tried:
+                    continue
+                if got is not None and got < since - OTP_SKEW:
+                    continue  # an older login's mail that only reached the mailbox now
+                if icegate_id and d.get("icegate_id") and d["icegate_id"].upper() != icegate_id.upper():
+                    continue
+                d["used_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                m.detail = d
+                db.commit()
+                return d["otp"]
+            if clock() >= deadline[0]:
+                return None
+            sleep(OTP_POLL)
 
     return wait
 
@@ -143,15 +176,24 @@ def portal_session(db: Session, portal: Optional[Portal] = None) -> Portal:
     try:
         p.keep_alive()
     except SessionLapsed:
+        # one login at a time: a second OTP request would make ICEGATE drop the first code
+        busy = st.get("login_started")
+        if busy and datetime.now(timezone.utc) - datetime.fromisoformat(busy) < timedelta(seconds=OTP_WAIT + 60):
+            raise PortalError("Another ICEGATE login is already waiting for its OTP — try again in a few minutes")
+        st["login_started"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _save(db, row, st)
         try:
-            p.login(otp_from_mailbox(db))
+            p.login(otp_from_mailbox(db, credentials(db)["icegate_id"]))
         except BadPassword:
             lrow, lg = login_state(db)
             lg.update(password_bad=True, bad_since=datetime.now(timezone.utc).isoformat(timespec="seconds"))
             lrow.value = lg
             db.commit()
             raise
-        row, st = _state(db)
+        finally:
+            row, st = _state(db)
+            st["login_started"] = None
+            _save(db, row, st)
         st["last_login"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     _store_session(st, p.session)
     _save(db, row, st)

@@ -126,7 +126,7 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
             disabled={!status.icegate_ready || fetching || busy}
             title={status.icegate_ready ? undefined : "Save the ICEGATE login on the Customs mail page first"}
           >
-            {fetching ? "Reading ICEGATE…" : "Read from ICEGATE"}
+            {fetching ? "Reading ICEGATE (a login waits up to 3 min for the OTP)…" : "Read from ICEGATE"}
           </button>
           <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={(e) => onFile(e.target.files?.[0])} />
           <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={busy}>
