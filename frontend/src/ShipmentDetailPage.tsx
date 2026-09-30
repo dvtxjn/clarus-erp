@@ -227,14 +227,18 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
                 IGM under FPOD ICD BL details; typed only as a fallback before the first ICEGATE read */}
             {inland && s.icegate?.gateway_igm ? (
               <Field
-                label={`IGM No (gateway ${s.icegate.gateway_igm.port ?? ""})`}
-                value={s.icegate.gateway_igm.no}
-                hint="The sea IGM at the gateway port. The ICD's own IGM is under FPOD ICD BL details."
+                label="Gateway IGM"
+                value={[s.icegate.gateway_igm.no, s.icegate.gateway_igm.date].filter(Boolean).join(" · ") || null}
+                hint={`The sea IGM at the gateway port (${s.icegate.gateway_igm.port ?? "—"}). The ICD's own IGM is under FPOD ICD BL details.`}
               />
+            ) : s.icegate?.fetched_at && s.igm ? (
+              <Field label="IGM" value={[s.igm, fmtDate(s.igm_date)].filter(Boolean).join(" · ")} />
             ) : (
-              <EditField label="IGM No" field="igm" s={s} onChange={onChange} />
+              <>
+                <EditField label="IGM No" field="igm" s={s} onChange={onChange} />
+                <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
+              </>
             )}
-            <EditField label={inland ? "IGM Date (gateway)" : "IGM Date"} field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
             <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
             <EditField label="Voyage" field="voyage" s={s} onChange={onChange} />
             <EditField label="Cont (IGM)" field="cont" s={s} onChange={onChange} />
