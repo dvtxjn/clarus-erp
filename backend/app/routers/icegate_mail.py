@@ -176,6 +176,7 @@ def _reader_out(db: Session) -> dict:
     _, st = gmail.state(db)
     return {"mailbox": st.get("mailbox"), "connected": bool(st.get("token")), "connected_at": st.get("connected_at"),
             "last_run": st.get("last_run"), "last_error": st.get("last_error"), "last_new": st.get("last_new"),
+            "paused": st.get("paused"), "waiting": len(st.get("queue") or []),
             "instant": bool(gmail.topic_name()) and bool(st.get("watch_expires")) and not st.get("push_error"),
             "watch_expires": st.get("watch_expires"),
             "ready": bool(gmail.client_id() and os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"))}

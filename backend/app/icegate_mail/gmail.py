@@ -28,6 +28,9 @@ TOKEN_URI = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 KEY = "gmail_reader"  # app_settings: mailbox, token (encrypted), history_id, watch_expires, last_run, last_error, …
 QUERY = "from:icegate.gov.in"  # first connect: the last 30 days of ICEGATE mails
+FIRST_LIMIT = 300   # first connect reads at most this many (newest last)
+PACE = 0.3          # seconds between mails: ~200 a minute, far below Gmail's per-user limit
+RUN_SECONDS = 240   # one check reads for at most 4 minutes; the rest next time
 
 
 class GmailError(Exception):
@@ -109,6 +112,8 @@ class Gmail:
         r = self._http.get(f"{API}{path}", params=params, headers=self._auth())
         if r.status_code == 404 and path == "/history":
             raise HistoryGone()
+        if r.status_code == 429 or (r.status_code == 403 and any(w in r.text for w in ("Quota exceeded", "rateLimitExceeded", "userRateLimitExceeded"))):
+            raise RateLimited()
         if r.status_code >= 400:
             raise GmailError(f"Gmail {r.status_code}: {r.text[:200]}")
         return r.json()
@@ -153,6 +158,10 @@ class Gmail:
         return base64.urlsafe_b64decode(b["raw"] + "=" * (-len(b["raw"]) % 4))
 
 
+class RateLimited(GmailError):
+    """Gmail's per-minute limit for one mailbox — stop now, carry on at the next check."""
+
+
 class HistoryGone(GmailError):
     """The saved history id is too old (Gmail keeps about a week) — fall back to a search."""
 
@@ -194,26 +203,48 @@ def sync(db: Session, gm: Optional[Gmail] = None, topic: Optional[str] = None) -
     if gm is None:
         return st
     try:
-        if st.get("history_id"):
-            try:
-                ids, latest = gm.new_ids(st["history_id"])
-            except HistoryGone:
-                ids, latest = gm.search(f"{QUERY} newer_than:10d"), gm.profile()["historyId"]
-        else:  # first run: the last 30 days
-            latest = gm.profile()["historyId"]
-            ids = gm.search(f"{QUERY} newer_than:30d")
-        raws = [gm.raw(i) for i in ids]
+        # the list of mails still to read is kept, so a limit hit or a timeout never starts over
+        if not st.get("queue"):
+            if st.get("history_id"):
+                try:
+                    ids, latest = gm.new_ids(st["history_id"])
+                except HistoryGone:
+                    ids, latest = gm.search(f"{QUERY} newer_than:10d"), gm.profile()["historyId"]
+            else:  # first run: the last 30 days (at most FIRST_LIMIT mails)
+                latest = gm.profile()["historyId"]
+                ids = gm.search(f"{QUERY} newer_than:30d", limit=FIRST_LIMIT)
+            st.update(queue=ids, pending_history=str(latest))
+            save(db, row, st)
         # documents from mail are added in the admin's name (the only admin, client 2026-09-29)
         admin = db.query(User).filter(User.role == UserRole.ADMIN, User.is_active.is_(True)).order_by(User.id).first()
-        res = import_mails(db, raws, admin) if raws else {"read": 0, "new": 0}
-        row, st = state(db)  # import committed
-        st.update(history_id=str(latest), last_run=now, last_error=None, last_new=res.get("new", 0))
+        new = 0
+        started = time.time()
+        while st.get("queue"):
+            if time.time() - started > RUN_SECONDS:
+                break  # the rest at the next check
+            msg_id = st["queue"][0]
+            raw = gm.raw(msg_id)
+            new += import_mails(db, [raw], admin).get("new", 0)
+            row, st = state(db)  # the import committed
+            st["queue"] = st["queue"][1:]
+            save(db, row, st)
+            time.sleep(PACE)  # well under Gmail's per-minute limit
+        row, st = state(db)
+        st.update(last_run=now, last_error=None, last_new=new, paused=None)
+        if not st.get("queue"):
+            st["history_id"] = st.pop("pending_history", None) or st.get("history_id")
         if topic and (not st.get("watch_expires") or int(st["watch_expires"]) / 1000 - time.time() < 2 * 86400):
             try:
                 w = gm.watch(topic)
                 st["watch_expires"], st["push_error"] = w.get("expiration"), None
             except GmailError as e:  # push not allowed (e.g. org policy on the topic): the 15-min check still reads
                 st["push_error"] = str(e)[:200]
+    except RateLimited:
+        db.rollback()
+        row, st = state(db)
+        left = len(st.get("queue") or [])
+        st.update(last_run=now, last_error=None,
+                  paused=f"Gmail asked the ERP to slow down — {left} mail(s) left, read at the next check" if left else None)
     except (GmailError, httpx.HTTPError, KeyError, ValueError) as e:
         db.rollback()
         row, st = state(db)

@@ -971,6 +971,8 @@ export interface MailboxStatus {
   last_run: string | null;
   last_error: string | null;
   last_new: number | null;
+  paused?: string | null;
+  waiting?: number;
   instant: boolean;
   watch_expires: string | null;
   ready: boolean;

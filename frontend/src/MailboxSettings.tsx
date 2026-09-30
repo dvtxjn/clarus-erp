@@ -73,6 +73,12 @@ export default function MailboxSettings() {
               {istTime(m.last_run)}
               {!m.last_error && m.last_new != null ? ` · ${m.last_new} new` : ""}
             </span>
+            {m.paused && !m.last_error && (
+              <>
+                <span>Reading</span>
+                <span className="field-note">{m.paused}</span>
+              </>
+            )}
             {m.last_error && (
               <>
                 <span>Problem</span>

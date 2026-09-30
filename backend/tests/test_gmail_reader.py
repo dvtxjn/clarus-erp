@@ -64,3 +64,38 @@ def test_callback_refuses_bad_state(client):
 def test_status_admin_only(client, admin_headers):
     r = client.get("/gmail-reader", headers=admin_headers)
     assert r.status_code == 200 and "connected" in r.json()
+
+
+def test_rate_limit_pauses_and_resumes(client, admin_headers, monkeypatch):
+    """Gmail's per-minute limit mid-way: what was read stays, the rest is read at the next check — no mail lost or read twice."""
+    monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", Fernet.generate_key().decode())
+    monkeypatch.setattr(gmail, "PACE", 0)
+    mails = {str(i): mail("Bill of entry number generated", f"Your Bill of entry has been successfully generated with BE number 97{i:05d}.")
+             for i in range(1, 6)}
+
+    class Limited(FakeGmail):
+        calls = 0
+
+        def raw(self, i):
+            Limited.calls += 1
+            if Limited.calls == 3:
+                raise gmail.RateLimited()
+            return super().raw(i)
+    db = SessionLocal()
+    try:
+        row, _ = gmail.state(db)
+        gmail.save(db, row, {"token": "x"})
+        fake = Limited(mails, history="50")
+        st = gmail.sync(db, fake)
+        assert st["last_new"] if "last_new" in st else True
+        assert "slow down" in st["paused"] and len(st["queue"]) == 3 and not st.get("history_id")
+        st = gmail.sync(db, fake)  # next check
+        assert not st.get("queue") and st["history_id"] == "50" and st["paused"] is None
+    finally:
+        db.close()
+    from app.models.icegate_mail import IcegateMail
+    db = SessionLocal()
+    try:
+        assert db.query(IcegateMail).filter(IcegateMail.be_no.like("97%")).count() == 5
+    finally:
+        db.close()
