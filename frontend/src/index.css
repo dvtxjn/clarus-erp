@@ -1531,3 +1531,35 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
   scrollbar-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent) transparent;
 }
 :root[data-theme="dim"] .ag-root-wrapper, :root[data-theme="dark"] .ag-root-wrapper { color-scheme: dark; }
+
+/* Dashboard: Needs attention */
+.attention h2.dash-card-head { margin: 0; display: flex; align-items: center; gap: 8px; }
+.attention-total {
+  font-size: 11px; font-weight: 600; padding: 0 7px; line-height: 18px; border-radius: 999px;
+  background: var(--bad-bg); color: var(--bad-fg); font-variant-numeric: tabular-nums;
+}
+.attention .seg-switch button:disabled { opacity: .45; }
+.attention-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.attention-row {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) minmax(0, 1.5fr); gap: 12px; align-items: start;
+  padding: 7px 0; border-bottom: 1px solid var(--color-border-soft); font-size: 13px;
+}
+.attention-row:last-child { border-bottom: none; }
+.attention-sev { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: var(--radius-sm); justify-self: start; margin-top: 1px; }
+.sev-overdue .attention-sev { background: var(--bad-bg); color: var(--bad-fg); }
+.sev-urgent .attention-sev { background: var(--warn-bg); color: var(--warn-fg); }
+.sev-soon .attention-sev { background: var(--info-bg); color: var(--info-fg); }
+.attention-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.attention-line { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.attention-job { font-weight: 600; white-space: nowrap; }
+.attention-client { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-muted); }
+.attention-ids { color: var(--color-text-muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.attention-text { min-width: 0; }
+.sev-overdue .attention-text { color: var(--bad-fg); }
+.attention-empty { margin: 0; color: var(--ok-fg); font-size: 13px; }
+.attention-more { align-self: flex-start; }
+@media (max-width: 1100px) {
+  .attention-row { grid-template-columns: 64px minmax(0, 1fr); }
+  .attention-text { grid-column: 2; }
+}
+.detail-subhead { margin: 12px 0 2px; }
