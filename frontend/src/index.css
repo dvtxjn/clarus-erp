@@ -1469,3 +1469,25 @@ button.final-card-head:hover { background: var(--color-inv-sub); }
 /* switches: the "off" track must be visible on every surface (hairline grey vanishes in dark) */
 .toggle-row input[role="switch"] { background: color-mix(in srgb, var(--color-text-muted) 42%, var(--color-surface)); }
 .toggle-row input[role="switch"]:checked { background: var(--color-accent); }
+/* switch rows sit on the same grid as field rows: same height, same divider, switch flush right */
+.detail-section .toggle-row, .hss-editor .toggle-row {
+  min-height: 27px; padding: 3px 0; border-bottom: 1px solid var(--color-border);
+}
+.detail-section .toggle-row:last-child { border-bottom: none; }
+.toggle-row input[role="switch"] { width: 30px; height: 18px; flex: none; align-self: center; }
+.toggle-row input[role="switch"]::after { top: 2px; left: 2px; width: 14px; height: 14px; }
+.toggle-row input[role="switch"]:checked::after { transform: translateX(12px); }
+/* native checkboxes / radios / ranges follow the accent */
+input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color: var(--color-accent); }
+/* filter bars: every control the same height */
+.inv-filters > select, .inv-filters > input { height: 32px; }
+/* expand/collapse arrows: readable size, fixed width so names line up */
+.licence-caret, .final-toggle { display: inline-block; width: 12px; font-size: 13px; line-height: 1; color: var(--color-text-muted); text-align: center; }
+/* rates: charge names never cut ("Bond Charges (Reimbursement)") */
+.rates-table td:first-child .rate-input { min-width: 230px; }
+/* settings: embedded blocks use the same heading size as the section titles; row remove = quiet icon */
+.settings-body h1, .settings-body h2, .settings-body h3 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+.settings-row .link-button { color: var(--color-text-muted); text-decoration: none; font-size: 13px; align-self: center; }
+.settings-row .link-button:hover:not(:disabled) { color: var(--color-danger); }
+/* disabled primary buttons read as "nothing to do" (neutral), not as a faded accent */
+button:not([class]):disabled { background: var(--color-subtle); border-color: var(--color-border); color: var(--color-text-muted); opacity: 1; box-shadow: none; }

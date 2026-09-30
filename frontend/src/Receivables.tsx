@@ -94,7 +94,7 @@ export default function Receivables() {
       </div>
 
       <div className="inv-filters">
-        <input list="org-names" placeholder="Client (type or pick)" value={client} onChange={(e) => setClient(e.target.value)} />
+        <input list="org-names" aria-label="Client" placeholder="Client (type or pick)…" value={client} onChange={(e) => setClient(e.target.value)} />
         <label className="toggle-row">
           <span>Show paid invoices too</span>
           <input type="checkbox" role="switch" checked={withPaid} onChange={() => setWithPaid((x) => !x)} />
