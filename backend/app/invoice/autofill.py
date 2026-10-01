@@ -321,7 +321,9 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
     line_cat = ChargeCategory.REIMBURSEMENT if s.line_paid_by_us else ChargeCategory.COST_INCLUSION
     groups = shipping_line_groups(db, s)
     excluded_by = None if s.line_paid_by_us else line_excluded_by(db, s)
-    if groups and excluded_by:
+    if groups and line_cat == ChargeCategory.COST_INCLUSION and not s.is_hss:
+        skipped.append("Shipping line: cost inclusion is only for HSS shipments")
+    elif groups and excluded_by:
         skipped.append(f"Shipping line: not in cost inclusion ({excluded_by}) — switch it on for this shipment to add it")
     elif groups:  # one total of the selected charges
         carriers = sorted({c for g in groups for c in g["carriers"]})

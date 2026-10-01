@@ -1054,12 +1054,30 @@ export default function ShipmentGridPage() {
     }
   };
 
+  /** The table's sideways scroll position. Saving a cell or re-fitting columns redraws the client
+   *  sections, which jumped back to the far left (client, 2026-10-01): read it before, put it back after. */
+  const hScrollers = () =>
+    Array.from(document.querySelectorAll<HTMLElement>(".client-grid-stack .ag-body-horizontal-scroll-viewport"));
+  const readHScroll = () => Math.max(0, ...hScrollers().map((el) => el.scrollLeft));
+  const restoreHScroll = (left: number) => {
+    if (!left) return;
+    const apply = () => hScrollers().forEach((el) => {
+      if (el.scrollLeft !== left) el.scrollLeft = left;
+    });
+    apply();
+    requestAnimationFrame(() => {
+      apply();
+      window.setTimeout(apply, 60);
+    });
+  };
+
   /** Excel-style autofit: each column as wide as its title or its longest value in any client section
    *  (capped at MAX_AUTO_WIDTH), measured on what's actually drawn (chips, badges included). */
   function fitToContent(ids: string[]) {
     const header = headerRef.current?.api;
     if (!header || !ids.length || fitting.current) return;
     fitting.current = true; // our own autosize calls fire resize events too
+    const left = readHScroll();
     const need = new Map<string, number>();
     header.autoSizeColumns(ids, false); // the header grid has no rows: this is the title's width
     for (const c of header.getColumnState()) if (ids.includes(c.colId)) need.set(c.colId, c.width ?? 0);
@@ -1079,6 +1097,7 @@ export default function ShipmentGridPage() {
     header.applyColumnState({ state: [...state, ...keep] });
     apis.forEach((api) => api.applyColumnState({ state }));
     fitting.current = false;
+    restoreHScroll(left);
     saveColumnState();
   }
 
@@ -1266,9 +1285,11 @@ export default function ShipmentGridPage() {
 
   // Chip toggles in the Checklist column save like any other cell edit.
   const toggleFlag = useCallback(async (row: Shipment, field: FlagField) => {
+    const left = readHScroll();
     try {
       const { shipment: saved, kept } = await saveShipment(row, { [field]: !row[field] } as Partial<Shipment>, FLAG_LABELS[field]);
       setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
+      restoreHScroll(left);
       if (kept === "theirs") return;
       record({ id: row.id, field, customKey: null, oldValue: !!row[field], newValue: !row[field], label: FLAG_LABELS[field] });
       setMessage({ kind: "ok", text: `Saved ${FLAG_LABELS[field]}${statusNote(row.status, saved.status)}` });
@@ -1278,9 +1299,11 @@ export default function ShipmentGridPage() {
   }, [record, saveShipment]);
   // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
   const saveText = useCallback(async (row: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => {
+    const left = readHScroll();
     try {
       const { shipment: saved, kept } = await saveShipment(row, { [field]: value } as Partial<Shipment>, label);
       setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
+      restoreHScroll(left);
       if (kept === "theirs") return;
       record({ id: row.id, field, customKey: null, oldValue: row[field], newValue: value, label });
       setMessage({ kind: "ok", text: `Saved ${label}` });
@@ -1435,7 +1458,7 @@ export default function ShipmentGridPage() {
   const shownGroups = groups.filter(([client]) => visibleCounts[client] !== 0);
 
   return (
-    <div className="tracker-page tracker-page-wide">
+    <div className={`tracker-page tracker-page-wide${peekId && !peekFull ? " has-peek" : ""}`}>
       <header className="tracker-header">
         <div>
           <h1>Shipment Tracker</h1>
@@ -1709,6 +1732,7 @@ export default function ShipmentGridPage() {
                 defaultColDef={sectionColDef}
                 context={gridContext}
                 onCellKeyDown={copyCell}
+                popupParent={document.body} // the date picker on the bottom row was cut off by the section
                 domLayout="autoHeight"
               tooltipShowDelay={350}
                 headerHeight={0}

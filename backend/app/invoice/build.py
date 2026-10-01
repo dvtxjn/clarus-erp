@@ -349,6 +349,8 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     sections = []
     totals = {}
     for cat in ChargeCategory:
+        if cat == ChargeCategory.COST_INCLUSION and not s.is_hss:
+            continue  # cost inclusion (and the value of goods) only on HSS proformas (client, 2026-10-01)
         rows = [li for li in lines if li.category == cat]
         subtotal = sum((Decimal(li.total) for li in rows), ZERO)
         totals[cat] = subtotal
@@ -363,6 +365,8 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
                 "total": _money(li.total),
             } for li in rows],
             "subtotal": _money(subtotal),
+            "amount_subtotal": _money(sum((Decimal(li.amount) for li in rows), ZERO)),  # before tax
+            "gst_subtotal": _money(sum((Decimal(li.gst_amount) for li in rows), ZERO)),
             "counts_in_total": cat != ChargeCategory.COST_INCLUSION,
         })
     grand = sum((v for cat, v in totals.items() if cat != ChargeCategory.COST_INCLUSION), ZERO)
@@ -424,7 +428,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
         } if duty else None,
         "value": {**{k: (v if isinstance(v, bool) else _money(v)) for k, v in value.items()},
                   "label": value_label(value), "note": VALUE_NOTE,
-                  "bill_rate_manual": bool(proforma.bill_rate_manual)},
+                  "bill_rate_manual": bool(proforma.bill_rate_manual)} if s.is_hss else None,
         "grand_total": _money(round_off(grand)[0]),
         "round_off": _money(round_off(grand)[1]),  # + / − paise to the rupee
         "grand_total_label": grand_total_label,

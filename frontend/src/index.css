@@ -1980,3 +1980,14 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 
 /* Receivables — date filters with a visible label */
 .final-field-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted, #6b7280); }
+
+/* Mac overlay scrollbars sat on top of each section's last row (client, 2026-10-01): give the sideways
+   scrollbar its own strip under the rows; the header grid has no rows, so it needs none */
+.client-section .ag-body-horizontal-scroll.ag-scrollbar-invisible { position: relative; bottom: auto; }
+.client-grid-header .ag-body-horizontal-scroll { display: none !important; }
+
+/* overview panel open: the tracker moves left beside it instead of hiding under it (rows and scrollbar stay usable) */
+@media (min-width: 901px) {
+  .tracker-page.has-peek { margin-right: min(1180px, 72vw); transition: margin-right .16s ease-out; }
+}
+@media (prefers-reduced-motion: reduce) { .tracker-page.has-peek { transition: none; } }

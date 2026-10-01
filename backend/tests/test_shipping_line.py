@@ -136,8 +136,8 @@ def test_line_paid_by_us_and_cfs_taxable_sections(client, admin_headers):
 
 def test_draft_proforma_updates_automatically_one_shipping_line_total(client, admin_headers):
     h = admin_headers
-    sid = client.post("/shipments", json={"mbl": "274014260AUTO", "consignee": "Divine"}, headers=h).json()["id"]
-    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    sid = client.post("/shipments", json={"mbl": "274014260AUTO", "consignee": "Divine", "is_hss": True}, headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
     # invoice uploaded AFTER the proforma was started -> it appears on the draft by itself
     up = _upload(client, h, sid, "shipping_line_invoice", MAERSK.replace("274014260", "274014260AUTO").splitlines())
     doc_id = up.get("document", up)["id"]
@@ -193,8 +193,8 @@ def test_exam_charge_follows_under_examination_and_payer_chain(client, admin_hea
 
 def test_restore_removed_shipping_line(client, admin_headers):
     h = admin_headers
-    sid = client.post("/shipments", json={"mbl": "274014260RST", "consignee": "Divine"}, headers=h).json()["id"]
-    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    sid = client.post("/shipments", json={"mbl": "274014260RST", "consignee": "Divine", "is_hss": True}, headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
     _upload(client, h, sid, "shipping_line_invoice", MAERSK.replace("274014260", "274014260RST").splitlines())
     p = next(x for x in client.get(f"/shipments/{sid}/proformas", headers=h).json() if x["id"] == pid)
     sl = next(li for li in p["line_items"] if li["sac_code"] == "Liner Inv")
@@ -226,8 +226,8 @@ def test_line_cost_inclusion_client_default_and_shipment_switch(client, admin_he
     client.patch(f"/shipments/{sid}", json={"line_cost_inclusion": None}, headers=h)
     assert line() is None  # back to auto
     # the switch can also leave it out on any other client's shipment
-    other = client.post("/shipments", json={"mbl": "274014260OTH", "consignee": "Divine"}, headers=h).json()["id"]
-    op = client.post(f"/shipments/{other}/proformas", headers=h).json()["id"]
+    other = client.post("/shipments", json={"mbl": "274014260OTH", "consignee": "Divine", "is_hss": True}, headers=h).json()["id"]
+    op = client.post(f"/shipments/{other}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
     _upload(client, h, other, "shipping_line_invoice", MAERSK.replace("274014260", "274014260OTH").splitlines())
     has_line = lambda: any(li["description"].startswith("Shipping Line") for li in  # noqa: E731
                            next(x for x in client.get(f"/shipments/{other}/proformas", headers=h).json() if x["id"] == op)["line_items"])
@@ -268,3 +268,26 @@ def test_destination_charges_decided_by_head_then_currency():
     assert got[("Mystery Fee", "USD")] == (False, True)                           # unknown foreign: out, check
     assert got[("Mystery Fee", "INR")] == (True, False)
     assert got[("BAF - Bunker Adjustment", "INR")] == (False, True)               # Maersk: INR freight-named, check
+
+
+def test_non_hss_proforma_has_no_cost_inclusion_or_value(client, admin_headers):
+    """Value of goods and Cost Inclusion are HSS-only (client, 2026-10-01); subtotals carry
+    the pre-tax and GST totals too."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "274014260NHS", "consignee": "Divine", "is_hss": False}, headers=h).json()["id"]
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    _upload(client, h, sid, "shipping_line_invoice", MAERSK.replace("274014260", "274014260NHS").splitlines())
+    inv = client.get(f"/proformas/{pid}/invoice", headers=h).json()
+    assert inv["value"] is None
+    assert "cost_inclusion" not in [s["category"] for s in inv["sections"]]
+    p = next(x for x in client.get(f"/shipments/{sid}/proformas", headers=h).json() if x["id"] == pid)
+    assert not any(li["description"].startswith("Shipping Line") for li in p["line_items"])
+    for sec in inv["sections"]:
+        assert float(sec["amount_subtotal"]) + float(sec["gst_subtotal"]) == float(sec["subtotal"])
+    for ext in ("pdf", "xlsx"):
+        assert client.get(f"/proformas/{pid}/invoice.{ext}", headers=h).status_code == 200
+    # switched to HSS: the shipping line comes into the cost inclusion and the value shows
+    client.patch(f"/shipments/{sid}", json={"is_hss": True}, headers=h)
+    inv = client.get(f"/proformas/{pid}/invoice", headers=h).json()
+    assert inv["value"] is not None
+    assert any(s["category"] == "cost_inclusion" and s["lines"] for s in inv["sections"])

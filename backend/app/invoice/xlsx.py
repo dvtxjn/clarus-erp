@@ -192,7 +192,8 @@ def render_xlsx(inv: dict) -> bytes:
             vc.number_format = "#,##0"
     r += 3
     # value of goods / GST input / bill rate next to the assessable value (client, 2026-09-30)
-    r = _value_block(ws, r, inv["value"])
+    if inv["value"]:  # HSS only
+        r = _value_block(ws, r, inv["value"])
 
     # CHARGES
     bar("CHARGES")
@@ -227,13 +228,15 @@ def render_xlsx(inv: dict) -> bytes:
             ws.cell(r, 1, f"{sec['title']}: no charges").font = Font(name="Arial", size=9, italic=True, color=GREY)
             r += 1
         label = f"Subtotal - {sec['title']}" + ("" if sec["counts_in_total"] else " (not included in the total)")
-        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
         c = ws.cell(r, 1, label)
         c.font = Font(name="Arial", size=9.5, bold=True, color=DARK)
         c.alignment = Alignment(horizontal="right")
-        t = ws.cell(r, 6, _d(sec["subtotal"]))
-        t.font = Font(name="Arial", size=9.5, bold=True, color=DARK)
-        t.number_format = RUPEE
+        # pre-tax and GST subtotals next to the total, like a tax invoice (client, 2026-10-01)
+        for col, key in ((4, "amount_subtotal"), (5, "gst_subtotal"), (6, "subtotal")):
+            t = ws.cell(r, col, _d(sec[key]))
+            t.font = Font(name="Arial", size=9.5, bold=True, color=DARK)
+            t.number_format = RUPEE
         for col in range(1, COLS + 1):
             ws.cell(r, col).fill = PatternFill("solid", fgColor=SUBTOTAL)
         r += 2

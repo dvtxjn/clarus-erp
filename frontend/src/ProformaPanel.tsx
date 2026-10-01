@@ -170,6 +170,7 @@ export default function ProformaPanel({
         </form>
       )}
 
+      <HssSwitch shipment={shipment} onShipmentChange={onShipmentChange} onSaved={refresh} />
       {shipment.is_hss && (
         <div className="hss-banner">
           <strong>HSS shipment</strong> — two invoices: seller <b>{shipment.hss_seller ?? "?"}</b> and buyer{" "}
@@ -308,6 +309,36 @@ function ExamReminder({
  * Whether the client cuts TDS when paying our invoices for this shipment — a billing
  * matter, not customs duty (client, 2026-09-30). Receivables shows it on the invoices.
  */
+/** The same switch as on the Overview tab (client, 2026-10-01: "just in case"). Value of goods
+ *  and Cost Inclusion only appear on HSS proformas, so draft proformas are reloaded after it. */
+function HssSwitch({ shipment: s, onShipmentChange, onSaved }: { shipment: Shipment; onShipmentChange: (s: Shipment) => void; onSaved: () => void }) {
+  const saveShipment = useSaveShipment();
+  const [saving, setSaving] = useState(false);
+  async function toggle() {
+    setSaving(true);
+    try {
+      onShipmentChange((await saveShipment(s, { is_hss: !s.is_hss })).shipment);
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="exam-reminder exam-neutral">
+      <div>
+        <strong>{s.is_hss ? "HSS (high sea sale) shipment." : "Not an HSS shipment."}</strong>
+        <div className="exam-source">Value of goods and Cost Inclusion are on HSS proformas only. Same switch as on the Overview tab.</div>
+      </div>
+      <div className="exam-actions">
+        <label className="toggle-row">
+          <span>HSS</span>
+          <input type="checkbox" role="switch" checked={!!s.is_hss} disabled={saving} onChange={toggle} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function TdsSwitch({ shipment: s, onShipmentChange }: { shipment: Shipment; onShipmentChange: (s: Shipment) => void }) {
   const saveShipment = useSaveShipment();
   const [saving, setSaving] = useState(false);
@@ -636,7 +667,7 @@ function ProformaVersion({
               />
               <select value={category} onChange={(e) => setCategory(e.target.value as ChargeCategory | "")} aria-label="Section">
                 <option value="">Section: charge default</option>
-                {(Object.keys(SECTION_LABELS) as ChargeCategory[]).map((c) => (
+                {(Object.keys(SECTION_LABELS) as ChargeCategory[]).filter((c) => isHss || c !== "cost_inclusion").map((c) => (
                   <option key={c} value={c}>
                     {SECTION_LABELS[c]}
                   </option>
@@ -991,7 +1022,8 @@ function InvoiceSheet({
         <KV k="Examination" v={ref.exam_applicable} />
       </div>
 
-      {/* value of goods / GST beside the assessable value (client, 2026-09-30) */}
+      {/* value of goods / GST beside the assessable value (client, 2026-09-30); HSS only (2026-10-01) */}
+      {inv.value && (
       <div className="tracker-grid-wrap">
         <table className="inv-table inv-value">
           <thead>
@@ -1042,6 +1074,7 @@ function InvoiceSheet({
         )}
         <div className="inv-value-note">{inv.value.note}</div>
       </div>
+      )}
 
 
       <div className="tracker-grid-wrap">
@@ -1088,7 +1121,7 @@ function InvoiceSheet({
                         aria-label="Move to section"
                         onChange={(e) => onSave(li.id, { category: e.target.value as ChargeCategory }).catch(() => {})}
                       >
-                        {(Object.keys(SECTION_LABELS) as ChargeCategory[]).map((c) => (
+                        {(Object.keys(SECTION_LABELS) as ChargeCategory[]).filter((c) => inv.is_hss || c !== "cost_inclusion").map((c) => (
                           <option key={c} value={c}>
                             {SECTION_LABELS[c]}
                           </option>
@@ -1107,7 +1140,9 @@ function InvoiceSheet({
                 </tr>
               )}
               <tr className="inv-subtotal">
-                <td colSpan={6}>Subtotal — {sec.title}</td>
+                <td colSpan={4}>Subtotal — {sec.title}</td>
+                <td className="num">{inr(sec.amount_subtotal)}</td>
+                <td className="num">{inr(sec.gst_subtotal)}</td>
                 <td className="num">{inr(sec.subtotal)}</td>
                 {editable && <td />}
               </tr>

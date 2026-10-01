@@ -194,9 +194,11 @@ def _charges(inv) -> list:
                 rows.append([_p("No charges", 7.5, color=MUTED), "", "", ""])
                 style.append(("SPAN", (0, r2), (-1, r2)))
             r = len(rows)
-            rows.append([_p(f"Subtotal — {sec['title']}", 8, True, align=TA_RIGHT), "", "",
+            rows.append([_p(f"Subtotal — {sec['title']}", 8, True, align=TA_RIGHT),
+                         _p(num(sec["amount_subtotal"]), 8, True, align=TA_RIGHT, width=w[1]),
+                         _p(num(sec["gst_subtotal"]), 8, True, align=TA_RIGHT, width=w[2]),
                          _p(num(sec["subtotal"]), 8.5, True, align=TA_RIGHT, width=w[3])])
-            style += [("SPAN", (0, r), (2, r)), ("BACKGROUND", (0, r), (-1, r), SUB_C)]
+            style += [("BACKGROUND", (0, r), (-1, r), SUB_C)]
         t = Table(rows, colWidths=w)
         t.setStyle(_style(*style))
         return t
@@ -269,9 +271,8 @@ def render_pdf(inv: dict) -> bytes:
         _parties(inv), Spacer(1, 5),
         _grid(["Assessable Value", "MBL", "HBL / HSS", "# Containers", "WT (KGS)", "Exam Applicable"], ref_vals, ref_w),
         Spacer(1, 3),
-        # value of goods / GST input / bill rate right under the assessable value (client, 2026-09-30)
-        _value_grid(inv),
-        Spacer(1, 5),
+        # value of goods / GST input / bill rate right under the assessable value (client, 2026-09-30); HSS only
+        *([_value_grid(inv), Spacer(1, 5)] if inv["value"] else [Spacer(1, 2)]),
         *_charges(inv),
         Spacer(1, 6),
         _footer(inv),

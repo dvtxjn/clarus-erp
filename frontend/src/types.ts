@@ -417,7 +417,7 @@ export interface InvoiceView {
   };
   details: { invoice_date: string; be_no: string | null; be_date: string | null; port: string | null; job: string; version: number; name: string | null; status: string };
   reference: { assessable_value: string | null; mbl: string | null; hbl: string | null; hss: string; containers: number | null; weight_kgs: string | null; exam_applicable: string };
-  sections: { category: ChargeCategory; title: string; lines: InvoiceLine[]; subtotal: string; counts_in_total: boolean }[];
+  sections: { category: ChargeCategory; title: string; lines: InvoiceLine[]; subtotal: string; amount_subtotal: string; gst_subtotal: string; counts_in_total: boolean }[];
   grand_total: string;
   grand_total_label: string;
   round_off: string; // grand total is rounded to the rupee; this is the +/− paise // "<seller> pays <buyer> pays CLARUS LOGISTICS LLP"
@@ -435,7 +435,7 @@ export interface InvoiceView {
     label: string; // "Value of Goods (w shipping)" / "(w/o shipping)"
     note: string; // "Value calculated in the proforma is tentative …"
     bill_rate_manual: boolean; // typed by hand (else it follows the rules)
-  };
+  } | null; // HSS only (client, 2026-10-01)
   notes: string[];
   bank: [string, string][];
 }
