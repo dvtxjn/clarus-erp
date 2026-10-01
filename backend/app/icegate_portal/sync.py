@@ -32,7 +32,12 @@ KEY = "icegate_portal"  # app_settings: session (encrypted), last_login, last_st
 LOGIN_KEY = "icegate_login"  # app_settings: icegate_id, cha_code, password (encrypted), password_set_at / _by, password_bad
 IST = timezone(timedelta(hours=5, minutes=30))
 HOURS = range(8, 22)   # 08:00–21:59 IST
-OTP_WAIT = 180         # seconds
+OTP_WAIT = 300         # seconds: be patient, the OTP mail can be slow
+# ICEGATE blocks the account for an hour after too many OTP requests (client, 2026-10-01: "only login into
+# icegate ONCE, and then wait 15 minutes"). Every login attempt — good or bad, by hand or automatic — locks
+# the next one out for LOGIN_GAP; a "limit exceeded" answer locks it out for LIMIT_PAUSE.
+LOGIN_GAP = timedelta(minutes=15)
+LIMIT_PAUSE = timedelta(minutes=60)
 
 
 # --- saved state ---
@@ -169,38 +174,62 @@ def ready(db: Session) -> bool:
     return bool(c["icegate_id"] and c["cha_code"] and c["password"] and not c["password_bad"])
 
 
-def portal_session(db: Session, portal: Optional[Portal] = None) -> Portal:
-    """A logged-in portal: the saved session kept alive, or a fresh login (OTP from the mailbox)."""
+def login_locked_until(st: dict) -> Optional[datetime]:
+    """When the next ICEGATE login may be tried (None = now)."""
+    until = []
+    if st.get("login_attempt_at"):
+        until.append(datetime.fromisoformat(st["login_attempt_at"]) + LOGIN_GAP)
+    if st.get("login_blocked_until"):
+        until.append(datetime.fromisoformat(st["login_blocked_until"]))
+    latest = max(until) if until else None
+    return latest if latest and latest > datetime.now(timezone.utc) else None
+
+
+def portal_session(db: Session, portal: Optional[Portal] = None, auto: bool = False) -> Portal:
+    """A logged-in portal: the saved session kept alive, or a fresh login (OTP from the mailbox).
+    At most one login every 15 minutes; automatic runs never log in again after a failed login."""
     row, st = _state(db)
     p = portal or Portal(credentials(db), _load_session(st))
     try:
         p.keep_alive()
     except SessionLapsed:
-        # one login at a time: a second OTP request would make ICEGATE drop the first code
-        busy = st.get("login_started")
-        if busy and datetime.now(timezone.utc) - datetime.fromisoformat(busy) < timedelta(seconds=OTP_WAIT + 60):
-            raise PortalError("Another ICEGATE login is already waiting for its OTP — try again in a few minutes")
-        st["login_started"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        # row lock: two jobs (or a job and a click) can't both decide to log in at the same moment
+        db.commit()
+        row = db.query(AppSetting).filter(AppSetting.key == KEY).with_for_update().one()
+        st = dict(row.value or {})
+        locked = login_locked_until(st)
+        if locked:
+            raise PortalError(f"ICEGATE login paused until {locked.astimezone(IST):%H:%M} — one login every 15 minutes, "
+                              "so ICEGATE doesn't block the account for too many OTPs")
+        if auto and st.get("login_failed"):
+            raise PortalError("The last ICEGATE login failed — automatic logins are stopped until someone logs in from the Customs mail page")
+        wait = otp_from_mailbox(db, credentials(db)["icegate_id"])  # mailbox not connected: stop before asking ICEGATE
+        # marked BEFORE the OTP is asked for, and never cleared: a crash mid-login still counts as an attempt
+        st["login_attempt_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        st["login_failed"] = True
         _save(db, row, st)
         try:
-            p.login(otp_from_mailbox(db, credentials(db)["icegate_id"]))
+            p.login(wait)
         except BadPassword:
             lrow, lg = login_state(db)
             lg.update(password_bad=True, bad_since=datetime.now(timezone.utc).isoformat(timespec="seconds"))
             lrow.value = lg
             db.commit()
             raise
-        finally:
-            row, st = _state(db)
-            st["login_started"] = None
-            _save(db, row, st)
+        except PortalError as e:
+            if any(w in str(e).lower() for w in ("limit", "exceed", "blocked", "too many", "attempt")):
+                row, st = _state(db)
+                st["login_blocked_until"] = (datetime.now(timezone.utc) + LIMIT_PAUSE).isoformat(timespec="seconds")
+                _save(db, row, st)
+            raise
+        row, st = _state(db)
+        st["login_failed"] = False
         st["last_login"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     _store_session(st, p.session)
     _save(db, row, st)
     return p
 
 
-# --- BE status ---
 def _label(cs: dict) -> str:
     """One line for the tracker column, most advanced step first."""
     if ts(cs.get("oocDate")):
@@ -391,7 +420,7 @@ def apply_challans(db: Session, rows: list[dict], now: datetime) -> dict:
 
 
 # --- runs ---
-def run(db: Session, what: str = "status", portal: Optional[Portal] = None, force: bool = False) -> dict:
+def run(db: Session, what: str = "status", portal: Optional[Portal] = None, force: bool = False, auto: bool = False) -> dict:
     """what = "status" (BE status + queries) or "challans". Returns (and stores) a summary."""
     row, st = _state(db)
     now = datetime.now(timezone.utc)
@@ -401,7 +430,7 @@ def run(db: Session, what: str = "status", portal: Optional[Portal] = None, forc
         return st
     summary: dict = {"at": now.isoformat(timespec="seconds"), "what": what}
     try:
-        p = portal_session(db, portal)
+        p = portal_session(db, portal, auto=auto)
         if what == "challans":
             summary.update(apply_challans(db, p.challans(), now))
         else:
@@ -438,11 +467,11 @@ def run_status() -> None:
     from app.core.database import SessionLocal
 
     with SessionLocal() as db:
-        run(db, "status")
+        run(db, "status", auto=True)
 
 
 def run_challans() -> None:
     from app.core.database import SessionLocal
 
     with SessionLocal() as db:
-        run(db, "challans")
+        run(db, "challans", auto=True)

@@ -77,7 +77,7 @@ class Portal:
     def login(self, wait_for_otp: Callable[[datetime, set], Optional[str]]) -> dict:
         """Full login: password -> OTP (mailed; wait_for_otp(since, tried) waits for the mail of THIS request and
         returns a code not tried yet, or None when time is up) -> verify. A refused code (e.g. an older mail that
-        arrived late) is not the end: the next new code is tried, at most 3 in all."""
+        arrived late) ends the login: one code per OTP request — wrong codes count towards ICEGATE's block."""
         c = self.cfg
         if not (c.get("icegate_id") and c.get("password") and c.get("cha_code")):
             raise PortalError("ICEGATE login isn't set up — enter the ICEGATE ID, CHA code and password on the Customs mail page")
@@ -102,7 +102,7 @@ class Portal:
             raise PortalError(f"ICEGATE didn't send the login OTP ({o.status_code}): {_err(o)}")
         tried: set = set()
         last = ""
-        while len(tried) < 3:
+        while len(tried) < 1:
             otp = wait_for_otp(started, tried)
             if not otp:
                 break
@@ -114,7 +114,7 @@ class Portal:
                                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
                 return self.session
             last = f"ICEGATE didn't accept the OTP ({v.status_code}): {_err(v)}"
-        raise PortalError(last or "No ICEGATE OTP arrived in the mailbox within 3 minutes")
+        raise PortalError(last or "No ICEGATE OTP arrived in the mailbox within 5 minutes")
 
     def keep_alive(self) -> None:
         """Refresh the saved session; SessionLapsed if ICEGATE no longer accepts it."""

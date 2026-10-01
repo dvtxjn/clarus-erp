@@ -1,5 +1,5 @@
 """The ICEGATE self-updater, fed ICEGATE's real answers (captured 2026-09-30) through a fake portal — never the real one."""
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.core.database import SessionLocal
 from app.icegate_portal import client as pc
@@ -240,20 +240,19 @@ def _fake_icegate(accept: str, calls: list):
     return httpx.Client(base_url="https://icegate.test", transport=httpx.MockTransport(handle))
 
 
-def test_login_tries_the_next_code_when_one_is_refused():
+def test_login_verifies_one_code_only():
+    """A refused code ends the login: wrong codes count towards ICEGATE's OTP block."""
     calls: list = []
     p = pc.Portal({"icegate_id": "ACGFA8615DPCB000", "password": "pw", "cha_code": "CH1", "role_id": 3},
                   http=_fake_icegate("654321", calls))
     codes = iter(["123456", "654321"])
-    seen = []
-
-    def wait(since, tried):
-        seen.append(set(tried))
-        return next(codes, None)
-    s = p.login(wait)
-    assert s["token"] == "TOK2" and s["sessionId"] == "SID"
-    assert seen == [set(), {"123456"}]
-    # the session id goes once (not "SID, SID"), on the OTP request and on each verify
+    try:
+        p.login(lambda since, tried: next(codes, None))
+        assert False
+    except pc.PortalError as e:
+        assert "didn't accept the OTP" in str(e)
+    assert sum(1 for path, _, _ in calls if path.startswith("/otp/Ext/otp/")) == 1  # one OTP asked for
+    assert sum(1 for path, _, _ in calls if "verify-otp" in path) == 1
     assert all(h == ["SID"] for path, h, _ in calls if path.startswith("/otp/"))
 
 
@@ -268,7 +267,11 @@ def test_login_says_when_no_otp_came():
         assert "No ICEGATE OTP arrived" in str(e)
 
 
-def test_one_login_at_a_time(monkeypatch):
+def test_one_login_every_15_minutes(monkeypatch):
+    monkeypatch.setattr(sync, "otp_from_mailbox", lambda *a, **k: (lambda since, tried: None))
+    """A login attempt (good or bad) locks out the next for 15 min; automatic runs stop after a failure."""
+    asked = []
+
     class Lapsed(FakePortal):
         cfg = {"icegate_id": "ACGFA8615DPCB000"}
 
@@ -276,19 +279,68 @@ def test_one_login_at_a_time(monkeypatch):
             raise pc.SessionLapsed("x")
 
         def login(self, wait):
-            raise AssertionError("must not ask ICEGATE for a second OTP")
+            asked.append(1)
+            raise pc.PortalError("No ICEGATE OTP arrived in the mailbox within 3 minutes")
     db = SessionLocal()
     try:
         row, st = sync._state(db)
-        st["login_started"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        for k in ("login_attempt_at", "login_blocked_until", "login_failed"):
+            st[k] = None
         sync._save(db, row, st)
+        for _ in range(3):  # three tries in a row: ICEGATE asked for ONE OTP
+            try:
+                sync.portal_session(db, Lapsed({}))
+                assert False
+            except pc.PortalError:
+                pass
+        assert len(asked) == 1
         try:
             sync.portal_session(db, Lapsed({}))
-            assert False
         except pc.PortalError as e:
-            assert "already waiting for its OTP" in str(e)
+            assert "paused until" in str(e)
+        # 16 minutes later: a person may try again, an automatic run may not (the last login failed)
+        row, st = sync._state(db)
+        st["login_attempt_at"] = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat(timespec="seconds")
+        sync._save(db, row, st)
+        try:
+            sync.portal_session(db, Lapsed({}), auto=True)
+        except pc.PortalError as e:
+            assert "automatic logins are stopped" in str(e)
+        assert len(asked) == 1
+        try:
+            sync.portal_session(db, Lapsed({}))
+        except pc.PortalError:
+            pass
+        assert len(asked) == 2
     finally:
         row, st = sync._state(db)
-        st["login_started"] = None
+        for k in ("login_attempt_at", "login_blocked_until", "login_failed"):
+            st[k] = None
+        sync._save(db, row, st)
+        db.close()
+
+
+def test_limit_exceeded_pauses_an_hour(monkeypatch):
+    monkeypatch.setattr(sync, "otp_from_mailbox", lambda *a, **k: (lambda since, tried: None))
+    class Limited(FakePortal):
+        cfg = {"icegate_id": "ACGFA8615DPCB000"}
+
+        def keep_alive(self):
+            raise pc.SessionLapsed("x")
+
+        def login(self, wait):
+            raise pc.PortalError("ICEGATE didn't send the login OTP (429): OTP limit exceeded")
+    db = SessionLocal()
+    try:
+        try:
+            sync.portal_session(db, Limited({}))
+        except pc.PortalError:
+            pass
+        row, st = sync._state(db)
+        assert sync.login_locked_until(st) > datetime.now(timezone.utc) + timedelta(minutes=50)
+    finally:
+        row, st = sync._state(db)
+        for k in ("login_attempt_at", "login_blocked_until", "login_failed"):
+            st[k] = None
         sync._save(db, row, st)
         db.close()
