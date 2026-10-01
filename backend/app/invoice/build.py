@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session, object_session
 
 from app.core.enums import ChargeCategory, DocumentType
 from app.invoice.company import bank as company_bank, company as company_details, notes as proforma_notes
-from app.models.challan import DutyChallan
+from app.models.challan import DutyChallan, ist_day, today_ist
 from app.models.organization import OrganizationEntry
 from app.models.proforma import Proforma, ProformaLineItem
 from app.models.shipment import Shipment
@@ -101,7 +101,7 @@ def latest_challan(db: Session, be_no: Optional[str], be_date: Optional[date] = 
     if not be_no:
         return None
     rows = (db.query(DutyChallan).filter(DutyChallan.be_no == be_no.strip())
-            .order_by(DutyChallan.uploaded_at.desc(), DutyChallan.id.desc()))
+            .order_by(DutyChallan.listed_at.desc().nullslast(), DutyChallan.uploaded_at.desc(), DutyChallan.id.desc()))
     if be_date is None:
         return rows.first()
     undated = None
@@ -419,8 +419,8 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
         "is_hss": bool(s.is_hss),
         "customs_duty": {
             "interest": _money(duty["interest"]), "total": _money(duty["total"]), "source": duty["source"],
-            "challan_uploaded_at": challan.uploaded_at.isoformat() if challan else None,
-            "challan_today": bool(challan and challan.uploaded_at.date() == date.today()),
+            "challan_uploaded_at": challan.as_of.isoformat() if challan else None,
+            "challan_today": bool(challan and ist_day(challan.as_of) == today_ist()),
         } if duty else None,
         "value": {**{k: (v if isinstance(v, bool) else _money(v)) for k, v in value.items()},
                   "label": value_label(value), "note": VALUE_NOTE,

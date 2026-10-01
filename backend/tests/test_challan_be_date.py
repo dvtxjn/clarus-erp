@@ -1,6 +1,7 @@
 """BE numbers are reused every year (client, 2026-09-30): a duty challan must follow the BE date too."""
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
+from itertools import count
 
 from openpyxl import Workbook
 
@@ -12,8 +13,14 @@ from app.models.challan import DutyChallan
 BE = "9777001"
 
 
-def _xlsx(be_no, be_date, due):
+_tick = count()
+
+
+def _xlsx(be_no, be_date, due, made=None):
     wb = Workbook()
+    # ICEGATE stamps when the list was made; each test list gets its own time
+    wb.properties.created = made or (datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+                                     - timedelta(hours=1) + timedelta(seconds=next(_tick)))
     ws = wb.active
     ws.append(["IEC", "Location Code", "Doc type", "Doc no.", "Doc date", "Challan no.", "Due Amount"])
     ws.append(["AAVFD7221R", "INNSA1", "BE", be_no, be_date, "2063300001", due])

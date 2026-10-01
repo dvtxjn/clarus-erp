@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.sql import func
@@ -29,3 +29,22 @@ class DutyChallan(Base):
     # local time (not the DB's UTC now) so "updated today" follows the office's day
     uploaded_at = Column(DateTime(timezone=True), nullable=False, default=datetime.now, server_default=func.now())
     uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # when the list was made: ICEGATE's own stamp inside the .xlsx (client, 2026-10-01: an upload of
+    # yesterday's file must not count as today's), else the entry time. "Latest" and "today" go by this.
+    listed_at = Column(DateTime(timezone=True), nullable=True, index=True, default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def as_of(self) -> datetime:
+        return self.listed_at or self.uploaded_at
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def ist_day(dt: datetime) -> date:
+    """The office's (India) date of a stored time; times without a zone are UTC."""
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).astimezone(IST).date()
+
+
+def today_ist() -> date:
+    return datetime.now(IST).date()

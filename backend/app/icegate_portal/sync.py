@@ -412,7 +412,7 @@ def apply_challans(db: Session, rows: list[dict], now: datetime) -> dict:
             continue
         db.add(DutyChallan(be_no=be, be_date=c.get("boeDate"), location_code=c.get("locationCode"), iec=c.get("iecCode"),
                            challan_no=str(c.get("challanNumber") or ""), due_amount=amount, source="icegate",
-                           filename="ICEGATE (automatic)", uploaded_at=now.replace(tzinfo=None)))
+                           filename="ICEGATE (automatic)", uploaded_at=now.replace(tzinfo=None), listed_at=now))
         added += 1
     db.flush()
     if added:

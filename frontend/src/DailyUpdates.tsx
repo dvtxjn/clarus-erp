@@ -96,8 +96,8 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
           <div className="daily-status">
             <span className={`daily-dot ${fresh ? "ok" : "due"}`} />
             {fresh
-              ? `Updated ${when(status.challans_last_uploaded_at)} · ${status.challans_in_last_upload} BE(s)`
-              : `Not updated today (last: ${when(status.challans_last_uploaded_at)}) — upload today's list so proforma interest is current.`}
+              ? `Today's list (made ${when(status.challans_last_uploaded_at)}) · ${status.challans_in_last_upload} BE(s)`
+              : `No list from today (latest made ${when(status.challans_last_uploaded_at)}) — download today's from ICEGATE and upload it so proforma interest is current.`}
           </div>
         </div>
         <div className="daily-actions">

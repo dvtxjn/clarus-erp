@@ -18,12 +18,12 @@ Reimbursement when the line is paid by us.
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.models.challan import ist_day, today_ist
 from app.core.enums import ChargeCategory, ProformaStatus
 from app.extraction.cfs_totals import cost_inclusion, invoice_charges, line_invoices_counted
 from app.invoice.build import SECTION_TITLES, _norm, value_summary, be_importer_name, bl_consignee_organization, customs_duty, latest_challan, match_organization, stamp_duty, weight_kgs
@@ -282,8 +282,8 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
         elif challan is None:
             skipped.append("ACTION NEEDED — upload the duty challan (Dashboard) for this BE: without it or an OOC copy "
                            "the interest is unknown and Customs Duty is the BE amount only")
-        elif challan.uploaded_at.date() != date.today():
-            skipped.append(f"Interest: latest challan is from {challan.uploaded_at:%d-%m-%Y} — upload today's for current interest")
+        elif ist_day(challan.as_of) != today_ist():
+            skipped.append(f"Interest: latest challan list is from {ist_day(challan.as_of):%d-%m-%Y} — upload today's for current interest")
     else:
         skipped.append("Customs Duty: no duty amount yet (upload the Assessed / OOC BE or the duty challan)")
 

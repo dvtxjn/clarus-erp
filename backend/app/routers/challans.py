@@ -7,7 +7,7 @@ or viewed. Interest = Due Amount - the BE's total duty.
 from __future__ import annotations
 
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -20,9 +20,9 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
 from app.core.locking import lock_shipments
-from app.extraction.excel_imports import load_challan_rows
+from app.extraction.excel_imports import challan_list_time, load_challan_rows
 from app.core.enums import DocumentType
-from app.models.challan import DutyChallan
+from app.models.challan import IST, DutyChallan, ist_day, today_ist
 from app.models.document import ShipmentDocument
 from app.models.organization import OrganizationEntry
 from app.models.shipment import Shipment
@@ -45,6 +45,7 @@ class ChallanRowOut(BaseModel):
     source: str
     filename: Optional[str] = None
     uploaded_at: datetime
+    listed_at: Optional[datetime] = None
 
 
 class ChallanMatch(BaseModel):
@@ -76,8 +77,17 @@ class AwaitingChallan(BaseModel):
     be_no: str
 
 
+def _utc(dt: datetime) -> datetime:
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _shown(dt: datetime) -> str:
+    return _utc(dt).astimezone(IST).strftime("%d-%b %H:%M")
+
+
 class DailyStatus(BaseModel):
-    """Dashboard reminder: was today's challan list / org repository updated?"""
+    """Dashboard reminder: was today's challan list / org repository updated? Goes by when the list was
+    made (ICEGATE's stamp in the file), not when it was uploaded."""
     challans_last_uploaded_at: Optional[datetime] = None
     challans_updated_today: bool
     challans_in_last_upload: int
@@ -86,11 +96,6 @@ class DailyStatus(BaseModel):
     organizations_updated_today: bool
     # ongoing shipments with a BE but neither a duty challan nor an OOC copy: interest unknown
     awaiting_challan: list[AwaitingChallan] = []
-    # ICEGATE's own pending-challan list (read daily at 9, or "Read from ICEGATE" on the dashboard)
-    icegate_ready: bool = False
-    icegate_challans_at: Optional[datetime] = None
-    icegate_challans_pending: Optional[int] = None
-    icegate_error: Optional[str] = None
 
 
 def _match(db: Session, rows: list[tuple[str, Optional[str]]]) -> tuple[list[ChallanMatch], list[str]]:
@@ -145,8 +150,26 @@ async def upload_challans(file: UploadFile = File(...), db: Session = Depends(ge
     if not rows:
         raise HTTPException(status_code=400, detail=note or "No BE rows found in this file.")
     now = datetime.now()  # one timestamp per upload = "rows in the last upload"
+    listed = challan_list_time(io.BytesIO(data))
+    notes = [note] if note else []
+    if listed is None:
+        listed = datetime.now(timezone.utc)
+        notes.append("This file has no ICEGATE time in it — counted as a list made now.")
+    else:
+        listed = _utc(listed)
+        made = {_utc(t) for (t,) in db.query(DutyChallan.listed_at)
+                .filter(DutyChallan.source == "upload", DutyChallan.listed_at.isnot(None)).distinct()}
+        if listed in made:
+            raise HTTPException(status_code=409, detail=f"This list (made {_shown(listed)}) was already uploaded.")
+        if ist_day(listed) != today_ist():
+            notes.append(f"This list was made on {_shown(listed)} — not today's. Download today's from ICEGATE for current interest.")
+        newer = max((t for t in made if t > listed), default=None)
+        if newer:
+            notes.append(f"A newer list (made {_shown(newer)}) is already in — this one doesn't replace its amounts.")
     for r in rows:
-        db.add(DutyChallan(**r, source="upload", filename=file.filename, uploaded_by_id=user.id, uploaded_at=now))
+        db.add(DutyChallan(**r, source="upload", filename=file.filename, uploaded_by_id=user.id,
+                           uploaded_at=now, listed_at=listed))
+    note = " ".join(notes) or None
     db.flush()
     record_change(db, "duty_challans", 0, "upload", None, f"{file.filename}: {len(rows)} row(s)", user.id)
     matched, unmatched = _match(db, [(r["be_no"], r.get("be_date")) for r in rows])
@@ -180,7 +203,7 @@ def list_challans(be_no: Optional[str] = None, db: Session = Depends(get_db),
     q = db.query(DutyChallan)
     if be_no:
         q = q.filter(DutyChallan.be_no == be_no.strip())
-    return q.order_by(DutyChallan.uploaded_at.desc(), DutyChallan.id.desc()).limit(200).all()
+    return q.order_by(DutyChallan.listed_at.desc().nullslast(), DutyChallan.id.desc()).limit(200).all()
 
 
 @router.delete("/duty-challans/{challan_id}", status_code=204)
@@ -195,8 +218,8 @@ def delete_challan(challan_id: int, db: Session = Depends(get_db), user: User = 
 
 @router.get("/daily-updates", response_model=DailyStatus)
 def daily_status(db: Session = Depends(get_db), _user: User = Depends(require_billing_access)):
-    last = db.query(func.max(DutyChallan.uploaded_at)).scalar()
-    in_last = db.query(DutyChallan).filter(DutyChallan.uploaded_at == last).count() if last else 0
+    last = db.query(func.max(DutyChallan.listed_at)).scalar()
+    in_last = db.query(DutyChallan).filter(DutyChallan.listed_at == last).count() if last else 0
     org_last = db.query(func.max(OrganizationEntry.updated_at)).scalar()
     with_challan = {be for (be,) in db.query(DutyChallan.be_no).distinct()}
     with_ooc = {sid for (sid,) in db.query(ShipmentDocument.shipment_id)
@@ -207,7 +230,7 @@ def daily_status(db: Session = Depends(get_db), _user: User = Depends(require_bi
                 if not s.is_fully_cleared and s.be_no not in with_challan and s.id not in with_ooc]
     return DailyStatus(
         challans_last_uploaded_at=last,
-        challans_updated_today=bool(last and last.date() == date.today()),
+        challans_updated_today=bool(last and ist_day(last) == today_ist()),
         challans_in_last_upload=in_last,
         organizations=db.query(OrganizationEntry).filter(OrganizationEntry.is_active.is_(True)).count(),
         organizations_last_updated_at=org_last,

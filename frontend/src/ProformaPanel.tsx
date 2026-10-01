@@ -840,7 +840,7 @@ function DutyNotice({ invoice }: { invoice: InvoiceView }) {
   if (!cd.challan_today)
     return (
       <div className="duty-notice duty-warn">
-        Challan from {dmy(cd.challan_uploaded_at.slice(0, 10))} ({interest}) — upload today's list on the Dashboard, then{" "}
+        Challan list from {new Date(cd.challan_uploaded_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} ({interest}) — upload today's list on the Dashboard, then{" "}
         <b>Fill / refresh</b> for current interest.
       </div>
     );

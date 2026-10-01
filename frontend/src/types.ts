@@ -536,10 +536,6 @@ export interface DailyStatus {
   organizations_last_updated_at: string | null;
   organizations_updated_today: boolean;
   awaiting_challan: { id: number; job: string | null; mbl: string; be_no: string }[];
-  icegate_ready: boolean;
-  icegate_challans_at: string | null;
-  icegate_challans_pending: number | null;
-  icegate_error: string | null;
 }
 
 export interface ChallanUploadResult {

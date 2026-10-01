@@ -8,11 +8,25 @@ flag, interest split), pulled out so they don't depend on fixed invoice cells.
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import BinaryIO, Mapping, Optional, Tuple, Union
 
 from openpyxl import load_workbook
 
 XlsxSource = Union[str, BinaryIO]
+
+
+def challan_list_time(source: XlsxSource) -> Optional[datetime]:
+    """When the challan list was generated: ICEGATE writes the .xlsx with its creation time (UTC).
+    Re-saving in Excel keeps it. None when the file carries no time."""
+    try:
+        created = load_workbook(source, read_only=True).properties.created
+    except Exception:
+        return None
+    finally:
+        if hasattr(source, "seek"):
+            source.seek(0)
+    return created.replace(tzinfo=timezone.utc) if created and not created.tzinfo else created
 
 
 def load_challan_rows(source: XlsxSource) -> Tuple[list[dict], Optional[str]]:
