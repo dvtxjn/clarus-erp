@@ -934,3 +934,15 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
 - Settings → Mailbox: Instant mail on/off. On = Gmail push (still blocked by the org policy "Domain restricted
   sharing" for gmail-api-push@system.gserviceaccount.com on the icegate-mail topic); the 15-minute check always reads.
 - Customs mail page: From (ICEGATE / ODeX) filter.
+
+## PARKED — ICEGATE portal login (2026-10-01) → rework later in a sandbox
+- Switched off after the automatic logins used up ICEGATE's OTP limit (1-hour block; client's whole operation stopped).
+  Client: "we can see the be status and get challans and queries manually, remove every post login operation".
+- Now: BE status, queries and duty challans are checked on ICEGATE by hand (challan list: upload .xlsx or enter by hand).
+  Public, no-login enquiries (Sea IGM / ICD BL status, `app/igm`) stay on.
+- Unwired: `icegate-status` / `icegate-challans` jobs, `/icegate-login` routes (router not mounted), the login panel,
+  "Read BE status now" and "Read from ICEGATE" buttons. deploy.sh deletes the erp-icegate-status / erp-icegate-challans
+  scheduler jobs. Code kept in `app/icegate_portal/` (+ `routers/icegate_portal.py`, tests); `portal_session` refuses to
+  log in unless `ICEGATE_PORTAL_SANDBOX=1`. Panel UI is in git history (`frontend/src/IcegateLoginPanel.tsx`, before this commit).
+- To redo in a sandbox (never against production while the client is working): ONE login, wait for the OTP, never
+  retry before 15 minutes, back off an hour on "limit exceeded"; prove it with a dry-run counter before any real login.

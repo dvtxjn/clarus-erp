@@ -6,7 +6,6 @@ import {
   getDailyStatus,
   importOrganizations,
   listOrganizations,
-  runIcegateLookup,
   updateOrganization,
   uploadChallans,
 } from "./api";
@@ -57,8 +56,6 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
   const [beNo, setBeNo] = useState("");
   const [due, setDue] = useState("");
   const [showAwaiting, setShowAwaiting] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [fetched, setFetched] = useState<string | null>(null);
   const awaiting = status.awaiting_challan;
 
   async function run(action: () => Promise<ChallanUploadResult>) {
@@ -73,23 +70,6 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
       return false;
     } finally {
       setBusy(false);
-    }
-  }
-
-  /** ICEGATE's pending-challan list, read now (the ERP also reads it by itself every day at 9). */
-  async function fromIcegate() {
-    setFetching(true);
-    setError(null);
-    setFetched(null);
-    try {
-      const l = await runIcegateLookup("challans");
-      if (l.last_error) setError(l.last_error);
-      else if (l.last_challans) setFetched(`Read from ICEGATE: ${l.last_challans.pending ?? 0} pending challan(s), ${l.last_challans.added ?? 0} new or changed.`);
-      onChange();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setFetching(false);
     }
   }
 
@@ -121,13 +101,6 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
           </div>
         </div>
         <div className="daily-actions">
-          <button
-            onClick={fromIcegate}
-            disabled={!status.icegate_ready || fetching || busy}
-            title={status.icegate_ready ? undefined : "Save the ICEGATE login on the Customs mail page first"}
-          >
-            {fetching ? "Reading ICEGATE (a login waits up to 3 min for the OTP)…" : "Read from ICEGATE"}
-          </button>
           <input ref={fileRef} type="file" accept=".xlsx" hidden onChange={(e) => onFile(e.target.files?.[0])} />
           <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={busy}>
             {busy ? "Reading…" : "Upload challan list"}
@@ -137,12 +110,8 @@ function ChallanCard({ status, onChange }: { status: DailyStatus; onChange: () =
           </button>
         </div>
       </div>
-      {fetched && <div role="status" aria-live="polite" className="field-note">{fetched}</div>}
       <p className="daily-help">
-        {status.icegate_ready
-          ? `Read from ICEGATE by itself every day at 9${status.icegate_challans_at ? ` (last ${when(status.icegate_challans_at)}: ${status.icegate_challans_pending ?? 0} pending)` : ""}. `
-          : "Save the ICEGATE login (Customs mail page) and the ERP reads this list by itself every day at 9. "}
-        Or upload the ICEGATE pending-challan export (.xlsx: Doc no., Due Amount…). Interest = Due Amount − the BE's total duty; it's
+        Upload the ICEGATE pending-challan export (.xlsx, downloaded from ICEGATE by hand: Doc no., Due Amount…). Interest = Due Amount − the BE's total duty; it's
         added to Customs Duty when a proforma is filled or refreshed.
       </p>
       {awaiting.length > 0 && (

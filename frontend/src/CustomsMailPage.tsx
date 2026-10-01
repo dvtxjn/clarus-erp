@@ -12,7 +12,6 @@ import {
 import { useAuth } from "./AuthContext";
 import { istTime } from "./customsMail";
 import CustomsReadBar from "./CustomsReadBar";
-import IcegateLoginPanel from "./IcegateLoginPanel";
 import { formatPort, usePorts } from "./ports";
 
 type View = "all" | "attention" | "unmatched";
@@ -160,8 +159,6 @@ export default function CustomsMailPage() {
           added as documents; queries and rejections go to Needs attention. Times are India time.
         </p>
       </div>
-
-      {(isAdmin || user?.role === "import_manager") && <IcegateLoginPanel isAdmin={isAdmin} />}
 
       {isAdmin && (
         <label className={`customs-drop${busy ? " is-busy" : ""}`}>

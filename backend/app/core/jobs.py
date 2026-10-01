@@ -59,15 +59,12 @@ def start() -> None:
     from app.icegate_mail import gmail
 
     asyncio.create_task(_every("gmail", 900, gmail.run_job))  # ICEGATE mailbox catch-up (push is instant)
-    from app.icegate_portal import sync as portal
-
-    asyncio.create_task(_every("icegate-status", 1800, portal.run_status))  # BE status + queries, 08–22 IST
 
 
 JOBS = {"backup": "app.backups:backup_if_due", "drive-retry": "app.storage:retry_pending",
         "icegate": "app.igm.batch:run_auto", "sheets-mirror": "app.sheets_mirror:run_job",
-        "gmail": "app.icegate_mail.gmail:run_job",
-        "icegate-status": "app.icegate_portal.sync:run_status", "icegate-challans": "app.icegate_portal.sync:run_challans"}
+        "gmail": "app.icegate_mail.gmail:run_job"}
+# ICEGATE portal login (BE status / queries / challans) is parked — see PROGRESS.md; never scheduled.
 
 
 def run_named(name: str) -> bool:

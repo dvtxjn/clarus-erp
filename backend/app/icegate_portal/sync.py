@@ -15,6 +15,7 @@ Payment details on the BE status page are NOT used for duty (client: duty = the 
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Callable, Optional
@@ -187,7 +188,10 @@ def login_locked_until(st: dict) -> Optional[datetime]:
 
 def portal_session(db: Session, portal: Optional[Portal] = None, auto: bool = False) -> Portal:
     """A logged-in portal: the saved session kept alive, or a fresh login (OTP from the mailbox).
-    At most one login every 15 minutes; automatic runs never log in again after a failed login."""
+    At most one login every 15 minutes; automatic runs never log in again after a failed login.
+    PARKED (client, 2026-10-01): the ERP never logs in to ICEGATE — only in a sandbox with ICEGATE_PORTAL_SANDBOX=1."""
+    if os.environ.get("ICEGATE_PORTAL_SANDBOX") != "1":
+        raise PortalError("ICEGATE login is switched off — check BE status, queries and challans on ICEGATE by hand.")
     row, st = _state(db)
     p = portal or Portal(credentials(db), _load_session(st))
     try:

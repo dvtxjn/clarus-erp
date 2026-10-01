@@ -1102,38 +1102,6 @@ export async function disconnectMailbox(): Promise<MailboxStatus> {
   return data;
 }
 
-// ICEGATE login the ERP uses for its own lookups (admin + import managers; the password resets periodically)
-export interface IcegateLogin {
-  icegate_id: string | null;
-  cha_code: string | null;
-  password_set: boolean;
-  password_set_at: string | null;
-  password_set_by: string | null;
-  password_bad: boolean;
-  bad_since: string | null;
-  last_login: string | null;
-  last_status: { at: string; checked?: number; changed?: number; queries_new?: number; queries_replied?: number } | null;
-  last_challans: { at: string; pending?: number; added?: number } | null;
-  last_error: string | null;
-  ready: boolean;
-}
-export async function getIcegateLogin(): Promise<IcegateLogin> {
-  const { data } = await client.get("/icegate-login");
-  return data;
-}
-export async function setIcegatePassword(password: string): Promise<IcegateLogin> {
-  const { data } = await client.put("/icegate-login/password", { password });
-  return data;
-}
-export async function setIcegateLoginIds(icegate_id: string, cha_code: string): Promise<IcegateLogin> {
-  const { data } = await client.put("/icegate-login", { icegate_id, cha_code });
-  return data;
-}
-export async function runIcegateLookup(what: "status" | "challans"): Promise<IcegateLogin> {
-  const { data } = await client.post("/icegate-login/run", { what });
-  return data;
-}
-
 // Change history (the audit log, readable)
 export interface HistoryEntry {
   id: number;

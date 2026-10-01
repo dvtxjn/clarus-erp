@@ -1,10 +1,33 @@
 """The ICEGATE self-updater, fed ICEGATE's real answers (captured 2026-09-30) through a fake portal — never the real one."""
 from datetime import date, datetime, timedelta, timezone
 
+import pytest
+
 from app.core.database import SessionLocal
 from app.icegate_portal import client as pc
 from app.icegate_portal import sync
 from app.models.shipment import Shipment
+
+
+
+# PARKED (2026-10-01): the ERP never logs in to ICEGATE. These tests exercise the parked code in sandbox mode.
+@pytest.fixture(autouse=True)
+def _sandbox(request, monkeypatch):
+    if request.node.name != "test_login_is_off_outside_the_sandbox":
+        monkeypatch.setenv("ICEGATE_PORTAL_SANDBOX", "1")
+
+
+def test_login_is_off_outside_the_sandbox(monkeypatch):
+    monkeypatch.delenv("ICEGATE_PORTAL_SANDBOX", raising=False)
+
+    class NeverLogin:
+        def keep_alive(self):
+            raise AssertionError("must not touch ICEGATE")
+
+    with SessionLocal() as db:
+        with pytest.raises(pc.PortalError, match="switched off"):
+            sync.portal_session(db, NeverLogin())
+
 
 RUNNING = {"beDetailsModel": [{"iec": "AAVFD7221R", "typ": "H", "firstCheck": "N", "sec48": "N", "appraisingGroup": "2H", "totalDuty": "68630"}],
            "currentStatusModel": [{"appraisement": "SYSTEM", "currentQueue": "SUP", "queryRaised": "N.A.", "queryReply": "N.A.",
@@ -125,6 +148,7 @@ def test_outside_hours_does_nothing(monkeypatch):
         db.close()
 
 
+@pytest.mark.skip(reason="ICEGATE login routes are unmounted (parked)")
 def test_password_mechanism(client, admin_headers, monkeypatch):
     monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", __import__("cryptography.fernet", fromlist=["Fernet"]).Fernet.generate_key().decode())
     h = admin_headers
