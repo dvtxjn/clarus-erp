@@ -108,3 +108,18 @@ def _fresh_login_limits():
 
     ratelimit.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _proforma_document_gate(request, monkeypatch):
+    """Most invoice tests build proformas on bare shipments; the 'not attached' gate is
+    tested on its own (mark a test `document_gate` to keep it on)."""
+    if request.node.get_closest_marker("document_gate"):
+        return
+    from app.routers import proforma
+
+    monkeypatch.setattr(proforma, "documents_not_attached", lambda shipment: [])
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "document_gate: keep the proforma 'not attached' gate on")

@@ -59,8 +59,16 @@ export default function ProformaPanel({
   useEffect(refresh, [shipment.id]);
 
   const [freshId, setFreshId] = useState<number | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   async function handleNewVersion(role?: "seller" | "buyer") {
-    const created = await createProforma(shipment.id, role ? { bill_to_role: role } : {});
+    setCreateError(null);
+    let created: Proforma;
+    try {
+      created = await createProforma(shipment.id, role ? { bill_to_role: role } : {});
+    } catch (e) {
+      setCreateError(errorText(e)); // e.g. "Not attached: Assessed BE"
+      return;
+    }
     setActiveId(created.id);
     setFreshId(created.id);
     refresh();
@@ -170,6 +178,7 @@ export default function ProformaPanel({
         </form>
       )}
 
+      {createError && <div role="alert" className="invoice-error">{createError}</div>}
       <HssSwitch shipment={shipment} onShipmentChange={onShipmentChange} onSaved={refresh} />
       {shipment.is_hss && (
         <div className="hss-banner">
@@ -451,6 +460,16 @@ function ProformaVersion({
   const phone = usePhone();
   const [preview, setPreview] = useState(false);
   const [sharing, setSharing] = useState(false);
+  // no proforma is generated until the documents it is worked out from are attached
+  const notAttached = invoice?.not_attached ?? [];
+  const blocked = notAttached.length > 0;
+  const blockedTitle = blocked ? `Not attached: ${notAttached.join(", ")}` : undefined;
+  const blockedNotice = blocked && (
+    <div role="alert" className="invoice-error">
+      <strong>Not attached: {notAttached.join(", ")}.</strong> Attach it on the Documents tab — until then this proforma
+      can't be filled, downloaded or shared.
+    </div>
+  );
 
   // The invoice layout is rebuilt server-side after every change
   useEffect(() => {
@@ -726,14 +745,14 @@ function ProformaVersion({
           <span className={`final-status s-${proforma.status === "sent" ? "issued" : "draft"}`}>{proforma.status}</span>
         </div>
         <div className="m-actions">
-          <button onClick={sharePdf} disabled={sharing}>
+          <button onClick={sharePdf} disabled={sharing || blocked} title={blockedTitle}>
             {sharing ? "Preparing PDF…" : "Share PDF"}
           </button>
           <button className="btn-secondary" onClick={() => setPreview(true)} disabled={!invoice}>
             Preview
           </button>
           {draft && (
-            <button className="btn-secondary" onClick={handleFill} disabled={busy}>
+            <button className="btn-secondary" onClick={handleFill} disabled={busy || blocked} title={blockedTitle}>
               Fill / refresh
             </button>
           )}
@@ -744,6 +763,7 @@ function ProformaVersion({
           )}
         </div>
         {error && <div role="alert" className="invoice-error">{error}</div>}
+        {blockedNotice}
         {invoice && <DutyNotice invoice={invoice} />}
         {removedBlock}
         {fillBlock}
@@ -768,7 +788,7 @@ function ProformaVersion({
               <button type="button" className="btn-secondary" onClick={() => setPreview(false)}>
                 Close
               </button>
-              <button type="button" onClick={sharePdf} disabled={sharing}>
+              <button type="button" onClick={sharePdf} disabled={sharing || blocked} title={blockedTitle}>
                 {sharing ? "Preparing PDF…" : "Share PDF"}
               </button>
             </div>
@@ -789,16 +809,16 @@ function ProformaVersion({
             {draft && (
               <button
                 onClick={handleFill}
-                disabled={busy}
-                title="Add Agency, Examination, Customs Duty (+ challan interest), Stamp Duty, CFS, Royalty (HSS) and shipping line from what the shipment knows; refreshes Customs / Stamp Duty"
+                disabled={busy || blocked}
+                title={blockedTitle ?? "Add Agency, Examination, Customs Duty (+ challan interest), Stamp Duty, CFS, Royalty (HSS) and shipping line from what the shipment knows; refreshes Customs / Stamp Duty"}
               >
                 Fill / refresh from shipment
               </button>
             )}
-            <button className="btn-secondary" onClick={() => handleDownload("xlsx")} disabled={!!downloading}>
+            <button className="btn-secondary" onClick={() => handleDownload("xlsx")} disabled={!!downloading || blocked} title={blockedTitle}>
               {downloading === "xlsx" ? "Preparing…" : "Download Excel"}
             </button>
-            <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading}>
+            <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading || blocked} title={blockedTitle}>
               {downloading === "pdf" ? "Preparing…" : "Download PDF"}
             </button>
             {draft && proforma.line_items.length > 0 && (
@@ -815,6 +835,7 @@ function ProformaVersion({
           </div>
 
           {error && <div role="alert" className="invoice-error">{error}</div>}
+          {blockedNotice}
           {removedBlock}
           {fillBlock}
           {addForm}

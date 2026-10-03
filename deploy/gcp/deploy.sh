@@ -6,7 +6,7 @@ cd "$(dirname "$0")/../.."
 source deploy/gcp/config.sh
 gcloud config set project "$PROJECT" >/dev/null
 TAG="$IMAGE:$(git rev-parse --short HEAD)"
-API_KEY=$(gcloud secrets versions access latest --secret=vite-google-api-key)
+API_KEY=$(gcloud secrets versions access latest --secret=vite-google-api-key | tr -d "[:space:]")  # a stray newline breaks the Picker
 
 TAG="${TAG_OVERRIDE:-$TAG}"
 echo "== 1/3 build $TAG"

@@ -14,7 +14,7 @@ from app.core.locking import locked_proforma, locked_shipment
 from app.core.enums import ChargeCalculationBasis, ChargeCategory, ProformaStatus
 from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
-from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, build_invoice, invoice_filename, weight_kgs
+from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, documents_not_attached, build_invoice, invoice_filename, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.invoice.pdf import render_pdf
 from app.invoice.xlsx import render_xlsx
@@ -228,6 +228,7 @@ def create_proforma(
     shipment = locked_shipment(db, shipment_id)
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
+    _require_documents(shipment)
 
     last = (  # deleted drafts count too: a version number is never reused
         db.query(Proforma).filter(Proforma.shipment_id == shipment_id).order_by(Proforma.version_number.desc())
@@ -315,6 +316,14 @@ def add_line_item(
     return _to_out(proforma)
 
 
+def _require_documents(shipment: Shipment) -> None:
+    """No proforma is generated until the documents it is worked out from are attached."""
+    missing = documents_not_attached(shipment)
+    if missing:
+        raise HTTPException(status_code=409, detail=f"Not attached: {', '.join(missing)}. "
+                                                    "Attach it to the shipment first — the proforma is worked out from it.")
+
+
 def _require_draft(proforma: Proforma) -> None:
     if proforma.status != ProformaStatus.DRAFT:
         raise HTTPException(status_code=400, detail="This version has been sent — start a new version to change it.")
@@ -360,6 +369,7 @@ def fill_from_shipment(proforma_id: int, db: Session = Depends(get_db),
     document-derived ones; lines edited by hand are left alone. See autofill.py."""
     proforma = locked_proforma(db, proforma_id)
     _require_draft(proforma)
+    _require_documents(proforma.shipment)
     added, updated, skipped = sync_proforma(db, proforma, full=True)
     db.commit()
     db.refresh(proforma)
@@ -395,6 +405,7 @@ def download_invoice(proforma_id: int, fmt: str, db: Session = Depends(get_db),
                      current_user: User = Depends(require_billing_access)):
     """Excel (.xlsx) or PDF of the invoice, in the template's layout."""
     proforma = _get_proforma(db, proforma_id)
+    _require_documents(proforma.shipment)
     if fmt == "xlsx":
         data, media = render_xlsx(build_invoice(proforma)), \
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

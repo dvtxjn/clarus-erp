@@ -405,6 +405,7 @@ export interface InvoiceView {
   company: { name: string; address: string; tax_line: string; contact_line: string };
   title: string;
   copy_label: string | null;
+  not_attached: string[]; // documents the proforma is worked out from; downloads are off until attached
   disclaimer: string | null; // HSS seller copy: "<seller> to pay <buyer>"
   bill_to: {
     name: string | null;

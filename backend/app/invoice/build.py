@@ -292,6 +292,18 @@ def _be_field(shipment: Shipment, key: str) -> Optional[str]:
     return None
 
 
+def documents_not_attached(shipment: Shipment) -> list[str]:
+    """Documents the proforma is worked out from that aren't attached yet. Until they are,
+    no proforma is generated — figures typed from memory are easy to miss or get wrong
+    (client, 2026-10-03). The Assessed BE gives the duty, assessable value, importer and
+    stamp duty; an OOC copy carries the same figures, so either one will do."""
+    types = {d.document_type for d in shipment.documents}
+    missing = []
+    if not types & {DocumentType.ASSESSED_BILL_OF_ENTRY, DocumentType.OOC_BILL_OF_ENTRY}:
+        missing.append("Assessed BE")
+    return missing
+
+
 def be_importer_name(shipment: Shipment) -> Optional[str]:
     """Importer as printed on the latest Assessed/OOC BE that was read."""
     return _be_field(shipment, "importer_name")
@@ -394,6 +406,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     return {
         "company": company_details(),
         "title": "PROFORMA INVOICE",
+        "not_attached": documents_not_attached(s),  # downloads stay off until these are attached
         "copy_label": copy_for(proforma, db),
         "disclaimer": disclaimer,
         "bill_to": {
