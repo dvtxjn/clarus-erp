@@ -1,5 +1,5 @@
-"""Launch Phase 7 with a fake Shared Drive: documents and generated PDFs are saved in the
-right folders, folders are created once, nothing outside the roots is touched, a Drive
+"""Launch Phase 7 with a fake Shared Drive: documents are saved only into the shipment's linked folder
+(or one picked at save time) and the ERP never makes folders for them; generated PDFs keep their folders; nothing outside the roots is touched, a Drive
 outage never loses a file, and nothing is ever deleted (client rule)."""
 import os
 import threading
@@ -14,7 +14,8 @@ from app.models.storage import DriveFolder, StoredFile
 from app.storage.drive_client import API, DriveClient, DriveError, FOLDER_MIME, OutsideRoot
 from tests.conftest import be_pdf, cfs_pdf
 
-ROOTS = {"DRIVE_ROOT_FOLDER_ID": "root-docs", "DRIVE_INVOICES_FOLDER_ID": "root-inv", "DRIVE_BACKUPS_FOLDER_ID": "root-bak"}
+ROOTS = {"DRIVE_ROOT_FOLDER_ID": "root-docs", "DRIVE_INVOICES_FOLDER_ID": "root-inv", "DRIVE_BACKUPS_FOLDER_ID": "root-bak",
+         "DRIVE_ERP_ROOT_ID": "root-erp"}
 
 
 class FakeDrive(DriveClient):
@@ -26,9 +27,12 @@ class FakeDrive(DriveClient):
         self.files = {"root-docs": {"name": "Documents", "parents": ["shared"], "mime": FOLDER_MIME},
                       "root-inv": {"name": "Invoices", "parents": ["shared"], "mime": FOLDER_MIME},
                       "root-bak": {"name": "Backups", "parents": ["shared"], "mime": FOLDER_MIME},
-                      "shared": {"name": "Clarus ERP", "parents": [], "mime": FOLDER_MIME},
+                      "shared": {"name": "CLARUS ERP - System", "parents": [], "mime": FOLDER_MIME},
+                      "root-erp": {"name": "CLARUS ERP", "parents": [], "mime": FOLDER_MIME},
                       "elsewhere": {"name": "Someone's folder", "parents": ["my-drive"], "mime": FOLDER_MIME},
-                      "my-drive": {"name": "My Drive", "parents": [], "mime": FOLDER_MIME}}
+                      "my-drive": {"name": "My Drive", "parents": [], "mime": FOLDER_MIME},
+                      "shipFolder01": {"name": "SUNRISE / DRV0000001", "parents": ["my-drive"], "mime": FOLDER_MIME},
+                      "otherFolder1": {"name": "Other", "parents": ["my-drive"], "mime": FOLDER_MIME}}
         self.fail = False
         self.lock = threading.Lock()
         self.n = 0
@@ -65,17 +69,19 @@ class FakeDrive(DriveClient):
         self._inside.add(fid)
         return fid
 
-    def upload(self, parent_id, name, data, mime="application/pdf"):
+    def upload(self, parent_id, name, data, mime="application/pdf", linked=False):
         if self.fail:
             raise DriveError("Drive is down")
-        self.check_inside(parent_id)
+        if not linked:
+            self.check_inside(parent_id)
         with self.lock:
             fid = self._new_id()
             self.files[fid] = {"name": name, "parents": [parent_id], "mime": mime, "data": data}
         return {"id": fid, "webViewLink": f"https://drive.google.com/file/d/{fid}/view"}
 
-    def rename(self, file_id, new_name):
-        self.check_inside(self.files[file_id]["parents"][0])
+    def rename(self, file_id, new_name, linked=False):
+        if not linked:
+            self.check_inside(self.files[file_id]["parents"][0])
         self.files[file_id]["name"] = new_name
 
     def download(self, file_id):
@@ -102,48 +108,49 @@ def fake_drive(monkeypatch, client):
     storage.set_drive_client(None)
 
 
-def _ship(tc, h, mbl, **kw):
-    return tc.post("/shipments", json={"mbl": mbl, **kw}, headers=h).json()["id"]
+def _ship(tc, h, mbl, folder="shipFolder01", **kw):
+    """A shipment linked to its Drive folder (staff's own folder, outside the ERP's roots)."""
+    return tc.post("/shipments", json={"mbl": mbl, "drive_folder_id": folder, **kw}, headers=h).json()["id"]
 
 
-def _upload(client, h, sid, doc_type, pdf):
-    r = client.post(f"/shipments/{sid}/documents", data={"document_type": doc_type},
+def _upload(client, h, sid, doc_type, pdf, **data):
+    r = client.post(f"/shipments/{sid}/documents", data={"document_type": doc_type, **data},
                     files={"file": ("x.pdf", pdf, "application/pdf")}, headers=h)
     assert r.status_code == 201, r.text
     return r.json()
 
 
-def test_upload_lands_in_client_and_mbl_folder(client, admin_headers, fake_drive):
+def _folders(fake):
+    return {i for i, f in fake.files.items() if f["mime"] == FOLDER_MIME}
+
+
+def test_upload_goes_into_the_linked_folder_only(client, admin_headers, fake_drive):
+    before = _folders(fake_drive)
     sid = _ship(client, admin_headers, "DRV0000001", client="Sunrise Tyres")
     doc = _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf(bl_no="DRV0000001"))
     assert doc["drive_file_id"] and not doc["drive_sync_pending"] and doc["drive_link"]
     f = fake_drive.files[doc["drive_file_id"]]
-    assert fake_drive.path_of(doc["drive_file_id"]) == f"Documents/Sunrise Tyres/DRV0000001/{doc['generated_filename']}"
-    assert f["data"][:4] == b"%PDF"
+    assert f["parents"] == ["shipFolder01"] and f["name"] == doc["generated_filename"] and f["data"][:4] == b"%PDF"
+    # another folder picked at save time
+    doc = _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf(), save_to_folder_id="otherFolder1")
+    assert fake_drive.files[doc["drive_file_id"]]["parents"] == ["otherFolder1"] and doc["drive_folder_id"] == "otherFolder1"
+    assert _folders(fake_drive) == before  # no folder made, ever
 
 
-def test_folders_are_created_once(client, admin_headers, fake_drive):
-    sids = [_ship(client, admin_headers, "DRV0000002", client="New Client Ltd") for _ in range(2)]
-    # the same client + MBL twice, uploaded at the same moment
-    results = [None, None]
-    gate = threading.Barrier(2)
-
-    def up(i):
-        from fastapi.testclient import TestClient
-        from app.main import app
-        c = TestClient(app)
-        gate.wait()
-        results[i] = c.post(f"/shipments/{sids[i]}/documents", data={"document_type": "cfs_tax_invoice"},
-                            files={"file": ("x.pdf", cfs_pdf(), "application/pdf")}, headers=admin_headers)
-
-    threads = [threading.Thread(target=up, args=(i,)) for i in range(2)]
-    [t.start() for t in threads]
-    [t.join(30) for t in threads]
-    assert all(r.status_code == 201 for r in results), [r.text for r in results]
-    folders = [i for i, f in fake_drive.files.items() if f["mime"] == FOLDER_MIME and f["name"] == "New Client Ltd"]
-    assert len(folders) == 1
-    mbl_folders = [i for i, f in fake_drive.files.items() if f["name"] == "DRV0000002" and f["mime"] == FOLDER_MIME]
-    assert len(mbl_folders) == 1
+def test_unlinked_shipment_waits_for_its_folder(client, admin_headers, fake_drive):
+    before = _folders(fake_drive)
+    sid = _ship(client, admin_headers, "DRV0000002", folder=None, client="New Client Ltd")
+    doc = _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf())
+    assert doc["drive_sync_pending"] and "No Drive folder linked" in doc["drive_error"] and not doc["drive_file_id"]
+    assert storage.retry_pending() >= 1 and _folders(fake_drive) == before
+    client.patch(f"/shipments/{sid}", json={"drive_folder_id": "shipFolder01"}, headers=admin_headers)
+    storage.retry_pending()
+    with SessionLocal() as db:
+        d = db.get(ShipmentDocument, doc["id"])
+        assert not d.drive_sync_pending and fake_drive.files[d.drive_file_id]["parents"] == ["shipFolder01"]
+    bad = client.post(f"/shipments/{sid}/documents", data={"document_type": "cfs_tax_invoice", "save_to_folder_id": "../x"},
+                      files={"file": ("x.pdf", cfs_pdf(), "application/pdf")}, headers=admin_headers)
+    assert bad.status_code == 422
 
 
 def test_writes_outside_the_roots_are_refused(fake_drive):
@@ -194,21 +201,43 @@ def test_missing_local_file_comes_back_from_drive(client, admin_headers, fake_dr
     assert client.post(f"/shipments/{sid}/documents/{doc['id']}/reread", headers=admin_headers).status_code == 200
 
 
-def test_sent_proforma_and_issued_invoice_pdfs_are_kept(client, admin_headers, fake_drive):
-    h = admin_headers
-    client.post("/organizations", json={"name": "Drive Pdf Traders", "gstin": "27AAAAA0000A1Z5"}, headers=h)
-    sid = _ship(client, h, "DRV0000006", consignee="Drive Pdf Traders", container="1")
+def _issue(client, h, sid):
     client.patch(f"/shipments/{sid}", json={"duty_amount": "1000", "igst_amount": "0"}, headers=h)
     pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
     invs = {i["kind"]: i for i in client.post(f"/proformas/{pid}/final-invoices", headers=h).json()}
     assert client.patch(f"/proformas/{pid}", json={"status": "sent"}, headers=h).status_code == 200
     tax = client.post(f"/final-invoices/{invs['tax']['id']}/issue", headers=h).json()
     with SessionLocal() as db:
-        p = db.query(StoredFile).filter_by(kind="proforma_pdf", ref_id=pid).one()
-        i = db.query(StoredFile).filter_by(kind="final_invoice_pdf", ref_id=tax["id"]).one()
-    assert fake_drive.path_of(p.drive_file_id).startswith("Invoices/Proformas/") and p.name.endswith(".pdf")
-    assert fake_drive.path_of(i.drive_file_id) == f"Invoices/{tax['number'].split('/')[-1]}/{i.name}" and tax["number"].replace("/", "-") in i.name
+        return (db.query(StoredFile).filter_by(kind="proforma_pdf", ref_id=pid).one(),
+                db.query(StoredFile).filter_by(kind="final_invoice_pdf", ref_id=tax["id"]).one(), tax)
+
+
+def test_invoice_pdfs_go_into_the_shipment_folder(client, admin_headers, fake_drive):
+    """Client, 2026-10-05: proforma and final invoice PDFs are saved in the shipment's linked folder."""
+    h = admin_headers
+    client.post("/organizations", json={"name": "Drive Pdf Traders", "gstin": "27AAAAA0000A1Z5"}, headers=h)
+    before = _folders(fake_drive)
+    p, i, tax = _issue(client, h, _ship(client, h, "DRV0000006", consignee="Drive Pdf Traders", container="1"))
+    assert fake_drive.files[p.drive_file_id]["parents"] == ["shipFolder01"] and p.name.endswith(".pdf")
+    assert fake_drive.files[i.drive_file_id]["parents"] == ["shipFolder01"] and tax["number"].replace("/", "-") in i.name
     assert Path(p.local_path).read_bytes()[:4] == b"%PDF" and Path(i.local_path).exists()
+    assert _folders(fake_drive) == before  # no folder made
+
+
+def test_unlinked_invoices_go_to_proforma_invoices_by_client(client, admin_headers, fake_drive):
+    """No linked folder: CLARUS ERP/Proforma Invoices/<client>, one folder per client however many invoices."""
+    h = admin_headers
+    client.post("/organizations", json={"name": "Drive Pdf Traders", "gstin": "27AAAAA0000A1Z5"}, headers=h)
+    files = []
+    for mbl in ("DRV0000016", "DRV0000017"):
+        sid = _ship(client, h, mbl, folder=None, consignee="Drive Pdf Traders", container="1", client="Unlinked Co")
+        files += _issue(client, h, sid)[:2]
+    parents = {fake_drive.files[f.drive_file_id]["parents"][0] for f in files}
+    assert len(parents) == 1
+    folder = fake_drive.files[parents.pop()]
+    assert folder["name"] == "Unlinked Co"
+    assert fake_drive.files[folder["parents"][0]]["name"] == "Proforma Invoices"
+    assert fake_drive.files[folder["parents"][0]]["parents"] == ["root-erp"]
 
 
 def test_local_backend_still_keeps_generated_pdfs(client, admin_headers):
@@ -239,15 +268,3 @@ def test_file_picked_from_the_shipment_folder_is_linked_not_copied(client, admin
     assert doc["extraction"]["fields"]  # still read like an upload
     client.delete(f"/shipments/{sid}/documents/{doc['id']}", headers=admin_headers)  # removing never renames theirs
     assert len(fake_drive.files) == before
-
-
-def test_hmm_upload_uses_the_existing_bhma_folder(client, admin_headers, fake_drive):
-    """MBLs now carry HDMU (client, 2026-10-05); the BL's old BHMA… folder is reused, never a second folder."""
-    first = _ship(client, admin_headers, "DRV0000003", client="Hmm Client")
-    _upload(client, admin_headers, first, "cfs_tax_invoice", cfs_pdf(bl_no="DRV0000003"))
-    client_folder = fake_drive.find_folder("root-docs", "Hmm Client")
-    old = fake_drive.create_folder(client_folder, "BHMA12345600")
-    sid = _ship(client, admin_headers, "BHMA12345600", client="Hmm Client")
-    doc = _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf(bl_no="BHMA12345600"))
-    assert fake_drive.files[doc["drive_file_id"]]["parents"] == [old]
-    assert fake_drive.find_folder(client_folder, "HDMUBHMA12345600") is None

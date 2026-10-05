@@ -24,6 +24,7 @@ class ShipmentDocumentOut(BaseModel):
     drive_picked: bool = False  # linked to a file already in the shipment's Drive folder
     drive_sync_pending: bool = False  # not saved in the Shared Drive yet (retried every 5 min)
     drive_error: Optional[str] = None
+    drive_folder_id: Optional[str] = None  # saved to this folder instead of the shipment's linked one
     # CFS invoices only
     amount_before_tax: Optional[Decimal] = None
     gst_amount: Optional[Decimal] = None

@@ -4,9 +4,10 @@ Where files live (launch Phase 7).
 Every file is written to the local disk first (the working copy the PDF readers use).
 With STORAGE_BACKEND=drive the server also saves it in the client's Shared Drive:
 
-    Documents/<Client>/<MBL or Job>/<generated name>.pdf     uploaded documents
-    Invoices/Proformas/<FY>/<proforma file name>.pdf         a proforma when marked Sent
-    Invoices/<FY>/<customer - number - kind>.pdf             a final invoice when issued
+    <the shipment's linked folder>/<generated name>.pdf      uploaded documents (never a folder the ERP made)
+    <the shipment's linked folder>/<invoice file name>.pdf   a proforma when Sent, a final invoice when issued
+    CLARUS ERP/Proforma Invoices/<client>/...                invoices of a shipment with no linked folder
+                                                             (existing folder reused, never a duplicate)
 
 Drive is then the lasting copy (a server's disk is wiped on redeploy): a missing local
 file is fetched back from Drive when needed. A Drive failure never loses anything: the
@@ -43,7 +44,11 @@ def backend() -> str:
 def roots() -> dict[str, str]:
     return {"Documents": os.getenv("DRIVE_ROOT_FOLDER_ID", ""),
             "Invoices": os.getenv("DRIVE_INVOICES_FOLDER_ID", ""),
-            "Backups": os.getenv("DRIVE_BACKUPS_FOLDER_ID", "")}
+            "Backups": os.getenv("DRIVE_BACKUPS_FOLDER_ID", ""),
+            "ERP": os.getenv("DRIVE_ERP_ROOT_ID", "")}  # the "CLARUS ERP" Shared Drive (client, 2026-10-05)
+
+
+INVOICE_FALLBACK = "ERP/Proforma Invoices"
 
 
 _client: Optional[DriveClient] = None
@@ -92,10 +97,7 @@ def ensure_folder(path: str) -> str:
                     s.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"drive-folder:{walked}"})
                     row = s.query(DriveFolder).filter(DriveFolder.path == walked).first()  # made while we waited?
                 if row is None:
-                    fid = client.find_folder(current, name)
-                    if not fid and name.upper().startswith("HDMUBHMA"):  # HMM folder made before the HDMU prefix
-                        fid = client.find_folder(current, name[4:])
-                    fid = fid or client.create_folder(current, name)
+                    fid = client.find_folder(current, name) or client.create_folder(current, name)
                     row = DriveFolder(path=walked, drive_id=fid)
                     s.add(row)
                     s.commit()
@@ -103,23 +105,23 @@ def ensure_folder(path: str) -> str:
     return current
 
 
-def document_folder(shipment) -> str:
-    client = clean(shipment.client, "No client")
-    ref = clean(shipment.mbl or (f"Job {shipment.job}" if shipment.job else None), f"Shipment {shipment.id}")
-    return f"Documents/{client}/{ref}"
+NO_FOLDER = "No Drive folder linked to this shipment — link it and the file is saved there."
 
-
-# --- uploaded documents ---
 
 def push_document(doc, shipment) -> None:
-    """Save the document's file in Drive (STORAGE_BACKEND=drive). Never raises: a failure
-    marks it pending for the retry job. Caller commits."""
+    """Save the document's file in Drive (STORAGE_BACKEND=drive): only into the folder picked at save
+    time or the shipment's linked folder — the ERP never makes folders (client, 2026-10-05). Unlinked:
+    stays pending until a folder is linked. Never raises: a failure marks it pending. Caller commits."""
     client = drive()
     if client is None or doc.drive_picked:  # already in Drive: it was picked from there
         return
+    folder = doc.drive_folder_id or shipment.drive_folder_id
+    if not folder:
+        doc.drive_sync_pending, doc.drive_error = True, NO_FOLDER
+        return
     try:
-        data = Path(doc.file_path).read_bytes()
-        meta = client.upload(ensure_folder(document_folder(shipment)), doc.generated_filename, data)
+        data = Path(local_path(doc)).read_bytes()
+        meta = client.upload(folder, doc.generated_filename, data, linked=True)
         doc.drive_file_id, doc.drive_link = meta["id"], meta.get("webViewLink")
         doc.drive_sync_pending, doc.drive_error = False, None
     except Exception as e:  # noqa: BLE001 — Drive/network trouble must never lose the upload
@@ -134,7 +136,7 @@ def mark_removed(doc, removed: bool) -> None:
         return  # a staff member's own file is never touched
     name = f"{REMOVED_PREFIX}{doc.generated_filename}" if removed else doc.generated_filename
     try:
-        client.rename(doc.drive_file_id, name)
+        client.rename(doc.drive_file_id, name, linked=True)  # a file the ERP saved itself
     except Exception as e:  # noqa: BLE001 — e.g. a file picked from someone's own Drive (outside the roots)
         log.info("Drive rename skipped for document %s: %s", doc.id, e)
 
@@ -171,12 +173,35 @@ def save_pdf(db: Session, kind: str, ref_id: int, folder_path: str, name: str, d
     return sf
 
 
+def _invoice_shipment(sf: StoredFile):
+    """The shipment a generated invoice PDF belongs to."""
+    from app.models.final_invoice import FinalInvoice
+    from app.models.proforma import Proforma
+
+    model = Proforma if sf.kind.startswith("proforma") else FinalInvoice
+    with SessionLocal() as s:
+        row = s.get(model, sf.ref_id)
+        ship = row.shipment if row is not None else None
+        return (ship.drive_folder_id, ship.client) if ship is not None else (None, None)
+
+
 def _push_stored(sf: StoredFile) -> None:
+    """Invoices go into the shipment's linked folder (client, 2026-10-05); with no linked
+    folder, into CLARUS ERP/Proforma Invoices/<client> (looked up first, made only if absent)."""
     client = drive()
     if client is None:
         return
     try:
-        meta = client.upload(ensure_folder(sf.folder_path), sf.name, Path(sf.local_path).read_bytes())
+        p = Path(sf.local_path)
+        if not p.exists() and sf.drive_file_id:  # disk wiped by a redeploy: fetch the saved copy
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(client.download(sf.drive_file_id))
+        linked, client_name = _invoice_shipment(sf)
+        if linked:
+            meta = client.upload(linked, sf.name, p.read_bytes(), linked=True)
+        else:
+            meta = client.upload(ensure_folder(f"{INVOICE_FALLBACK}/{clean(client_name, 'No client')}"),
+                                 sf.name, p.read_bytes())
         sf.drive_file_id, sf.drive_link = meta["id"], meta.get("webViewLink")
         sf.drive_sync_pending, sf.drive_error = False, None
     except Exception as e:  # noqa: BLE001

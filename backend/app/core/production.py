@@ -33,7 +33,7 @@ def problems() -> list[str]:
     if not sandbox and os.getenv("STORAGE_BACKEND", "local") != "drive":
         out.append("STORAGE_BACKEND must be 'drive' (a server's own disk is wiped on every deploy)")
     for k in () if sandbox else ("GOOGLE_SERVICE_ACCOUNT_JSON", "DRIVE_ROOT_FOLDER_ID", "DRIVE_INVOICES_FOLDER_ID",
-                                 "DRIVE_BACKUPS_FOLDER_ID", "BACKUP_ENCRYPTION_KEY"):
+                                 "DRIVE_BACKUPS_FOLDER_ID", "DRIVE_ERP_ROOT_ID", "BACKUP_ENCRYPTION_KEY"):
         if not os.getenv(k, "").strip():
             out.append(f"{k} is not set")
     if not sandbox and os.getenv("JOBS_ENABLED", "1") == "0" and len(os.getenv("JOB_TOKEN", "")) < 24:

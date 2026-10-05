@@ -76,6 +76,8 @@ class ShipmentDocument(SoftDeleteMixin, Base):
     # digital | partly | scanned | unreadable — can the ERP read text from it (extraction/pdf_kind.py)
     pdf_kind = Column(String, nullable=True)
     drive_error = Column(String, nullable=True)
+    # Drive folder picked at save time; otherwise the file goes to the shipment's linked folder
+    drive_folder_id = Column(String, nullable=True)
 
     # CFS proforma / tax invoice amounts — read from the PDF, correctable by hand.
     # amount_total is always before-tax + GST. The shipment's CFS figures are

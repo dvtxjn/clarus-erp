@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -50,6 +51,7 @@ async def upload_document(
     document_type: DocumentType = Form(...),
     file: UploadFile = File(...),
     drive_access_token: Optional[str] = Form(None),  # to also save into the shipment's Drive folder
+    save_to_folder_id: Optional[str] = Form(None),  # a different Drive folder, picked at save time
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -63,8 +65,11 @@ async def upload_document(
     says what was read, what changed, and any mismatches.
     """
     shipment = _get_shipment(db, shipment_id, current_user)
+    if save_to_folder_id and not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", save_to_folder_id):
+        raise HTTPException(status_code=422, detail="That isn't a Google Drive folder.")
     doc = _store_document(db, shipment, document_type, file.filename or "upload.pdf",
-                          lambda out: shutil.copyfileobj(file.file, out), current_user)
+                          lambda out: shutil.copyfileobj(file.file, out), current_user,
+                          drive_folder_id=save_to_folder_id or None)
     if shipment.drive_folder_id and storage.drive() is None:
         # no server-side Drive: the older per-shipment folder save (user's own Google token)
         await _save_to_drive_folder(db, shipment, doc, drive_access_token)
@@ -271,7 +276,8 @@ def _get_shipment(db: Session, shipment_id: int, user: User) -> Shipment:
 
 def _store_document(db: Session, shipment: Shipment, document_type: DocumentType, original_filename: str,
                     write: Callable[[BinaryIO], object], user: User,
-                    drive_file_id: Optional[str] = None, drive_link: Optional[str] = None) -> ShipmentDocument:
+                    drive_file_id: Optional[str] = None, drive_link: Optional[str] = None,
+                    drive_folder_id: Optional[str] = None) -> ShipmentDocument:
     """Name + save the file, read it, update the shipment, record the document."""
     bl_number = shipment.hbl or shipment.mbl
     base_name = generate_document_filename(document_type, bl_number, shipment.be_no)
@@ -308,6 +314,7 @@ def _store_document(db: Session, shipment: Shipment, document_type: DocumentType
         uploaded_by_id=user.id,
         drive_file_id=drive_file_id,
         drive_link=drive_link,
+        drive_folder_id=drive_folder_id,
         drive_picked=drive_file_id is not None,
         pdf_kind=kind,
     )

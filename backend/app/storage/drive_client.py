@@ -136,9 +136,12 @@ class DriveClient:
         self._inside.add(fid)
         return fid
 
-    def upload(self, parent_id: str, name: str, data: bytes, mime: str = "application/pdf") -> dict:
-        """Save a new file (never overwrites: Drive keeps same-named files side by side)."""
-        self.check_inside(parent_id)
+    def upload(self, parent_id: str, name: str, data: bytes, mime: str = "application/pdf",
+               linked: bool = False) -> dict:
+        """Save a new file (never overwrites: Drive keeps same-named files side by side).
+        linked=True: a shipment folder staff linked (or picked at save time) — it may sit outside the roots."""
+        if not linked:
+            self.check_inside(parent_id)
         boundary = "erp-upload-boundary"
         meta = json.dumps({"name": name, "parents": [parent_id]})
         body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n"
@@ -151,10 +154,12 @@ class DriveClient:
             raise DriveError(f"Drive upload: {r.status_code} {r.text[:200]}")
         return r.json()
 
-    def rename(self, file_id: str, new_name: str) -> None:
-        """Only the name changes (e.g. "[removed] …"); the file stays where it is."""
+    def rename(self, file_id: str, new_name: str, linked: bool = False) -> None:
+        """Only the name changes (e.g. "[removed] …"); the file stays where it is.
+        linked=True: a file the ERP itself saved into a shipment's linked folder."""
         parents = self.get(file_id, "parents").get("parents") or []
         if not parents:
             raise OutsideRoot("Refused: file has no parent folder")
-        self.check_inside(parents[0])
+        if not linked:
+            self.check_inside(parents[0])
         self._req("PATCH", f"{API}/files/{file_id}", params={"fields": "id"}, json={"name": new_name})
