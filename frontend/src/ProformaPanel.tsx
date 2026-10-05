@@ -884,15 +884,15 @@ function DutyNotice({ invoice }: { invoice: InvoiceView }) {
   if (!cd.challan_uploaded_at)
     return (
       <div className="duty-notice duty-action" role="alert">
-        <strong>Upload the duty challan for this BE.</strong> There's no challan or OOC copy yet, so the interest is
+        <strong>Proforma not complete — upload today's duty challan for this BE.</strong> There's no challan or OOC copy yet, so the interest is
         unknown and Customs Duty is only the BE amount. <Link to="/dashboard">Upload it on the Dashboard</Link>, then click{" "}
         <b>Fill / refresh</b>.
       </div>
     );
   if (!cd.challan_today)
     return (
-      <div className="duty-notice duty-warn">
-        Challan list from {new Date(cd.challan_uploaded_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} ({interest}) — upload today's list on the Dashboard, then{" "}
+      <div className="duty-notice duty-action" role="alert">
+        <strong>Proforma not complete — today's challan isn't uploaded.</strong> Using the list from {new Date(cd.challan_uploaded_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} ({interest}) — upload today's list on the Dashboard, then{" "}
         <b>Fill / refresh</b> for current interest.
       </div>
     );
