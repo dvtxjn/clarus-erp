@@ -149,7 +149,7 @@ table, .num, .stat-value, .pipeline-count { font-variant-numeric: tabular-nums; 
 
 button {
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   padding: 6px 12px;
   border-radius: var(--radius);
@@ -2002,3 +2002,16 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .folder-status-warn { background: color-mix(in srgb, var(--color-warning, #b26a00) 18%, transparent); }
 .folder-status-muted { opacity: 0.7; }
 .folder-status-bad { background: color-mix(in srgb, var(--color-danger, #c62828) 15%, transparent); }
+
+/* Destructive actions read as red at a glance (client, 2026-10-05): delete / cancel buttons are filled red,
+   button labels a size up so options are easy to read. */
+button.btn-secondary.link-danger, button.btn-danger {
+  background: var(--color-danger); border-color: var(--color-danger); color: var(--on-accent); font-weight: 600;
+}
+button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 85%, var(--mix-toward, black)); border-color: var(--color-danger);
+}
+:root[data-theme="dark"] button.btn-secondary.link-danger, :root[data-theme="dark"] button.btn-danger,
+:root[data-theme="dim"] button.btn-secondary.link-danger, :root[data-theme="dim"] button.btn-danger { color: #1a0d0b; }
+.pf-left .proforma-toolbar-actions > button, .pf-left .invoice-actions > button { font-size: 14px; min-height: 34px; }
+.folder-reader-table select, .folder-reader-filters { font-size: 14px; }
