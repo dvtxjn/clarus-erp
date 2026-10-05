@@ -88,14 +88,14 @@ def test_sorting_overdue_first():
 
 def test_fpod_free_days_per_container():
     s = ship(port="INDWN6")
-    # Panipat: 21 days. Arrived 12 Sep -> free until 02 Oct (2 days left); 20 Sep -> 10 Oct (fine)
-    boxes = [("A", date(2026, 9, 12), None), ("B", date(2026, 9, 20), None), ("C", None, None)]
+    # standard 14 days. Arrived 19 Sep -> free until 02 Oct (2 days left); 27 Sep -> 10 Oct (fine)
+    boxes = [("A", date(2026, 9, 19), None), ("B", date(2026, 9, 27), None), ("C", None, None)]
     a = alerts.fpod_alert(s, boxes, TODAY)
     assert a["kind"] == "free_days" and a["days_left"] == 2 and a["text"].startswith("1 of 2 containers")
     # a typed shorter free time makes it overdue
-    late = alerts.fpod_alert(s, [("A", date(2026, 9, 12), 10)], TODAY)
+    late = alerts.fpod_alert(s, [("A", date(2026, 9, 19), 10)], TODAY)
     assert late["severity"] == "overdue" and "past free days" in late["text"]
-    assert alerts.fpod_alert(s, [("B", date(2026, 9, 20), None)], TODAY) is None
+    assert alerts.fpod_alert(s, [("B", date(2026, 9, 27), None)], TODAY) is None
     assert alerts.fpod_alert(ship(port="INMUN1"), boxes, TODAY) is None   # sea ports: POD rule instead
 
 

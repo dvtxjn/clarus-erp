@@ -29,7 +29,7 @@ IGM_BEFORE_ETA = 2       # the IGM should be on ICEGATE by then; if not, the BL 
 SEA_PORTS = {"INMUN1", "INNSA1"}
 
 # free days at an inland ICD from each container's arrival (ground rent); anything not listed: FREE_DAYS
-ICD_FREE_DAYS = {"INDWN6": 21}  # Panipat: 21 days (client, 2026-09-30)
+ICD_FREE_DAYS: dict[str, int] = {}  # every ICD: standard 14 (client, 2026-10-05: no 21-day exception)
 
 
 def icd_free_days(port: Optional[str]) -> int:
@@ -127,7 +127,7 @@ def free_days_alert(s, today: date) -> Optional[dict]:
 
 
 def fpod_alert(s, containers: Iterable[tuple], today: date) -> Optional[dict]:
-    """Inland: free days run per container from its arrival at the ICD (Panipat 21, typed per container
+    """Inland: free days run per container from its arrival at the ICD (standard 14, typed per container
     otherwise). containers = (container_no, arrival_date, free_days or None). One line for the shipment;
     the per-container detail is on the Overview."""
     if (s.port or "").upper() in SEA_PORTS:

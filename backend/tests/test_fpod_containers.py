@@ -51,13 +51,13 @@ def test_refresh_keeps_hand_typed_dates(client, admin_headers, inland, monkeypat
     r = client.post(f"{base}/refresh-icd", headers=admin_headers)
     assert r.status_code == 200 and r.json()["added"] == 3
     rows = {c["container_no"]: c for c in r.json()["containers"]}
-    # Panipat: 21 free days at the ICD — arrival 21 Sep is day 1, last free day 11 Oct
-    assert rows["MRKU5032093"]["free_days"] == 21 and rows["MRKU5032093"]["last_free_day"] == "2026-10-11"
+    # standard 14 free days at the ICD — arrival 21 Sep is day 1, last free day 04 Oct
+    assert rows["MRKU5032093"]["free_days"] == 14 and rows["MRKU5032093"]["last_free_day"] == "2026-10-04"
 
     # someone types a different arrival for one container
     cid = rows["MRSU4711430"]["id"]
     r = client.patch(f"{base}/{cid}", json={"arrival_date": "2026-09-23"}, headers=admin_headers)
-    assert r.json()["is_manual"] and r.json()["last_free_day"] == "2026-10-13"
+    assert r.json()["is_manual"] and r.json()["last_free_day"] == "2026-10-06"
 
     # fetching again leaves the typed date alone and adds nothing twice
     r = client.post(f"{base}/refresh-icd", headers=admin_headers).json()
@@ -88,14 +88,14 @@ def test_add_and_remove_by_hand(client, admin_headers, inland):
 def test_days_free_and_free_until_per_container(client, admin_headers, inland):
     base = f"/shipments/{inland}/containers"
     c = client.post(base, json={"container_no": "FREE1234567", "arrival_date": "2026-09-21"}, headers=admin_headers).json()
-    assert c["free_days"] == 21 and not c["free_days_typed"] and c["last_free_day"] == "2026-10-11"
+    assert c["free_days"] == 14 and not c["free_days_typed"] and c["last_free_day"] == "2026-10-04"
     r = client.patch(f"{base}/{c['id']}", json={"free_days": 30}, headers=admin_headers).json()
     assert r["free_days_typed"] and r["last_free_day"] == "2026-10-20"
     # typing the date instead stores it as days from the arrival
     r = client.patch(f"{base}/{c['id']}", json={"free_until": "2026-10-06"}, headers=admin_headers).json()
     assert r["free_days"] == 16 and r["last_free_day"] == "2026-10-06"
     r = client.patch(f"{base}/{c['id']}", json={"clear_free_days": True}, headers=admin_headers).json()
-    assert r["free_days"] == 21 and not r["free_days_typed"]
+    assert r["free_days"] == 14 and not r["free_days_typed"]
     # no arrival yet: days free can still be set, a date can't
     n = client.post(base, json={"container_no": "NOAR1234567"}, headers=admin_headers).json()
     assert client.patch(f"{base}/{n['id']}", json={"free_days": 21}, headers=admin_headers).json()["free_days"] == 21

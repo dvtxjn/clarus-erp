@@ -2024,3 +2024,8 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .doc-table td { overflow: hidden; }
 .doc-table .doc-file-line { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; white-space: nowrap; }
 .doc-table .doc-file-line .link-btn { font-size: 13px; padding: 0 2px; }
+
+/* containers: one free-days value for all */
+.fpod-all { align-items: center; }
+.fpod-all label { font-size: 13px; font-weight: 600; }
+.fpod-all input { width: 150px; flex: 0 0 auto; }

@@ -43,6 +43,7 @@ export default function FpodContainers({
   const [adding, setAdding] = useState(false);
   const [newNo, setNewNo] = useState("");
   const [newDate, setNewDate] = useState("");
+  const [allDays, setAllDays] = useState("");
   const confirm = useConfirm();
 
   useEffect(() => {
@@ -75,6 +76,27 @@ export default function FpodContainers({
     } catch (e) {
       setMsg({ ok: false, text: errText(e) });
       setRows((prev) => (prev ? [...prev] : prev)); // redraw the inputs with the saved values
+    }
+  }
+
+  // one value for every container at once (blank = back to the standard); each row stays editable after
+  async function applyAll(e: FormEvent) {
+    e.preventDefault();
+    if (!rows?.length) return;
+    const v = allDays.trim();
+    const patch: Patch = v === "" ? { clear_free_days: true } : { free_days: Number(v) };
+    setBusy(true);
+    setMsg(null);
+    try {
+      const saved = await Promise.all(rows.map((c) => editContainer(shipmentId, c.id, patch)));
+      setRows(saved);
+      setAllDays("");
+      setMsg({ ok: true, text: v === "" ? `All ${saved.length} containers back to the standard free days` : `Set ${v} days free on all ${saved.length} containers` });
+    } catch (err) {
+      setMsg({ ok: false, text: errText(err) });
+      listContainers(shipmentId).then(setRows).catch(() => {});
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -122,7 +144,7 @@ export default function FpodContainers({
 
   const tone = (c: ShipmentContainer) => (c.days_left == null ? "" : c.days_left < 0 ? " fpod-over" : c.days_left <= 3 ? " fpod-soon" : "");
   const arrived = (rows ?? []).filter((c) => c.arrival_date).length;
-  const standard = rows?.find((c) => !c.free_days_typed)?.free_days ?? STANDARD_FREE_DAYS; // Panipat 21
+  const standard = rows?.find((c) => !c.free_days_typed)?.free_days ?? STANDARD_FREE_DAYS;
 
   return (
     <section className="detail-section detail-wide fpod" id="shipment-containers">
@@ -166,6 +188,25 @@ export default function FpodContainers({
           />
           <input aria-label="Arrival at FPOD" type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
           <button type="submit">Add</button>
+        </form>
+      )}
+      {!!rows?.length && (
+        <form className="fpod-add fpod-all" onSubmit={applyAll}>
+          <label htmlFor="fpod-all-days">Days free for all containers</label>
+          <input
+            id="fpod-all-days"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={365}
+            placeholder={`blank = standard ${standard}`}
+            value={allDays}
+            onChange={(e) => setAllDays(e.target.value)}
+          />
+          <button type="submit" disabled={busy}>
+            {allDays.trim() ? "Apply to all" : `Reset all to ${standard}`}
+          </button>
+          <span className="field-note">or change one container in its row below</span>
         </form>
       )}
       {rows === null ? (

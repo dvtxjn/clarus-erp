@@ -86,7 +86,7 @@ def _shipment(db: Session, shipment_id: int, user: User) -> Shipment:
 def _out(c: ShipmentContainer, s: Shipment, today: Optional[date] = None) -> ContainerOut:
     o = ContainerOut.model_validate(c)
     today = today or date.today()
-    # typed for this container, else the port's standard (Panipat 21, others 14)
+    # typed for this container, else the port's standard (14)
     o.free_days = c.free_days if c.free_days is not None else alerts.icd_free_days(s.port)
     o.free_days_typed = c.free_days is not None
     if o.arrival_date is None and (s.port or "").upper() in alerts.SEA_PORTS:
