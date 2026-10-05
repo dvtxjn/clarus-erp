@@ -2015,3 +2015,12 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 :root[data-theme="dim"] button.btn-secondary.link-danger, :root[data-theme="dim"] button.btn-danger { color: #1a0d0b; }
 .pf-left .proforma-toolbar-actions > button, .pf-left .invoice-actions > button { font-size: 14px; min-height: 34px; }
 .folder-reader-table select, .folder-reader-filters { font-size: 14px; }
+
+/* Documents table: File cell on one line — chip, kind, View, Drive side by side, never over the Uploaded column (client, 2026-10-05) */
+.doc-table .doc-col-name { width: 24%; }
+.doc-table .doc-col-status { width: 16%; }
+.doc-table .doc-col-file { width: 42%; }
+.doc-table .doc-col-when { width: 18%; }
+.doc-table td { overflow: hidden; }
+.doc-table .doc-file-line { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; white-space: nowrap; }
+.doc-table .doc-file-line .link-btn { font-size: 13px; padding: 0 2px; }
