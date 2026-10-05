@@ -19,7 +19,7 @@ from app.core.deps import require_admin
 from app.models.user import User
 from app.core.migrate import run_migrations
 from app import models  # noqa: F401 — populates Base.metadata
-from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router, settings as settings_router, receivables as receivables_router, containers as containers_router, igm as igm_router, icegate_mail as icegate_mail_router, history as history_router
+from app.routers import auth, shipments, documents, hs_codes, proforma, extraction, ports, tracker_columns, challans, final_invoices, tracker_import, deleted, realtime as realtime_router, settings as settings_router, receivables as receivables_router, containers as containers_router, igm as igm_router, icegate_mail as icegate_mail_router, history as history_router, drive_folder
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), stream=sys.stdout,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -40,6 +40,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(shipments.router)
 app.include_router(documents.router)
+app.include_router(drive_folder.router)
 app.include_router(hs_codes.router)
 app.include_router(proforma.router)
 app.include_router(extraction.router)

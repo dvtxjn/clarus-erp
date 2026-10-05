@@ -506,6 +506,42 @@ export async function addDocumentFromDrive(
   return data;
 }
 
+export type FolderFileStatus =
+  | "added" | "attached" | "not_attached" | "ignored" | "unrecognised" | "duplicate" | "removed" | "error";
+export interface FolderFile {
+  file_id: string;
+  name: string;
+  link: string;
+  guess: string | null; // the reader's guess from the file name
+  mark: string | null; // a document type, "ignore", or null = the reader decides
+  status: FolderFileStatus;
+  document_id: number | null;
+  document_type: string | null;
+  error?: string;
+}
+
+/** PDFs in the shipment's Drive folder and where each stands (names only — quick). */
+export async function getFolderFiles(shipmentId: number) {
+  const { data } = await client.get<FolderFile[]>(`/shipments/${shipmentId}/drive-folder/files`);
+  return data;
+}
+
+/** Read the folder: attach what's not attached yet and fill in the shipment's details. */
+export async function syncFolder(shipmentId: number) {
+  const { data } = await client.post<{ files: FolderFile[]; updated: string[]; notes: string[] }>(
+    `/shipments/${shipmentId}/drive-folder/sync`,
+  );
+  return data;
+}
+
+/** Mark a folder file as a document type, "ignore", or null (back to the reader's guess). */
+export async function markFolderFile(shipmentId: number, fileId: string, documentType: string | null, fileName: string) {
+  await client.put(`/shipments/${shipmentId}/drive-folder/marks/${encodeURIComponent(fileId)}`, {
+    document_type: documentType,
+    file_name: fileName,
+  });
+}
+
 export async function rereadDocument(shipmentId: number, documentId: number) {
   const { data } = await client.post(`/shipments/${shipmentId}/documents/${documentId}/reread`);
   return data;

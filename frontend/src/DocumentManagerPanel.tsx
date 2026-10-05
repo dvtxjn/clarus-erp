@@ -22,6 +22,7 @@ import {
 import { guessDocType } from "./docTypeGuess";
 import { MATCH_LABELS, type FolderResult } from "./folderMatch";
 import { useUploadQueue } from "./uploadQueue";
+import { FolderReader } from "./FolderReader";
 import {
   DOCUMENT_TYPE_LABELS,
   LEGACY_DOCUMENT_TYPES,
@@ -212,6 +213,13 @@ export default function DocumentManagerPanel({
       )}
 
       <DriveFolderBar shipment={shipment} onChanged={onShipmentChanged} onPickFiles={handlePickFromFolder} />
+      <FolderReader
+        shipment={shipment}
+        onChanged={() => {
+          refresh();
+          onShipmentChanged();
+        }}
+      />
       {picked && (
         <AssignDriveFiles
           shipment={shipment}
