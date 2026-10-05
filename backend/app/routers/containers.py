@@ -42,6 +42,9 @@ class ContainerOut(BaseModel):
     # free days (typed when it differs from the standard 14; free_days_typed), last_free_day = arrival + free_days - 1
     free_days: Optional[int] = None
     free_days_typed: bool = False
+    # the DO's validity / empty-return date (client, 2026-10-05): the actual last free date while it's set;
+    # typing days free / free until by hand clears it, a newer DO sets it again
+    do_valid_until: Optional[date] = None
     day: Optional[int] = None
     last_free_day: Optional[date] = None
     days_left: Optional[int] = None
@@ -62,6 +65,7 @@ class ContainerPatch(BaseModel):
     free_until: Optional[date] = None  # typed as a date: stored as days from the arrival
     clear_arrival: bool = False        # set arrival_date back to empty
     clear_free_days: bool = False      # back to the standard free days
+    clear_do: bool = False             # drop the DO's date (free days count from the arrival again)
 
 
 class RefreshOut(BaseModel):
@@ -95,6 +99,9 @@ def _out(c: ShipmentContainer, s: Shipment, today: Optional[date] = None) -> Con
     if o.arrival_date:
         o.day = (today - o.arrival_date).days + 1 if today >= o.arrival_date else None
         o.last_free_day = o.arrival_date + timedelta(days=o.free_days - 1)
+    if c.do_valid_until:
+        o.last_free_day = c.do_valid_until
+    if o.last_free_day:
         o.days_left = (o.last_free_day - today).days
     return o
 
@@ -145,6 +152,8 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
         changes["arrival_date"] = None
     if changes.pop("clear_free_days", False):
         changes["free_days"] = None
+    if changes.pop("clear_do", False) or "free_days" in changes or "free_until" in changes:
+        changes["do_valid_until"] = None  # typed by hand: that wins over the DO's date
     free_until = changes.pop("free_until", None)
     if free_until is not None:
         arrival = changes.get("arrival_date", c.arrival_date) or _out(c, s).arrival_date

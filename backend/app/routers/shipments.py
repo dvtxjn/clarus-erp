@@ -226,7 +226,7 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
     boxes: dict[int, list] = {s.id: [] for s in live}
     if live:
         for c in db.query(ShipmentContainer).filter(ShipmentContainer.shipment_id.in_(list(boxes))):
-            boxes[c.shipment_id].append((c.container_no, c.arrival_date, c.free_days))
+            boxes[c.shipment_id].append((c.container_no, c.arrival_date, c.free_days, c.do_valid_until))
     today = date.today()
     found = []
     for s in live:

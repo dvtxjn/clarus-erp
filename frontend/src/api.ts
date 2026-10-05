@@ -913,11 +913,12 @@ export interface ShipmentContainer {
   arrival_date: string | null;
   arrival_status: string | null;
   tracking_status: string | null; // typed, e.g. "On rail"
-  source: "icegate" | "manual";
+  source: "icegate" | "manual" | "do";
   is_manual: boolean;
   arrival_from_inw: boolean; // sea port, nothing typed: the shipment's INW stands in as the arrival
   free_days: number; // this container's free days (typed, or the standard 14)
   free_days_typed: boolean;
+  do_valid_until: string | null; // read from the DO: the actual last free date (typing by hand clears it)
   day: number | null;
   last_free_day: string | null;
   days_left: number | null;
@@ -942,6 +943,7 @@ export async function editContainer(
     free_days?: number;
     free_until?: string;
     clear_free_days?: boolean;
+    clear_do?: boolean;
   },
 ): Promise<ShipmentContainer> {
   const { data } = await client.patch(`/shipments/${shipmentId}/containers/${id}`, body);

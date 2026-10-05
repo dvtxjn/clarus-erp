@@ -2029,3 +2029,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .fpod-all { align-items: center; }
 .fpod-all label { font-size: 13px; font-weight: 600; }
 .fpod-all input { width: 150px; flex: 0 0 auto; }
+.fpod-until { white-space: nowrap; }
+.fpod-cell.is-do { border-color: var(--color-accent); }
+.fpod-do-tag { margin-left: 4px; padding: 1px 6px; min-height: 0; font-size: 11px; font-weight: 700; border-radius: 4px;
+  background: var(--color-accent); border: 1px solid var(--color-accent); color: var(--on-accent); }

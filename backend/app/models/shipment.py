@@ -2,7 +2,7 @@ from sqlalchemy import (
     Column, Integer, String, Boolean, Date, DateTime, Text, ForeignKey, JSON, Numeric,
     Enum as SAEnum
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 from sqlalchemy.sql.expression import false as sa_false
 from datetime import date, datetime
@@ -182,6 +182,12 @@ class Shipment(SoftDeleteMixin, Base):
 
     documents = relationship("ShipmentDocument", back_populates="shipment", cascade="all, delete-orphan")
     proformas = relationship("Proforma", back_populates="shipment", cascade="all, delete-orphan")
+
+    @validates("mbl")
+    def _standard_mbl(self, _key, value):
+        """HMM MBLs are stored with their HDMU prefix whichever way they were typed (app/liners.py)."""
+        from app.liners import standard_mbl
+        return standard_mbl(value)
 
     @property
     def line_from_bl(self) -> Optional[dict]:

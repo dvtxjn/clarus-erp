@@ -20,6 +20,7 @@ class ShipmentContainer(SoftDeleteMixin, Base):
     arrival_status = Column(String, nullable=True)    # ICEGATE's code, e.g. "I"
     tracking_status = Column(String, nullable=True)   # typed, e.g. "On rail" / "Held at Mundra" (not arrived yet)
     free_days = Column(Integer, nullable=True)        # typed when this container gets other than the standard 14
+    do_valid_until = Column(Date, nullable=True)      # read from the DO: its last free date (a newer DO replaces it)
     source = Column(String, nullable=False, default="manual")  # icegate | manual
     is_manual = Column(Boolean, nullable=False, default=False)  # arrival edited by hand: refresh leaves it
     created_at = Column(DateTime(timezone=True), server_default=func.now())

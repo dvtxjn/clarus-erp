@@ -17,6 +17,7 @@ const fmt = (v: string | null) =>
 const errText = (e: unknown) =>
   axios.isAxiosError(e) && typeof e.response?.data?.detail === "string" ? e.response.data.detail : "Something went wrong — try again.";
 type Patch = Parameters<typeof editContainer>[2];
+const srcLabel = (c: ShipmentContainer) => (c.is_manual ? "Typed" : c.source === "icegate" ? "ICEGATE" : c.source === "do" ? "DO" : "Typed");
 
 /**
  * Every shipment's containers (client, 2026-09-30): the list comes from the sea IGM; inland shipments add
@@ -153,8 +154,8 @@ export default function FpodContainers({
         <span className="field-note">
           {rows ? `${rows.length} container${rows.length === 1 ? "" : "s"} · ${inland ? `${arrived} arrived · ` : ""}` : ""}
           {inland
-            ? `free days count from each container’s arrival (standard ${standard})`
-            : `free days count from the inward date (standard ${standard})`}
+            ? `free days count from each container’s arrival (standard ${standard}); a DO’s validity replaces it`
+            : `free days count from the inward date (standard ${standard}); a DO’s validity replaces it`}
         </span>
         <span className="fpod-actions">
           <button type="button" className="btn-secondary" onClick={copyImage} disabled={!rows?.length}>
@@ -231,7 +232,7 @@ export default function FpodContainers({
           </thead>
           <tbody>
             {rows.map((c) => (
-              <tr key={`${c.id}-${c.arrival_date}-${c.free_days}-${c.tracking_status}`}>
+              <tr key={`${c.id}-${c.arrival_date}-${c.free_days}-${c.tracking_status}-${c.do_valid_until}`}>
                 <td className="fpod-no">{c.container_no}</td>
                 <td>{c.status ?? "—"}</td>
                 <td>
@@ -273,22 +274,32 @@ export default function FpodContainers({
                     }}
                   />
                 </td>
-                <td>
+                <td className="fpod-until">
                   <input
                     type="date"
-                    className="fpod-cell"
+                    className={`fpod-cell${c.do_valid_until ? " is-do" : ""}`}
                     aria-label={`Free until for ${c.container_no}`}
                     disabled={!c.arrival_date}
                     title={c.arrival_date ? "" : "Enter the arrival first (or type the days free)"}
                     defaultValue={c.last_free_day ?? ""}
                     onBlur={(e) => e.target.value && e.target.value !== (c.last_free_day ?? "") && save(c, { free_until: e.target.value }, "free until")}
                   />
+                  {c.do_valid_until && (
+                    <button
+                      type="button"
+                      className="fpod-do-tag"
+                      title="From the DO (validity / empty return) — a revalidated DO updates it. Click to count from the arrival instead."
+                      onClick={() => save(c, { clear_do: true }, "free days from the arrival")}
+                    >
+                      DO
+                    </button>
+                  )}
                 </td>
                 <td className={`num${tone(c)}`}>
                   {c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} · ${-c.days_left} over` : `Day ${c.day}`}
                 </td>
                 <td>
-                  <span className={`fpod-src${c.is_manual ? " is-manual" : ""}`}>{c.is_manual || c.source !== "icegate" ? "Typed" : "ICEGATE"}</span>
+                  <span className={`fpod-src${c.is_manual ? " is-manual" : ""}`}>{srcLabel(c)}</span>
                 </td>
                 <td>
                   <button type="button" className="link-button link-danger" aria-label={`Remove ${c.container_no}`} onClick={() => remove(c)}>
@@ -319,7 +330,7 @@ function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], i
     { label: "Days free", get: (c: ShipmentContainer) => String(c.free_days) },
     { label: "Free until", get: (c: ShipmentContainer) => fmt(c.last_free_day) },
     { label: "Day", get: (c: ShipmentContainer) => (c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} · ${-c.days_left} over` : `Day ${c.day}`) },
-    { label: "Source", get: (c: ShipmentContainer) => (c.is_manual || c.source !== "icegate" ? "Typed" : "ICEGATE") },
+    { label: "Source", get: srcLabel },
   ];
   const pad = 24;
   const rowH = 30;

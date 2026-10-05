@@ -18,6 +18,7 @@ import pdfplumber
 from app.core.enums import DocumentType
 from app.extraction.be_pdf import normalize_date, read_pdf, scan_be_text
 from app.extraction.cfs_pdf import scan_cfs_text
+from app.extraction.do_pdf import scan_do_text
 from app.extraction.invoice_number import invoice_identity
 from app.extraction.receipt_pdf import scan_receipt_text
 from app.extraction.shipping_line_pdf import scan_shipping_line_text
@@ -32,6 +33,7 @@ LINE_TYPES = {DocumentType.SHIPPING_LINE_PROFORMA, DocumentType.SHIPPING_LINE_IN
 RECEIPT_TYPES = {DocumentType.CFS_RECEIPT, DocumentType.SHIPPING_LINE_RECEIPT}
 # CFS invoices: cfs_pdf.py; shipping line invoices: shipping_line_pdf.py (per-line layouts)
 INVOICE_TYPES = CFS_TYPES | LINE_TYPES
+DO_TYPES = {DocumentType.DO_LETTER, DocumentType.DO_EMPTY_LETTER}
 
 _DATE_WORD = re.compile(r"^\d{2}-(?:\d{2}|[A-Za-z]{3})-\d{2,4}$")  # 10-SEP-26 / 10-09-2026
 
@@ -96,7 +98,7 @@ def extract_ooc_details(first_page_words: list, first_page_text: str) -> dict[st
 
 
 def extract_document_fields(document_type: DocumentType, path: str) -> dict[str, Any]:
-    if document_type not in BE_TYPES | INVOICE_TYPES | RECEIPT_TYPES:
+    if document_type not in BE_TYPES | INVOICE_TYPES | RECEIPT_TYPES | DO_TYPES:
         return {}
     try:
         with pdfplumber.open(path) as pdf:
@@ -105,6 +107,8 @@ def extract_document_fields(document_type: DocumentType, path: str) -> dict[str,
         return {"error": f"Couldn't read PDF: {e}"}
 
     text = "\n".join(pages)
+    if document_type in DO_TYPES:
+        return scan_do_text(text)
     if document_type in RECEIPT_TYPES:
         return scan_receipt_text(text)
     if document_type in INVOICE_TYPES:

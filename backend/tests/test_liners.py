@@ -30,3 +30,14 @@ def test_unknown_and_near_misses():
 def test_container_format():
     assert container_ok("MRKU5032093") and container_ok("mrku 5032093")
     assert not container_ok("MRK5032093") and not container_ok("MRKU503209") and not container_ok("MRKU50320931")
+
+
+def test_hmm_mbl_is_stored_with_hdmu(client, admin_headers):
+    from app.liners import standard_mbl
+    assert standard_mbl("bhma 05154200") == "HDMUBHMA05154200" and standard_mbl("HDMUBHMA05154200") == "HDMUBHMA05154200"
+    assert standard_mbl("274014260") == "274014260"
+    s = client.post("/shipments", json={"mbl": "BHMA77154200", "port": "INMUN1"}, headers=admin_headers).json()
+    assert s["mbl"] == "HDMUBHMA77154200"
+    r = client.patch(f"/shipments/{s['id']}", json={"mbl": "BHMA77154201"}, headers=admin_headers)
+    assert r.json()["mbl"] == "HDMUBHMA77154201"
+    assert any(x["id"] == s["id"] for x in client.get("/shipments?search=BHMA77154201", headers=admin_headers).json())

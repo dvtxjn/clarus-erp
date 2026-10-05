@@ -34,9 +34,18 @@ RULES: list[tuple[str, str, Optional[str]]] = [
 ]
 
 
+def standard_mbl(bl: Optional[str]) -> Optional[str]:
+    """The MBL as stored: HMM MBLs always carry the HDMU prefix (BHMA05154200 -> HDMUBHMA05154200 — client,
+    2026-10-05), so the ERP, ICEGATE and the tracker all use one spelling. Anything else is kept as typed."""
+    if bl is None:
+        return None
+    b = re.sub(r"\s+", "", bl).upper()
+    return "HDMU" + b if b.startswith("BHMA") else bl
+
+
 def identify(bl: Optional[str]) -> Optional[dict]:
     """{"line", "note", "icegate_mbl"} or None when the format isn't one we know. icegate_mbl = the number to
-    search ICEGATE with (HMM without HDMU: the prefix is added for the lookup; the stored MBL stays as typed)."""
+    search ICEGATE with (HMM without HDMU gets the prefix; stored MBLs already carry it — standard_mbl)."""
     b = re.sub(r"\s+", "", (bl or "")).upper()
     if not b:
         return None

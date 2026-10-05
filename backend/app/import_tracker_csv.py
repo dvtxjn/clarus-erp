@@ -132,6 +132,7 @@ def import_csv(path: str, dry_run: bool = False) -> dict:
     try:
         hs = db.query(HSCode).filter(HSCode.code == TYRE_HS_CODE).first()
         with open(path, newline="", encoding="utf-8-sig") as f:
+            from app.tracker_import import mbl_keys as _mbl_keys  # BHMA… = HDMUBHMA…
             reader = csv.reader(f)
             headers = _normalize_headers(next(reader))
             for n, raw in enumerate(reader, start=2):
@@ -140,7 +141,7 @@ def import_csv(path: str, dry_run: bool = False) -> dict:
                 if not fields["mbl"]:
                     stats["skipped"].append(f"row {n}: no MBL")
                     continue
-                existing = db.query(Shipment).filter(Shipment.mbl == fields["mbl"]).first()
+                existing = db.query(Shipment).filter(Shipment.mbl.in_(_mbl_keys(fields["mbl"]))).first()
                 if existing:
                     for k, v in fields.items():
                         setattr(existing, k, v)

@@ -128,12 +128,14 @@ def free_days_alert(s, today: date) -> Optional[dict]:
 
 def fpod_alert(s, containers: Iterable[tuple], today: date) -> Optional[dict]:
     """Inland: free days run per container from its arrival at the ICD (standard 14, typed per container
-    otherwise). containers = (container_no, arrival_date, free_days or None). One line for the shipment;
+    otherwise; the DO's validity wins when read). containers = (container_no, arrival_date, free_days or None
+    [, do_valid_until or None]). One line for the shipment;
     the per-container detail is on the Overview."""
     if (s.port or "").upper() in SEA_PORTS:
         return None
     standard = icd_free_days(s.port)
-    arrived = [(no, arr + timedelta(days=(fd if fd is not None else standard) - 1)) for no, arr, fd in containers if arr]
+    arrived = [(no, do or arr + timedelta(days=(fd if fd is not None else standard) - 1))
+               for no, arr, fd, do in ((*b, None)[:4] for b in containers) if arr or do]
     if not arrived:
         return None
     close = sorted(((last - today).days, last, no) for no, last in arrived if (last - today).days <= WARN_DAYS)

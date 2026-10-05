@@ -220,6 +220,8 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         sync.set("cfs_inv_received", True)
     elif t in (DocumentType.DO_LETTER, DocumentType.DO_EMPTY_LETTER):
         sync.set("do", True)
+        if not fields.get("error"):
+            sync.notes.extend(apply_do_validity(db, shipment, fields.get("containers") or {}, changed_by_id))
     elif t == DocumentType.GATEPASS_BILL_OF_ENTRY:
         # ICEGATE's e-Gatepass copy is the OOC gate pass: it proves OOC only. Clearing out (the other,
         # physical gate pass) is a separate, later step — client, 2026-09-30
@@ -234,3 +236,37 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
 
     document.tracker_sync_applied = True
     return {"updated": [FIELD_LABELS.get(f, f) for f in sync.updated], "notes": sync.notes}
+
+
+def apply_do_validity(db: Session, shipment: Shipment, found: dict, changed_by_id: Optional[int]) -> list[str]:
+    """The DO's date per container becomes its last free date (client, 2026-10-05: the DO validity or the
+    empty-return date is the actual final date; a revalidated DO replaces it). Containers the DO lists that
+    the shipment doesn't have yet are added. Returns notes for the upload."""
+    from app.models.container import ShipmentContainer  # here: containers aren't needed by the other readers
+
+    if not found:
+        return ["Couldn't read the containers' validity from this DO — type each container's Free until "
+                "on the Overview (or send us a sample so it reads next time)."]
+    have = {c.container_no: c for c in db.query(ShipmentContainer)
+            .filter(ShipmentContainer.shipment_id == shipment.id)}
+    added = 0
+    for no, iso in found.items():
+        valid = date.fromisoformat(iso)
+        c = have.get(no)
+        if c is None:
+            c = ShipmentContainer(shipment_id=shipment.id, container_no=no, source="do", is_manual=False)
+            db.add(c)
+            db.flush()
+            record_change(db, "shipment_containers", c.id, "container_no", None, no, changed_by_id)
+            added += 1
+        if c.do_valid_until != valid:
+            record_change(db, "shipment_containers", c.id, "do_valid_until", c.do_valid_until, valid, changed_by_id)
+            c.do_valid_until = valid
+    by_date: dict[str, int] = {}
+    for iso in found.values():
+        by_date[iso] = by_date.get(iso, 0) + 1
+    parts = [f"{n} container{'s' if n != 1 else ''} till {date.fromisoformat(d):%d %b %Y}" for d, n in sorted(by_date.items())]
+    notes = ["DO validity: " + ", ".join(parts) + " (set as their Free until)."]
+    if added:
+        notes.append(f"{added} container{'s' if added != 1 else ''} from the DO weren't on this shipment — added.")
+    return notes
