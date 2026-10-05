@@ -7,6 +7,12 @@ source deploy/gcp/config.sh
 gcloud config set project "$PROJECT" >/dev/null
 TAG="$IMAGE:$(git rev-parse --short HEAD)"
 API_KEY=$(gcloud secrets versions access latest --secret=vite-google-api-key | tr -d "[:space:]")  # a stray newline breaks the Picker
+# The key ends up in the public website, so only a Google browser key (AIza…) may go in — never another secret
+if [[ ! "$API_KEY" =~ ^AIza[0-9A-Za-z_-]{35}$ ]]; then
+  echo "STOP: secret vite-google-api-key is not a Google API key (should start with AIza, 39 characters)." >&2
+  echo "Fix:  read -rp 'Picker API key: ' K && printf '%s' \"\$K\" | gcloud secrets versions add vite-google-api-key --data-file=-" >&2
+  exit 1
+fi
 
 TAG="${TAG_OVERRIDE:-$TAG}"
 echo "== 1/3 build $TAG"

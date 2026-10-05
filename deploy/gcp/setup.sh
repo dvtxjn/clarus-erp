@@ -71,7 +71,7 @@ secret jwt-secret "$(openssl rand -hex 32)"
 secret job-token "$(openssl rand -hex 24)"
 exists gcloud secrets describe drive-sa-key || gcloud secrets create drive-sa-key --data-file="$KEY_FILE" --replication-policy automatic >/dev/null
 if ! exists gcloud secrets describe backup-key; then read -rsp "Backup encryption key (from the password manager): " V; echo; secret backup-key "$V"; fi
-if ! exists gcloud secrets describe vite-google-api-key; then read -rp "Google Picker API key (AIza…): " V; secret vite-google-api-key "$V"; fi
+if ! exists gcloud secrets describe vite-google-api-key; then read -rp "Google Picker API key (AIza…): " V; [[ "$V" =~ ^AIza ]] || { echo "Not an AIza… key" >&2; exit 1; }; secret vite-google-api-key "$V"; fi
 ENV="APP_ENV=production,AUTO_MIGRATE=0,JOBS_ENABLED=0,STORAGE_BACKEND=drive,PUBLIC_URL=$PUBLIC_URL,GOOGLE_SERVICE_ACCOUNT_JSON=/secrets/drive/key.json"
 ENV="$ENV,DRIVE_ROOT_FOLDER_ID=$DRIVE_ROOT_FOLDER_ID,DRIVE_INVOICES_FOLDER_ID=$DRIVE_INVOICES_FOLDER_ID"
 ENV="$ENV,DRIVE_BACKUPS_FOLDER_ID=$DRIVE_BACKUPS_FOLDER_ID,DRIVE_SHIPMENTS_FOLDER_ID=$DRIVE_SHIPMENTS_FOLDER_ID"
