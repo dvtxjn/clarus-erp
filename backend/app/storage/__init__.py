@@ -92,7 +92,10 @@ def ensure_folder(path: str) -> str:
                     s.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": f"drive-folder:{walked}"})
                     row = s.query(DriveFolder).filter(DriveFolder.path == walked).first()  # made while we waited?
                 if row is None:
-                    fid = client.find_folder(current, name) or client.create_folder(current, name)
+                    fid = client.find_folder(current, name)
+                    if not fid and name.upper().startswith("HDMUBHMA"):  # HMM folder made before the HDMU prefix
+                        fid = client.find_folder(current, name[4:])
+                    fid = fid or client.create_folder(current, name)
                     row = DriveFolder(path=walked, drive_id=fid)
                     s.add(row)
                     s.commit()

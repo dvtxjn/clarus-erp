@@ -239,3 +239,15 @@ def test_file_picked_from_the_shipment_folder_is_linked_not_copied(client, admin
     assert doc["extraction"]["fields"]  # still read like an upload
     client.delete(f"/shipments/{sid}/documents/{doc['id']}", headers=admin_headers)  # removing never renames theirs
     assert len(fake_drive.files) == before
+
+
+def test_hmm_upload_uses_the_existing_bhma_folder(client, admin_headers, fake_drive):
+    """MBLs now carry HDMU (client, 2026-10-05); the BL's old BHMA… folder is reused, never a second folder."""
+    first = _ship(client, admin_headers, "DRV0000003", client="Hmm Client")
+    _upload(client, admin_headers, first, "cfs_tax_invoice", cfs_pdf(bl_no="DRV0000003"))
+    client_folder = fake_drive.find_folder("root-docs", "Hmm Client")
+    old = fake_drive.create_folder(client_folder, "BHMA12345600")
+    sid = _ship(client, admin_headers, "BHMA12345600", client="Hmm Client")
+    doc = _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf(bl_no="BHMA12345600"))
+    assert fake_drive.files[doc["drive_file_id"]]["parents"] == [old]
+    assert fake_drive.find_folder(client_folder, "HDMUBHMA12345600") is None
