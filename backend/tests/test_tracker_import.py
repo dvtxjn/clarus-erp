@@ -71,3 +71,26 @@ def test_hbl_typed_first_is_swapped(client, admin_headers):
     _post(client, h, "apply", data)
     s = next(x for x in client.get("/shipments", headers=h).json() if x["job"] == "991")
     assert (s["mbl"], s["hbl"]) == ("279957617", "CJHRUSF9918")
+
+
+def test_cleared_shipments_moved_to_fnf_sheets_are_not_flagged(client, admin_headers):
+    """Cleared / billed shipments leave the tracker for the monthly FNF sheets (client, 2026-10-07)."""
+    h = admin_headers
+    done = client.post("/shipments", json={"mbl": "FNFDONE001", "cleared_date": "2026-09-29"}, headers=h).json()["id"]
+    live = client.post("/shipments", json={"mbl": "FNFLIVE001"}, headers=h).json()["id"]
+    p = _post(client, h, "apply", _csv("992,OTHER00001,,,c,Divine,INMUN1,,,,1,,,,,,,,,,,")).json()
+    ids = {m["shipment_id"] for m in p["missing"]}
+    assert live in ids and done not in ids and p["cleared"] >= 1
+    assert client.get(f"/shipments/{done}", headers=h).json()["missing_from_sheet_at"] is None
+
+
+def test_blank_igm_detail_columns_keep_app_data(client, admin_headers):
+    """The sheet no longer fills MBL date / GW / voyage …: a blank cell must not wipe the IGM lookup's data."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "IGMKEEP001", "voyage": "638W", "gw": "141715"}, headers=h).json()["id"]
+    data = ("Job,MBL,Consignee,Voyage,GW\n993,IGMKEEP001,Divine,,\n").encode()
+    p = _post(client, h, "preview", data).json()
+    assert not any(c["field"] in ("voyage", "gw") for u in p["updated"] for c in u["changes"])
+    _post(client, h, "apply", data)
+    s = client.get(f"/shipments/{sid}", headers=h).json()
+    assert (s["voyage"], s["gw"]) == ("638W", "141715")

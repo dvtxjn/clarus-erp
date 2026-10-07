@@ -85,6 +85,7 @@ export default function TrackerImportPanel({ onApplied, onClose }: { onApplied: 
             <span><b>{p.updated.length}</b> updated</span>
             <span><b>{p.unchanged}</b> unchanged</span>
             <span className={p.missing.length ? "import-warn" : undefined}><b>{p.missing.length}</b> not in the sheet (flagged)</span>
+            {!!p.cleared && <span><b>{p.cleared}</b> cleared (in FNF sheets)</span>}
           </div>
           {p.unknown_columns.length > 0 && (
             <div className="field-note">Columns not used (renamed or new?): {p.unknown_columns.join(", ")}</div>

@@ -305,6 +305,7 @@ export interface TrackerImportResult {
   }[];
   unchanged: number;
   missing: { shipment_id: number; job: string | null; mbl: string; consignee: string | null }[];
+  cleared?: number; // not in the sheet but cleared / billed (moved to the FNF sheets) — not flagged
   unknown_columns: string[];
   skipped: string[];
 }

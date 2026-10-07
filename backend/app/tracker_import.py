@@ -9,7 +9,10 @@ Rules
     are kept ("kept from BE"); with an OOC copy, OOC / Duty Paid stay ticked.
   - App-only data is never touched (documents, proformas, invoices, challans, HSS
     parties set by hand, paid-by-us switches, amounts).
-  - Shipments not in the CSV are flagged (Shipment.missing_from_sheet_at), never deleted.
+  - Shipments not in the CSV are flagged (Shipment.missing_from_sheet_at), never deleted —
+    except cleared / billed ones: those have moved to the monthly FNF sheets (client, 2026-10-07).
+  - IGM details (MBL/HBL date, GW, packages, line no, IGM date, voyage, cont) come from the
+    IGM lookup in the app: a blank cell keeps them (the sheet no longer fills those columns).
   - A row matching a shipment deleted in the app is skipped (not re-created): the admin
     restores it from Recently deleted if the delete was a mistake.
   - Matching: MBL, then HBL, then BE No, then Job No; the last two are marked
@@ -56,6 +59,7 @@ COLUMNS: dict[str, tuple[str, Any]] = {
 SPECIAL = {"mbl", "hbl", "billed?", "day", "status"}  # handled separately / computed by the app
 FROM_BE = {"be_no", "be_dt", "port", "mbl", "hbl", "container", "gross_wt"}
 FROM_OOC = {"ooc", "duty_paid"}
+IGM_DETAILS = {"mbl_date", "hbl_date", "gw", "total_pkg", "pkg_code", "line_no", "igm_date", "voyage", "cont"}
 LABELS = {"container_status": "Cntr Status", "cfs_inv_received": "CFS Inv?", "delivery_status": "Delivery",
           "shipping_line": "Line", "be_dt": "BE Dt", "be_no": "BE No", "is_billed": "Billed?"}
 
@@ -216,6 +220,8 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
             old = getattr(s, field, None)
             if _norm_value(old) == _norm_value(value) or (old in (None, "") and value in (None, "", False) and field != "is_billed"):
                 continue
+            if field in IGM_DETAILS and value in (None, ""):
+                continue
             entry = {"field": field, "label": LABELS.get(field, field.replace("_", " ").title()),
                      "old": _show(old), "new": _show(value)}
             if has_be and field in FROM_BE and old not in (None, ""):
@@ -229,10 +235,11 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
                             "matched_by": how, "check": how in ("BE No", "Job"), "changes": changes, "kept": kept})
         else:
             unchanged += 1
+    gone = [s for s in ships if s.id not in seen and not s.is_deleted]
     missing = [{"shipment_id": s.id, "job": s.job, "mbl": s.mbl, "consignee": s.consignee}
-               for s in ships if s.id not in seen and not s.is_deleted]
+               for s in gone if not (s.is_billed or s.cleared_date)]
     return {"rows": len(rows), "new": new, "updated": updated, "unchanged": unchanged, "missing": missing,
-            "deleted": deleted}
+            "cleared": len(gone) - len(missing), "deleted": deleted}
 
 
 def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:
