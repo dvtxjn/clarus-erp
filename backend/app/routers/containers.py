@@ -115,6 +115,26 @@ def _norm(no: str) -> str:
     return "".join(no.split()).upper()
 
 
+def _check_typed(db: Session, s: Shipment, no: str) -> None:
+    """A hand-typed container number: its check digit must add up, and it can't be on another shipment
+    that's still open (containers get reused, so cleared / billed shipments don't count)."""
+    if not liners.container_check_digit_ok(no):
+        raise HTTPException(status_code=422, detail=f"{no}: the last digit doesn't match — check the number for a typo")
+    other = (db.query(Shipment).join(ShipmentContainer, ShipmentContainer.shipment_id == Shipment.id)
+             .filter(ShipmentContainer.container_no == no, Shipment.id != s.id, Shipment.is_billed.is_(False),
+                     Shipment.cleared_date.is_(None), Shipment.deleted_at.is_(None)).first())
+    if other:
+        raise HTTPException(status_code=409, detail=f"{no} is already on job {other.job or '(no job no)'} — BL {other.mbl}")
+
+
+def sync_count(db: Session, s: Shipment, user_id: Optional[int]) -> None:
+    """Keep the shipment's container count in step with its container list."""
+    n = len(_list(db, s.id))
+    if n and (s.container or "").strip() != str(n):
+        record_change(db, "shipments", s.id, "container", s.container, str(n), user_id)
+        s.container = str(n)
+
+
 @router.get("", response_model=list[ContainerOut])
 def list_containers(shipment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     s = _shipment(db, shipment_id, user)
@@ -130,11 +150,13 @@ def add_container(shipment_id: int, payload: ContainerIn, db: Session = Depends(
         raise HTTPException(status_code=422, detail=f"{no} isn't a container number (4 letters + 7 digits, e.g. MRKU5032093)")
     if any(c.container_no == no for c in _list(db, shipment_id)):
         raise HTTPException(status_code=409, detail=f"{no} is already on this shipment")
+    _check_typed(db, s, no)
     c = ShipmentContainer(shipment_id=shipment_id, container_no=no, status=payload.status,
                           arrival_date=payload.arrival_date, source="manual", is_manual=payload.arrival_date is not None)
     db.add(c)
     db.flush()
     record_change(db, "shipment_containers", c.id, "container_no", None, no, user.id)
+    sync_count(db, s, user.id)
     db.commit()
     return _out(c, s)
 
@@ -168,6 +190,10 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
         changes["container_no"] = _norm(changes["container_no"])
         if not liners.container_ok(changes["container_no"]):
             raise HTTPException(status_code=422, detail="Container number: 4 letters + 7 digits, e.g. MRKU5032093")
+        if changes["container_no"] != c.container_no:
+            if any(o.container_no == changes["container_no"] for o in _list(db, shipment_id)):
+                raise HTTPException(status_code=409, detail=f"{changes['container_no']} is already on this shipment")
+            _check_typed(db, s, changes["container_no"])
     for field, value in changes.items():
         old = getattr(c, field)
         if old == value:
@@ -183,13 +209,15 @@ def edit_container(shipment_id: int, container_id: int, payload: ContainerPatch,
 @router.delete("/{container_id}", status_code=204)
 def remove_container(shipment_id: int, container_id: int, db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):
-    _shipment(db, shipment_id, user)
+    s = _shipment(db, shipment_id, user)
     c = db.query(ShipmentContainer).filter(ShipmentContainer.id == container_id,
                                            ShipmentContainer.shipment_id == shipment_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Container not found")
     record_change(db, "shipment_containers", c.id, "deleted", c.container_no, None, user.id)
     soft_delete(db, c, user.id)
+    db.flush()
+    sync_count(db, s, user.id)
     db.commit()
 
 

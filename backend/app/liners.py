@@ -62,3 +62,19 @@ CONTAINER_RE = re.compile(r"^[A-Z]{4}\d{7}$")
 def container_ok(no: str) -> bool:
     """Container number: 4 letters + 7 digits (e.g. MRKU5032093)."""
     return bool(CONTAINER_RE.match(re.sub(r"\s+", "", no or "").upper()))
+
+
+def container_check_digit_ok(no: str) -> bool:
+    """ISO 6346: the last digit is a check digit worked out from the first 10 characters,
+    so a typo in a hand-typed number is caught (e.g. MRKU5032093)."""
+    n = re.sub(r"\s+", "", no or "").upper()
+    if not CONTAINER_RE.match(n):
+        return False
+    values, v = {}, 10
+    for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        if v % 11 == 0:
+            v += 1
+        values[ch] = v
+        v += 1
+    total = sum((values[ch] if ch.isalpha() else int(ch)) * 2 ** i for i, ch in enumerate(n[:10]))
+    return total % 11 % 10 == int(n[10])

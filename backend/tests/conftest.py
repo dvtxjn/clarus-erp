@@ -128,9 +128,12 @@ def pytest_configure(config):
 @pytest.fixture(autouse=True)
 def _duplicate_bl_check(request, monkeypatch):
     """Tests share one database and reuse BL numbers; the duplicate BL / job check is
-    tested on its own (mark a test `duplicates` to keep it on)."""
+    tested on its own (mark a test `duplicates` to keep it on). Same for made-up container numbers."""
     if request.node.get_closest_marker("duplicates"):
         return
     from app.core import shipment_checks
 
     monkeypatch.setattr(shipment_checks, "_check_duplicates", lambda *a, **k: None)
+    from app.routers import containers
+
+    monkeypatch.setattr(containers, "_check_typed", lambda *a, **k: None)

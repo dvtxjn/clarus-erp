@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import storage
+from app.routers import containers
 from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin
@@ -97,5 +98,8 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
         if obj.document_type in INVOICE_DOC_TYPES:
             recompute_invoice_totals(db, ship, admin.id)
         refresh_draft_proformas(db, ship)
+    if kind == "container":
+        db.flush()
+        containers.sync_count(db, db.get(Shipment, obj.shipment_id), admin.id)
     db.commit()
     return {"kind": kind, "id": item_id, "restored": True}
