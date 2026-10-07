@@ -1949,7 +1949,12 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .chart-empty { padding: 24px 0; text-align: center; }
 .tools-menu { position: relative; }
-.tools-menu > summary { list-style: none; cursor: pointer; }
+.tools-menu > summary {
+  list-style: none; cursor: pointer; display: inline-flex; align-items: center;
+  font-size: 14px; font-weight: 500; padding: 6px 12px; border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); transition: background-color .12s, border-color .12s, color .12s;
+}
+.tools-menu[open] > summary { background: var(--color-subtle); border-color: var(--color-text-muted); }
 .tools-menu > summary::-webkit-details-marker { display: none; }
 .tools-menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: var(--z-popover); min-width: 260px; display: flex; flex-direction: column; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
 .tools-menu-list button { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm, 4px); cursor: pointer; font-size: 13px; }

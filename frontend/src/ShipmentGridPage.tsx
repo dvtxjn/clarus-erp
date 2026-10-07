@@ -1570,16 +1570,15 @@ export default function ShipmentGridPage() {
         <button className="btn-secondary" onClick={resetLayout}>
           Reset filters &amp; layout
         </button>
+        {isAdmin && (
+          <button className="btn-secondary" onClick={() => setShowImport((v) => !v)} title="Tracker .xlsx (TRACKER + FnF tabs) or CSV">
+            Import Excel…
+          </button>
+        )}
         {(isAdmin || driveConfigured) && (
           <details className="tools-menu" ref={toolsRef}>
             <summary className="btn-secondary">Admin tools…</summary>
             <div className="tools-menu-list" role="menu" onClick={() => toolsRef.current?.removeAttribute("open")}>
-              {isAdmin && (
-                <button type="button" role="menuitem" onClick={() => setShowImport((v) => !v)}>
-                  Import tracker sheet
-                  <span className="field-note">Bring in the Google Sheet tracker</span>
-                </button>
-              )}
               {isAdmin && (
                 <button type="button" role="menuitem" onClick={() => setShowIcegate((v) => !v)}>
                   Read ICEGATE (IGM)
