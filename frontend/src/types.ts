@@ -35,6 +35,7 @@ export interface User {
   role: UserRole;
   can_access_billing: boolean;
   is_active: boolean;
+  read_only: boolean; // view-only login: can look, can't change anything (server-enforced)
   password_reset_requested_at: string | null; // "Forgot password" pressed — the admin sets a new one
   last_login_at: string | null;
 }

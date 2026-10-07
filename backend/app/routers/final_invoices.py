@@ -159,7 +159,9 @@ def invoice_register(fy: Optional[str] = None, month: Optional[str] = None, kind
 
     settled = settled_by_invoice(db, [r.id for r in rows])
     fys = sorted({r.fy or fy_of(r.invoice_date) for r in db.query(FinalInvoice).all() if r.fy or r.invoice_date}, reverse=True)
-    return {"invoices": [_register_row(i, settled) for i in rows], "financial_years": fys}
+    # drafts the current filter hides, so they don't get forgotten (QA, 2026-10-07)
+    drafts = len(rows) if status == "draft" else len(_register(db, fy, month, kind, "draft", client, q))
+    return {"invoices": [_register_row(i, settled) for i in rows], "financial_years": fys, "drafts": drafts}
 
 
 @router.get("/final-invoices/export.pdf")

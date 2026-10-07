@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { shipmentHistory, updateShipment, type HistoryEntry } from "./api";
+import { editContainer, shipmentHistory, updateShipment, type HistoryEntry } from "./api";
 import { useConfirm } from "./ConfirmDialog";
 import { historyTime, historyValue } from "./history";
 import type { Shipment } from "./types";
@@ -52,13 +52,16 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
   async function putBack(x: HistoryEntry) {
     if (!x.undo) return;
     const ok = await confirm({
-      title: `Put ${x.label} back?`,
+      title: `Put ${x.label}${x.about ? ` (${x.about})` : ""} back?`,
       message: `${x.label} goes back from “${historyValue(x.new)}” to “${historyValue(x.old)}”. The change is recorded like any edit.`,
       confirmLabel: "Put back",
     });
     if (!ok) return;
     try {
-      onChange(await updateShipment(shipment.id, x.undo as Partial<Shipment>));
+      if (x.table === "shipment_containers") {
+        const { container_id, ...body } = x.undo as { container_id: number } & Parameters<typeof editContainer>[2];
+        await editContainer(shipment.id, container_id, body);
+      } else onChange(await updateShipment(shipment.id, x.undo as Partial<Shipment>));
       setMsg({ ok: true, text: `${x.label} put back to ${historyValue(x.old)}.` });
       load();
     } catch (e) {

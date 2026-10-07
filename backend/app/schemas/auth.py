@@ -24,6 +24,7 @@ class UserOut(BaseModel):
     role: UserRole
     can_access_billing: bool
     is_active: bool = True
+    read_only: bool = False
     password_reset_requested_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
 
@@ -45,6 +46,7 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(default=None, min_length=1)
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    read_only: Optional[bool] = None
 
 
 class PasswordSet(BaseModel):

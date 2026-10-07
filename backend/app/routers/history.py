@@ -50,9 +50,9 @@ def _label(field: str, labels: dict[str, str]) -> str:
     return labels.get(field) or field.replace("_", " ").capitalize()
 
 
-def _typed(field: str, raw: Optional[str]) -> tuple[bool, Any]:
+def _typed(field: str, raw: Optional[str], model=Shipment) -> tuple[bool, Any]:
     """The stored text back to the column's type — (ok, value). ok False = can't be put back safely."""
-    col = Shipment.__table__.columns.get(field)
+    col = model.__table__.columns.get(field)
     if col is None:
         return False, None
     if raw is None or raw == "None":
@@ -83,7 +83,24 @@ def _typed(field: str, raw: Optional[str]) -> tuple[bool, Any]:
     return True, raw
 
 
-def _current(s: Shipment, field: str) -> Optional[str]:
+# container fields History can put back (QA 2026-10-07), and how each is emptied through the container edit
+BOX_UNDO = {"do_valid_until": "clear_do", "arrival_date": "clear_arrival", "free_days": "clear_free_days",
+            "tracking_status": None}
+
+
+def _box_undo(e: AuditLogEntry, c: Optional[ShipmentContainer]) -> Optional[dict]:
+    if c is None or e.field_name not in BOX_UNDO or _current(c, e.field_name) != e.new_value:
+        return None
+    ok, value = _typed(e.field_name, e.old_value, ShipmentContainer)
+    if not ok:
+        return None
+    if value is None:
+        clear = BOX_UNDO[e.field_name]
+        return {"container_id": c.id, **({clear: True} if clear else {e.field_name: ""})}
+    return {"container_id": c.id, e.field_name: value}
+
+
+def _current(s: Any, field: str) -> Optional[str]:
     """The field now, written the way record_change stores values (str)."""
     v = getattr(s, field, None)
     return str(v) if v is not None else None
@@ -109,8 +126,9 @@ def shipment_history(shipment_id: int, db: Session = Depends(get_db), user: User
                .filter(ShipmentContainer.shipment_id == s.id)]
     doc = {d.id: d for d in db.query(ShipmentDocument).execution_options(include_deleted=True)
            .filter(ShipmentDocument.shipment_id == s.id)}
-    boxes = {c.id: c.container_no for c in db.query(ShipmentContainer).execution_options(include_deleted=True)
-             .filter(ShipmentContainer.id.in_(box_ids))} if box_ids else {}
+    box_rows = {c.id: c for c in db.query(ShipmentContainer).execution_options(include_deleted=True)
+                .filter(ShipmentContainer.id.in_(box_ids))} if box_ids else {}
+    boxes = {i: c.container_no for i, c in box_rows.items()}
     conds = [(AuditLogEntry.table_name == "shipments") & (AuditLogEntry.record_id == s.id)]
     if box_ids:
         conds.append((AuditLogEntry.table_name == "shipment_containers") & AuditLogEntry.record_id.in_(box_ids))
@@ -120,9 +138,12 @@ def shipment_history(shipment_id: int, db: Session = Depends(get_db), user: User
                .order_by(AuditLogEntry.changed_at.desc(), AuditLogEntry.id.desc()).limit(1000).all())
     who, labels = _who(db, entries), _labels(db)
     latest: dict[str, int] = {}  # field -> newest entry id (only the newest change of a field can be put back)
+    box_latest: dict[tuple[int, str], int] = {}
     for e in entries:
         if e.table_name == "shipments":
             latest.setdefault(e.field_name, e.id)
+        elif e.table_name == "shipment_containers":
+            box_latest.setdefault((e.record_id, e.field_name), e.id)
     out = []
     for e in entries:
         ref = {}
@@ -138,6 +159,9 @@ def shipment_history(shipment_id: int, db: Session = Depends(get_db), user: User
             ok, value = _typed(e.field_name, e.old_value)
             if ok:
                 r["undo"] = {e.field_name: value}
+        elif e.table_name == "shipment_containers" and box_latest.get((e.record_id, e.field_name)) == e.id:
+            c = box_rows.get(e.record_id)
+            r["undo"] = _box_undo(e, c if c is not None and c.deleted_at is None else None)
         out.append(r)
     return out
 
@@ -147,7 +171,7 @@ def all_history(who: Optional[str] = Query(None, description="user id, or 'auto'
                 kind: Optional[str] = Query(None, description="table name, e.g. shipments"),
                 date_from: Optional[date] = None, date_to: Optional[date] = None,
                 q: Optional[str] = Query(None, description="job, BL, BE, field or value"),
-                limit: int = Query(300, le=2000),
+                limit: int = Query(300, le=5000),
                 db: Session = Depends(get_db), admin: User = Depends(require_admin)):
     """The whole change log, newest first (admin)."""
     query = db.query(AuditLogEntry)

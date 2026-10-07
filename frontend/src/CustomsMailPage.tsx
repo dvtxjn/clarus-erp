@@ -9,6 +9,7 @@ import {
   resolveIcegateMail,
   type IcegateMail,
 } from "./api";
+import type { Shipment } from "./types";
 import { useAuth } from "./AuthContext";
 import { istTime } from "./customsMail";
 import CustomsReadBar from "./CustomsReadBar";
@@ -116,17 +117,12 @@ export default function CustomsMailPage() {
     }
   }
 
-  async function linkTo(m: IcegateMail) {
-    const job = window.prompt(`Which job is this mail for?\n${m.label}: ${m.summary ?? ""}`)?.trim();
-    if (!job) return;
+  const [linking, setLinking] = useState<IcegateMail | null>(null);
+  async function linkTo(m: IcegateMail, s: Shipment) {
     try {
-      const found = (await listShipments({ search: job, include_archived: true })).filter((s) => s.job === job);
-      if (found.length !== 1) {
-        setMsg({ ok: false, text: found.length ? `More than one shipment has job ${job}.` : `No shipment with job ${job}.` });
-        return;
-      }
-      await linkIcegateMail(m.id, found[0].id);
-      setMsg({ ok: true, text: `Put on job ${job}.` });
+      await linkIcegateMail(m.id, s.id);
+      setMsg({ ok: true, text: `Put on job ${s.job}.` });
+      setLinking(null);
       load();
     } catch (e) {
       setMsg({ ok: false, text: errorText(e) });
@@ -151,6 +147,7 @@ export default function CustomsMailPage() {
 
   return (
     <div className="rates-page customs-page">
+      {linking && <JobPicker mail={linking} onPick={(s) => linkTo(linking, s)} onClose={() => setLinking(null)} />}
       <div>
         <h1>Customs mail</h1>
         <p className="field-note">
@@ -353,7 +350,7 @@ export default function CustomsMailPage() {
                         </button>
                       )}
                       {isAdmin && !m.shipment_id && m.kind !== "otp" && (
-                        <button type="button" className="btn-secondary" onClick={() => linkTo(m)}>
+                        <button type="button" className="btn-secondary" onClick={() => setLinking(m)}>
                           Link to job…
                         </button>
                       )}
@@ -380,5 +377,55 @@ function Says({ text }: { text: string | null | undefined }) {
       <summary title="Show the whole text">{firstLine.length > 90 ? `${firstLine.slice(0, 90)}…` : firstLine}</summary>
       <div className="customs-says-full">{t}</div>
     </details>
+  );
+}
+
+/** "Link to job": search shipments by job, BE or BL; starts on the mail's own BE / BL / job so the likely match is on top. */
+function JobPicker({ mail, onPick, onClose }: { mail: IcegateMail; onPick: (s: Shipment) => void; onClose: () => void }) {
+  const [q, setQ] = useState(mail.be_no || mail.mbl || mail.job_no || "");
+  const [found, setFound] = useState<Shipment[] | null>(null);
+  useEffect(() => {
+    const t = q.trim();
+    if (t.length < 2) {
+      setFound([]);
+      return;
+    }
+    setFound(null);
+    const timer = window.setTimeout(() => {
+      listShipments({ search: t, include_archived: true })
+        .then((r) => setFound(r.slice(0, 30)))
+        .catch(() => setFound([]));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <div className="confirm-dialog job-picker" role="dialog" aria-modal="true" aria-labelledby="jp-title" onClick={(e) => e.stopPropagation()}>
+        <h2 id="jp-title">Which job is this mail for?</h2>
+        <p>{mail.label}{mail.summary ? `: ${mail.summary}` : ""}</p>
+        <input autoFocus value={q} placeholder="Job, BE no or BL" aria-label="Search job, BE or BL" onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && found?.length === 1 && onPick(found[0])} />
+        <ul className="job-picker-list">
+          {found === null && <li className="field-note">Searching…</li>}
+          {found?.length === 0 && q.trim().length >= 2 && <li className="field-note">No shipment matches.</li>}
+          {found?.map((s) => (
+            <li key={s.id}>
+              <button type="button" onClick={() => onPick(s)}>
+                <b>Job {s.job}</b> · BL {s.mbl || "—"} · BE {s.be_no || "—"}
+                {s.client ? <span className="tracker-subtitle"> · {s.client}</span> : null}
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="confirm-actions">
+          <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
   );
 }

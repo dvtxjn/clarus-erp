@@ -54,7 +54,7 @@ export default function UsersPage() {
     }
   }
 
-  async function change(u: User, patch: Partial<Pick<User, "role" | "is_active">>) {
+  async function change(u: User, patch: Partial<Pick<User, "role" | "is_active" | "read_only">>) {
     try {
       await updateUser(u.id, patch);
       load();
@@ -143,7 +143,7 @@ export default function UsersPage() {
                 </td>
                 <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—"}</td>
                 <td>
-                  {!u.is_active ? "Switched off" : u.password_reset_requested_at ? <span className="exception-badge">Reset requested</span> : "Active"}
+                  {!u.is_active ? "Switched off" : u.password_reset_requested_at ? <span className="exception-badge">Reset requested</span> : u.read_only ? "View-only" : "Active"}
                 </td>
                 <td className="num">
                   {resetting?.id === u.id ? (
@@ -160,6 +160,12 @@ export default function UsersPage() {
                       {u.id !== me?.id && (
                         <button className="btn-secondary" onClick={() => change(u, { is_active: !u.is_active })}>
                           {u.is_active ? "Switch off" : "Switch on"}
+                        </button>
+                      )}{" "}
+                      {u.id !== me?.id && (
+                        <button className="btn-secondary" title="View-only: can look at everything its role allows, can't change anything"
+                          onClick={() => change(u, { read_only: !u.read_only })}>
+                          {u.read_only ? "Allow changes" : "Make view-only"}
                         </button>
                       )}
                     </>

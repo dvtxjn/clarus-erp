@@ -8,6 +8,9 @@ import { historyTime, historyValue } from "./history";
  * newest first. Filters (in the URL): who, what, dates, job / BL / BE / text. Each shipment row links to it
  * (History tab there to put a field back).
  */
+const PAGE = 300;
+const MAX = 5000;
+
 export default function HistoryPage() {
   const [params, setParams] = useSearchParams();
   const who = params.get("who") ?? "";
@@ -17,17 +20,19 @@ export default function HistoryPage() {
   const q = params.get("q") ?? "";
   const [text, setText] = useState(q);
   const [rows, setRows] = useState<HistoryEntry[] | null>(null);
+  const [limit, setLimit] = useState(PAGE); // "Load more" raises it (QA 2026-10-07)
   const [f, setF] = useState<{ users: { id: number; name: string }[]; kinds: { kind: string; label: string }[] }>({ users: [], kinds: [] });
 
   useEffect(() => {
     historyFilters().then(setF).catch(() => undefined);
   }, []);
+  useEffect(() => setLimit(PAGE), [who, kind, from, to, q]);
   useEffect(() => {
-    setRows(null);
-    allHistory({ who: who || undefined, kind: kind || undefined, date_from: from || undefined, date_to: to || undefined, q: q || undefined })
+    if (limit === PAGE) setRows(null);
+    allHistory({ limit, who: who || undefined, kind: kind || undefined, date_from: from || undefined, date_to: to || undefined, q: q || undefined })
       .then(setRows)
-      .catch(() => setRows([]));
-  }, [who, kind, from, to, q]);
+      .catch(() => setRows((x) => x ?? []));
+  }, [who, kind, from, to, q, limit]);
   useEffect(() => {
     const t = window.setTimeout(() => text !== q && set("q", text.trim()), 400);
     return () => window.clearTimeout(t);
@@ -91,7 +96,7 @@ export default function HistoryPage() {
         {rows && (
           <span className="field-note">
             {rows.length} change{rows.length === 1 ? "" : "s"}
-            {rows.length >= 300 ? " (newest 300 — narrow the filters to see older)" : ""}
+            {rows.length >= limit ? ` (newest ${limit})` : ""}
           </span>
         )}
       </div>
@@ -132,6 +137,11 @@ export default function HistoryPage() {
               ))}
             </tbody>
           </table>
+          {rows.length >= limit && limit < MAX && (
+            <button type="button" className="link-button attention-more" onClick={() => setLimit((n) => Math.min(n + PAGE, MAX))}>
+              Load {PAGE} older changes
+            </button>
+          )}
         </div>
       )}
     </div>

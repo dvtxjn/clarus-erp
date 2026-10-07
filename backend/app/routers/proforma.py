@@ -623,10 +623,12 @@ def _proforma_rows(db: Session, fy: Optional[str], month: Optional[str], status:
         if month and (not d or f"{d:%Y-%m}" != month):
             continue
         s = p.shipment
+        if s is None:  # its shipment is gone: nothing to list it under
+            continue
         party = (p.bill_to or be_importer_name(s) or "") if s else (p.bill_to or "")
         if client and client.lower() not in party.lower():
             continue
-        if q and q.lower() not in " ".join(str(x or "") for x in (s.job, s.mbl, s.be_no, p.name) if s).lower():
+        if q and q.lower() not in " ".join(str(x or "") for x in (s.job, s.mbl, s.be_no, p.name)).lower():
             continue
         out.append(p)
     return out

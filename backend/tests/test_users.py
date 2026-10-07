@@ -41,3 +41,24 @@ def test_admin_cannot_lock_themselves_out(client, admin_headers):
     me = client.get("/auth/me", headers=admin_headers).json()
     assert client.patch(f"/auth/users/{me['id']}", json={"is_active": False}, headers=admin_headers).status_code == 400
     assert client.patch(f"/auth/users/{me['id']}", json={"role": "import_manager"}, headers=admin_headers).status_code == 400
+
+
+def test_view_only_login_reads_but_cannot_change(client, admin_headers):
+    """Client, 2026-10-07: the QA bot may look at data, never change it — the server refuses every write."""
+    h = admin_headers
+    r = client.post("/auth/users", json={"email": "qa-bot", "password": "qa-bot-password-1",
+                                         "full_name": "QA bot", "role": "admin"}, headers=h)
+    uid = r.json()["id"]
+    r = client.patch(f"/auth/users/{uid}", json={"read_only": True}, headers=h)
+    assert r.status_code == 200 and r.json()["read_only"] is True
+    bot = {"Authorization": f"Bearer {_login(client, 'qa-bot', 'qa-bot-password-1').json()['access_token']}"}
+
+    assert client.get("/shipments", headers=bot).status_code == 200
+    assert client.get("/auth/users", headers=bot).status_code == 200  # an admin that can look
+    r = client.post("/shipments", json={"job": "QA1", "mbl": "QA-MBL-1"}, headers=bot)
+    assert r.status_code == 403 and "view-only" in r.json()["detail"]
+    assert client.patch(f"/auth/users/{uid}", json={"read_only": False}, headers=bot).status_code == 403
+
+    # switched back: it can write again
+    client.patch(f"/auth/users/{uid}", json={"read_only": False}, headers=h)
+    assert client.patch(f"/auth/users/{uid}", json={"full_name": "QA bot 2"}, headers=bot).status_code == 200

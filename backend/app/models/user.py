@@ -21,6 +21,8 @@ class User(Base):
     can_access_billing = Column(Boolean, default=False, nullable=False)
 
     is_active = Column(Boolean, default=True, nullable=False)
+    # View-only login (e.g. the QA bot, client 2026-10-07): may look at everything its role allows, change nothing.
+    read_only = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     # Passwords are set by the admin only (client, 2026-09-29): "Forgot password" on the login
     # page just flags the account here for the admin to reset.

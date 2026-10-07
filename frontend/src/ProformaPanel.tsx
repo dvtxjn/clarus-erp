@@ -102,7 +102,7 @@ export default function ProformaPanel({
   async function handleDeleteDraft() {
     if (!active || active.status !== "draft") return;
     const ok = await confirm({
-      title: "Delete draft?",
+      title: `Delete draft "${active.name || `v${active.version_number}`}"?`,
       message: `Delete draft "${active.name || `v${active.version_number}`}"${active.line_items.length ? ` and its ${active.line_items.length} line item(s)` : ""}? It moves to Recently deleted — the admin can restore it.`,
       confirmLabel: "Delete draft",
       danger: true,
@@ -158,11 +158,6 @@ export default function ProformaPanel({
               Rename
             </button>
           )}
-          {active?.status === "draft" && (
-            <button className="btn-secondary link-danger" onClick={handleDeleteDraft}>
-              Delete draft
-            </button>
-          )}
           {shipment.is_hss ? (
             (["seller", "buyer"] as const).map((role) =>
               workingOf(role) ? (
@@ -190,6 +185,11 @@ export default function ProformaPanel({
             </button>
           ) : (
             <button onClick={() => handleNewVersion()}>+ New proforma</button>
+          )}
+          {active?.status === "draft" && (
+            <button className="btn-secondary link-danger danger-apart" onClick={handleDeleteDraft}>
+              Delete draft
+            </button>
           )}
         </div>
       </div>

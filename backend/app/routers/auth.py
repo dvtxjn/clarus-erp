@@ -87,11 +87,12 @@ def _other_user(db: Session, user_id: int, admin: User) -> User:
 
 @router.patch("/users/{user_id}", response_model=UserOut)
 def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """Name, role, switch on/off. The admin can't switch off or demote their own account (no lock-out)."""
+    """Name, role, switch on/off, view-only. The admin can't switch off or demote their own account (no lock-out)."""
     user = _other_user(db, user_id, admin)
     changes = payload.model_dump(exclude_unset=True)
-    if user.id == admin.id and (changes.get("is_active") is False or changes.get("role", UserRole.ADMIN) != UserRole.ADMIN):
-        raise HTTPException(status_code=400, detail="You can't switch off or demote your own admin account.")
+    if user.id == admin.id and (changes.get("is_active") is False or changes.get("read_only")
+                                or changes.get("role", UserRole.ADMIN) != UserRole.ADMIN):
+        raise HTTPException(status_code=400, detail="You can't switch off, demote or make view-only your own admin account.")
     for field, value in changes.items():
         if getattr(user, field) != value:
             record_change(db, "users", user.id, field, getattr(user, field), value, admin.id)

@@ -104,19 +104,26 @@ function FinalRegister() {
   const [error, setError] = useState<string | null>(null);
   const [peek, setPeek] = useState<PeekTarget | null>(null);
   const closePeek = useCallback(() => setPeek(null), []);
+  const [drafts, setDrafts] = useState(0);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setError(null);
     const t = window.setTimeout(() => {
       getInvoiceRegister(f)
         .then((r) => {
           setRows(r.invoices);
           setYears(r.financial_years);
+          setDrafts(r.drafts ?? 0);
           setPicked(new Set());
         })
-        .catch(() => setError("Couldn't load the invoices."));
+        .catch(() => {
+          setRows((x) => x ?? []); // not "Loading…" forever
+          setError("Couldn't load the invoices.");
+        });
     }, 250); // typing in the search boxes
     return () => window.clearTimeout(t);
-  }, [f]);
+  }, [f, attempt]);
 
   const totals = useMemo(() => {
     const list = rows ?? [];
@@ -178,6 +185,11 @@ function FinalRegister() {
           <option value="draft">Draft</option>
           <option value="cancelled">Cancelled</option>
         </select>
+        {f.status !== "draft" && drafts > 0 && (
+          <button type="button" className="exception-badge inv-drafts-pill" title="Draft invoices not issued yet — show them" onClick={() => set("status", "draft")}>
+            Drafts ({drafts})
+          </button>
+        )}
         <input list="org-names" aria-label="Client" placeholder="Client (type or pick)…" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
         <input aria-label="Search" placeholder="Number, job, MBL, BE, IRN…" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
         <span className="inv-filters-actions">
@@ -193,7 +205,12 @@ function FinalRegister() {
           </button>
         </span>
       </div>
-      {error && <div className="auth-error">{error}</div>}
+      {error && (
+        <div className="auth-error">
+          {error}{" "}
+          <button type="button" className="btn-secondary" onClick={() => setAttempt((n) => n + 1)}>Retry</button>
+        </div>
+      )}
 
       {peek && <InvoicePeek target={peek} onClose={closePeek} />}
       <div className="tracker-grid-wrap">
@@ -314,8 +331,10 @@ function ProformaRegister() {
   const [peek, setPeek] = useState<PeekTarget | null>(null);
   const closePeek = useCallback(() => setPeek(null), []);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setError(null);
     const t = window.setTimeout(() => {
       getProformaRegister(f)
         .then((r) => {
@@ -323,10 +342,13 @@ function ProformaRegister() {
           setYears(r.financial_years);
           setPicked(new Set());
         })
-        .catch(() => setError("Couldn't load the proformas."));
+        .catch(() => {
+          setRows((x) => x ?? []); // not "Loading…" forever
+          setError("Couldn't load the proformas.");
+        });
     }, 250);
     return () => window.clearTimeout(t);
-  }, [f]);
+  }, [f, attempt]);
 
   const set = (k: keyof RegisterFilters, v: string) => setF((x) => ({ ...x, [k]: v || undefined }));
   // latest version of each proforma only, unless asked (or filtering to Superseded)
@@ -388,7 +410,12 @@ function ProformaRegister() {
           </button>
         </span>
       </div>
-      {error && <div className="auth-error">{error}</div>}
+      {error && (
+        <div className="auth-error">
+          {error}{" "}
+          <button type="button" className="btn-secondary" onClick={() => setAttempt((n) => n + 1)}>Retry</button>
+        </div>
+      )}
       {peek && <InvoicePeek target={peek} onClose={closePeek} />}
       <div className="tracker-grid-wrap">
         <table className="tracker-grid inv-register">

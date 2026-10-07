@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,11 @@ from app.models.user import User
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+# reads: anything else changes data
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def get_current_user(request: Request, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -24,6 +28,9 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     user = db.query(User).filter(User.email == email).first()
     if user is None or not user.is_active:
         raise credentials_exception
+    if user.read_only and request.method not in SAFE_METHODS:
+        # a view-only login (the QA bot) can look but never change anything — enforced here, for every route
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This login is view-only.")
     db.info["user"] = (user.id, user.full_name)  # live updates say who changed what
     return user
 

@@ -996,3 +996,10 @@ blank IGM-detail cells keep app data. Import Excel button on the Shipments toolb
 - Client DSR, admin CSV export, phone filters, go-live checklist, proforma FK migration, CSP header, ICEGATE login sandbox,
   "save to another folder" at upload, download-to-PC, adding the 62 pre-ERP FnF jobs as history (open question).
 - Known test failure: `test_challan_listed_at.py::test_yesterdays_list_is_not_today` depends on the time of day.
+
+## 2026-10-07 — QA report fixes
+- View-only logins (migration 0054 `users.read_only`): Users screen "Make view-only"; the server refuses every write from them. For the QA bot.
+- Customs mail "Link to job" is an in-app picker (search job / BE / BL). Proformas + Final invoices: errors show Retry instead of "Loading…" forever.
+- Final invoices: "Drafts (n)" pill next to Issued. History: "Load 300 older changes" (up to 5000).
+- Dashboard Needs attention: one row per job, all its reasons together. Invoice Delete/Cancel sit apart from Save/Rename and name the invoice.
+- History "Put back" now also works on container fields (DO valid until, arrival, free days, tracking) — e.g. Job 159's 10 DO dates the tester changed at 23:13.

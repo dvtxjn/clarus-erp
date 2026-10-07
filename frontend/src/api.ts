@@ -726,7 +726,7 @@ export async function createUser(payload: { email: string; full_name: string; ro
   const { data } = await client.post("/auth/users", payload);
   return data;
 }
-export async function updateUser(id: number, payload: Partial<Pick<User, "full_name" | "role" | "is_active">>): Promise<User> {
+export async function updateUser(id: number, payload: Partial<Pick<User, "full_name" | "role" | "is_active" | "read_only">>): Promise<User> {
   const { data } = await client.patch(`/auth/users/${id}`, payload);
   return data;
 }
@@ -817,7 +817,7 @@ export interface RegisterFilters {
   q?: string;
 }
 const clean = (f: RegisterFilters) => Object.fromEntries(Object.entries(f).filter(([, v]) => v));
-export async function getInvoiceRegister(f: RegisterFilters): Promise<{ invoices: RegisterRow[]; financial_years: string[] }> {
+export async function getInvoiceRegister(f: RegisterFilters): Promise<{ invoices: RegisterRow[]; financial_years: string[]; drafts: number }> {
   const { data } = await client.get("/final-invoices", { params: clean(f) });
   return data;
 }
@@ -988,6 +988,7 @@ export async function editContainer(
     free_until?: string;
     clear_free_days?: boolean;
     clear_do?: boolean;
+    do_valid_until?: string; // History "Put back" only
   },
 ): Promise<ShipmentContainer> {
   const { data } = await client.patch(`/shipments/${shipmentId}/containers/${id}`, body);
@@ -1199,7 +1200,7 @@ export interface HistoryEntry {
   old: string | null;
   new: string | null;
   about?: string | null; // container no / document name
-  undo?: Record<string, unknown> | null; // shipment field that can be put back
+  undo?: Record<string, unknown> | null; // shipment field (or container field + container_id) that can be put back
   shipment_id?: number;
   job?: string | null;
   mbl?: string | null;
@@ -1209,7 +1210,7 @@ export async function shipmentHistory(id: number): Promise<HistoryEntry[]> {
   const { data } = await client.get(`/shipments/${id}/history`);
   return data;
 }
-export async function allHistory(params: { who?: string; kind?: string; date_from?: string; date_to?: string; q?: string }): Promise<HistoryEntry[]> {
+export async function allHistory(params: { who?: string; kind?: string; date_from?: string; date_to?: string; q?: string; limit?: number }): Promise<HistoryEntry[]> {
   const { data } = await client.get("/history", { params });
   return data;
 }

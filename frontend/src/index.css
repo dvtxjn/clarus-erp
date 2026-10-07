@@ -2077,3 +2077,13 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .sent-history ul { list-style: none; padding: 0; margin: 6px 0 0; }
 .sent-history li { display: flex; gap: 12px; align-items: center; padding: 3px 0; flex-wrap: wrap; }
 .sent-history .num { font-variant-numeric: tabular-nums; }
+.job-picker { width: min(560px, 100%); }
+.job-picker input { width: 100%; padding: 6px 10px; border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: 8px; }
+.job-picker-list { list-style: none; margin: 0 0 14px; padding: 0; max-height: 320px; overflow-y: auto; }
+.job-picker-list button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 6px 8px; border-radius: var(--radius); color: var(--color-text); cursor: pointer; }
+.job-picker-list button:hover, .job-picker-list button:focus-visible { background: var(--color-subtle); }
+.inv-drafts-pill { cursor: pointer; border: 0; }
+.attention-reason { display: block; }
+/* destructive buttons sit apart from Save / Rename (QA 2026-10-07) */
+.danger-apart { margin-left: auto; }
+.pf-left .danger-apart, .m-proforma .danger-apart { grid-column: 1 / -1; margin-left: 0; margin-top: 8px; }

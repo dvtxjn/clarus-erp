@@ -66,6 +66,7 @@ class ContainerPatch(BaseModel):
     clear_arrival: bool = False        # set arrival_date back to empty
     clear_free_days: bool = False      # back to the standard free days
     clear_do: bool = False             # drop the DO's date (free days count from the arrival again)
+    do_valid_until: Optional[date] = None  # only from History "Put back" (the DO's date is otherwise read from the DO)
 
 
 class RefreshOut(BaseModel):
