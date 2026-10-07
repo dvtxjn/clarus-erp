@@ -60,13 +60,30 @@ function loadPicker(): Promise<void> {
   return pickerReady;
 }
 
-let cachedToken: { token: string; expires: number } | null = null;
+const TOKEN_KEY = "googleDrive.token";
+let cachedToken: { token: string; expires: number } | null = (() => {
+  try {
+    return JSON.parse(sessionStorage.getItem(TOKEN_KEY) || "null");
+  } catch {
+    return null;
+  }
+})();
+function saveToken(t: typeof cachedToken) {
+  cachedToken = t;
+  try {
+    if (t) sessionStorage.setItem(TOKEN_KEY, JSON.stringify(t));
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* private window: keep it in memory only */
+  }
+}
 /** Google access token (drive.file); asks the user to sign in if needed. */
 export async function getDriveToken(): Promise<string> {
   if (!driveConfigured) throw new Error("Google Drive isn't set up yet.");
   await loadPicker();
   return getToken();
 }
+let needConsent = false;
 function getToken(): Promise<string> {
   if (cachedToken && cachedToken.expires > Date.now() + 60_000) return Promise.resolve(cachedToken.token);
   return new Promise((resolve, reject) => {
@@ -75,12 +92,14 @@ function getToken(): Promise<string> {
       scope: SCOPE,
       callback: (resp: { access_token?: string; expires_in?: number; error?: string }) => {
         if (!resp.access_token) return reject(new Error(resp.error || "Google sign-in was cancelled."));
-        cachedToken = { token: resp.access_token, expires: Date.now() + (resp.expires_in ?? 3600) * 1000 };
+        saveToken({ token: resp.access_token, expires: Date.now() + (resp.expires_in ?? 3600) * 1000 });
         resolve(resp.access_token);
       },
       error_callback: () => reject(new Error("Google sign-in was cancelled.")),
     });
-    client.requestAccessToken({ prompt: cachedToken ? "" : "consent" });
+    // "" = Google asks only the first time; after that it reconnects without the "continue" screen
+    client.requestAccessToken({ prompt: needConsent ? "consent" : "" });
+    needConsent = false;
   });
 }
 
@@ -105,7 +124,8 @@ export async function searchDriveFolders(terms: string[]): Promise<{ id: string;
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401 || res.status === 403) {
-    cachedToken = null; // e.g. signed in before folder search was added: ask again
+    saveToken(null); // e.g. signed in before folder search was added: ask again
+    needConsent = true;
     throw new Error("Google needs you to allow folder search — click again and accept.");
   }
   if (!res.ok) throw new Error(`Google Drive search failed (${res.status})`);

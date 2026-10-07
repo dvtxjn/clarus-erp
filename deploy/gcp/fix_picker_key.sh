@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fix "The API developer key is invalid" in the Google Drive picker. Run in Cloud Shell:
-#   cd ~/clarus-erp && git pull && bash deploy/gcp/fix_picker_key.sh
+#   cd ~/clarus-erp && git pull && bash deploy/gcp/fix_picker_key.sh            (site + Picker/Drive APIs)
+#   cd ~/clarus-erp && git pull && bash deploy/gcp/fix_picker_key.sh site-only  (site lock only)
 # Finds the API key saved in secret vite-google-api-key (never prints it), then:
 #   - turns on the Picker + Drive APIs in this project
 #   - checks the key belongs to the same project as the Google sign-in (VITE_GOOGLE_APP_ID)
@@ -37,11 +38,19 @@ if [ -z "$KEY_NAME" ]; then
   echo "Saved the new key in secret vite-google-api-key."
 fi
 
-echo "== Restricting the key to the ERP site + Picker/Drive"
-gcloud services api-keys update "$KEY_NAME" \
-  --allowed-referrers="$PUBLIC_URL/*,http://localhost:5173/*" \
-  --api-target=service=picker.googleapis.com \
-  --api-target=service=drive.googleapis.com >/dev/null
+if [ "${1:-}" = "site-only" ]; then
+  # Test: the picker still says "developer key is invalid" → drop the API list, keep the site lock.
+  echo "== Restricting the key to the ERP site only (any API)"
+  gcloud services api-keys update "$KEY_NAME" --clear-restrictions >/dev/null
+  gcloud services api-keys update "$KEY_NAME" \
+    --allowed-referrers="$PUBLIC_URL/*,http://localhost:5173/*" >/dev/null
+else
+  echo "== Restricting the key to the ERP site + Picker/Drive"
+  gcloud services api-keys update "$KEY_NAME" \
+    --allowed-referrers="$PUBLIC_URL/*,http://localhost:5173/*" \
+    --api-target=service=picker.googleapis.com \
+    --api-target=service=drive.googleapis.com >/dev/null
+fi
 
 echo "Done. Now redeploy:  bash deploy/gcp/deploy.sh"
 echo "Also check: Google Cloud console > APIs & Services > Credentials > the OAuth client has $PUBLIC_URL under Authorised JavaScript origins."
