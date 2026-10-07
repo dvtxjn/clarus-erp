@@ -177,7 +177,7 @@ export default function AppLayout() {
                     }}
                   />
                 ))}
-                </div>
+              </div>
             </div>
           )}
           <div className="app-foot-row">
