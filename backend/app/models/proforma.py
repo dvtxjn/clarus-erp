@@ -54,6 +54,7 @@ class Proforma(SoftDeleteMixin, Base):
 
     shipment = relationship("Shipment", back_populates="proformas")
     line_items = relationship("ProformaLineItem", back_populates="proforma", cascade="all, delete-orphan")
+    snapshots = relationship("ProformaSnapshot", back_populates="proforma", order_by="ProformaSnapshot.id.desc()")
 
 
 class ProformaLineItem(Base):
@@ -90,3 +91,22 @@ class ProformaLineItem(Base):
 
     proforma = relationship("Proforma", back_populates="line_items")
     charge = relationship("ChargeMasterEntry")
+
+
+class ProformaSnapshot(Base):
+    """A sent invoice as it went to the client, kept when it is edited again (client, 2026-10-07:
+    "update the same invoice and store the old version somewhere else for later reference").
+    `invoice` is the full invoice layout (build_invoice), so the old PDF can be re-made exactly."""
+    __tablename__ = "proforma_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    proforma_id = Column(Integer, ForeignKey("proformas.id"), nullable=False, index=True)
+    bill_rate = Column(Numeric(12, 2), nullable=True)
+    grand_total = Column(Numeric(12, 2), nullable=True)
+    invoice = Column(JSON, nullable=False)
+    proforma_data = Column(JSON, nullable=False)  # the proforma + line items (ProformaOut)
+    drive_file_id = Column(String, nullable=True)  # the sent PDF's copy in Drive, if saved
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    proforma = relationship("Proforma", back_populates="snapshots")

@@ -145,6 +145,19 @@ class ProformaOut(BaseModel):
     created_at: datetime
     line_items: list[ProformaLineItemOut] = []
     grand_total: Decimal = Decimal("0")  # payable to Clarus: Billed by Clarus + Reimbursement (not cost inclusion)
+    party: Optional[str] = None  # HSS: whose copy, by first name ("Earthman" / "Mahrishi")
+    revisions: int = 0  # sent copies kept in history (edited again after sending)
+
+
+class ProformaSnapshotOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    proforma_id: int
+    bill_rate: Optional[Decimal] = None
+    grand_total: Optional[Decimal] = None
+    drive_file_id: Optional[str] = None
+    created_at: datetime
 
 
 class ProformaStatusUpdate(BaseModel):

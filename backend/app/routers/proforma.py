@@ -14,7 +14,9 @@ from app.core.locking import locked_proforma, locked_shipment
 from app.core.enums import ChargeCalculationBasis, ChargeCategory, ProformaStatus
 from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
-from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
+from fastapi.encoders import jsonable_encoder
+
+from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.invoice.pdf import render_pdf
 from app.invoice.xlsx import render_xlsx
@@ -22,7 +24,8 @@ from app.models.charge import ChargeMasterEntry
 from app.models.organization import OrganizationEntry
 from app.models.licence import Licence
 from app.models.pricing_rule import PricingRule
-from app.models.proforma import Proforma, ProformaLineItem
+from app.models.proforma import Proforma, ProformaLineItem, ProformaSnapshot
+from app.models.storage import StoredFile
 from app.models.soft_delete import soft_delete
 from app.models.shipment import Shipment
 from app.models.user import User
@@ -37,6 +40,7 @@ from app.schemas.proforma import (
     ProformaOut,
     ProformaLineItemCreate,
     ProformaLineItemOut,
+    ProformaSnapshotOut,
     ProformaStatusUpdate,
     ProformaCreate,
     ProformaLineItemUpdate,
@@ -259,8 +263,16 @@ def create_proforma(
             "consignee": shipment.consignee,
         },
     )
+    # "New version" is kept as an option: the earlier working invoice for the same party becomes history
+    for prev in db.query(Proforma).filter(Proforma.shipment_id == shipment_id, Proforma.bill_to_role == role,
+                                          Proforma.status != ProformaStatus.SUPERSEDED):
+        record_change(db, "proformas", prev.id, "status", prev.status, ProformaStatus.SUPERSEDED, current_user.id)
+        prev.status = ProformaStatus.SUPERSEDED
     db.add(proforma)
     db.flush()
+    partner = _hss_partner(db, proforma)
+    if partner is not None and partner.bill_rate_manual:
+        proforma.bill_rate, proforma.bill_rate_manual = partner.bill_rate, True
     # charges pre-filled: licence rates, HSS rule, and everything the documents know
     sync_proforma(db, proforma, full=True)
     db.commit()
@@ -285,7 +297,7 @@ def add_line_item(
     if not charge:
         raise HTTPException(status_code=404, detail="Charge master entry not found")
 
-    _require_draft(proforma)
+    _require_draft(proforma, db, current_user)
     if charge.code == GST_DIFFERENCE_CODE:
         raise HTTPException(status_code=400, detail="GST Difference is worked out automatically — enter the Bill Rate instead.")
     if charge.code == "ROY" and not proforma.shipment.is_hss:
@@ -324,9 +336,29 @@ def _require_documents(shipment: Shipment) -> None:
                                                     "Attach it to the shipment first — the proforma is worked out from it.")
 
 
-def _require_draft(proforma: Proforma) -> None:
-    if proforma.status != ProformaStatus.DRAFT:
-        raise HTTPException(status_code=400, detail="This version has been sent — start a new version to change it.")
+def _require_draft(proforma: Proforma, db: Optional[Session] = None, user: Optional[User] = None) -> None:
+    """Edits go to the same (working) invoice. A sent one is reopened: the copy that went to
+    the client is kept in history first (client, 2026-10-07). Old superseded versions stay as they are."""
+    if proforma.status == ProformaStatus.SENT and db is not None:
+        _reopen_sent(db, proforma, user)
+    elif proforma.status != ProformaStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="This is an old version — edit the current invoice instead.")
+
+
+def _reopen_sent(db: Session, proforma: Proforma, user: Optional[User]) -> None:
+    sf = db.query(StoredFile).filter(StoredFile.kind == "proforma_pdf", StoredFile.ref_id == proforma.id).first()
+    out = _to_out(proforma)
+    db.add(ProformaSnapshot(
+        proforma_id=proforma.id, bill_rate=proforma.bill_rate, grand_total=out.grand_total,
+        invoice=jsonable_encoder(build_invoice(proforma)), proforma_data=jsonable_encoder(out),
+        drive_file_id=sf.drive_file_id if sf else None, created_by_id=user.id if user else None))
+    if sf is not None:
+        sf.kind = "proforma_pdf_old"  # the next send saves a fresh PDF
+    record_change(db, "proformas", proforma.id, "status", ProformaStatus.SENT, ProformaStatus.DRAFT,
+                  user.id if user else None)
+    proforma.status = ProformaStatus.DRAFT
+    db.flush()
+    db.refresh(proforma)
 
 
 @router.patch("/proformas/{proforma_id}/line-items/{line_item_id}", response_model=ProformaOut)
@@ -343,7 +375,7 @@ def update_line_item(
                                           ProformaLineItem.proforma_id == proforma_id).first()
     if not li:
         raise HTTPException(status_code=404, detail="Line item not found")
-    _require_draft(li.proforma)
+    _require_draft(li.proforma, db, current_user)
     changes = payload.model_dump(exclude_unset=True)
     gst_given = "gst_amount" in changes
     gst_value = changes.pop("gst_amount", None)
@@ -368,7 +400,7 @@ def fill_from_shipment(proforma_id: int, db: Session = Depends(get_db),
     Duty, CFS, Royalty for HSS, shipping line per SAC) and refresh the
     document-derived ones; lines edited by hand are left alone. See autofill.py."""
     proforma = locked_proforma(db, proforma_id)
-    _require_draft(proforma)
+    _require_draft(proforma, db, current_user)
     _require_documents(proforma.shipment)
     added, updated, skipped = sync_proforma(db, proforma, full=True)
     db.commit()
@@ -382,7 +414,7 @@ def restore_derived_line(proforma_id: int, payload: RestoreIn, db: Session = Dep
     """Bring back a removed document-derived line (Shipping Line, Customs Duty,
     Stamp Duty, CFS, Examination) with the figure from the documents."""
     proforma = locked_proforma(db, proforma_id)
-    _require_draft(proforma)
+    _require_draft(proforma, db, current_user)
     if not restore_line(db, proforma, payload.key):
         db.rollback()
         raise HTTPException(status_code=400, detail="Nothing to add from the documents for this charge yet "
@@ -421,6 +453,27 @@ def download_invoice(proforma_id: int, fmt: str, db: Session = Depends(get_db),
     })
 
 
+@router.get("/proformas/{proforma_id}/history", response_model=list[ProformaSnapshotOut])
+def proforma_history(proforma_id: int, db: Session = Depends(get_db),
+                     current_user: User = Depends(require_billing_access)):
+    """Copies of this invoice as sent, before it was edited again — newest first."""
+    return _get_proforma(db, proforma_id).snapshots
+
+
+@router.get("/proforma-snapshots/{snapshot_id}/invoice.pdf")
+def snapshot_pdf(snapshot_id: int, db: Session = Depends(get_db),
+                 current_user: User = Depends(require_billing_access)):
+    snap = db.get(ProformaSnapshot, snapshot_id)
+    if not snap or snap.proforma is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    filename = invoice_filename(snap.proforma, "pdf").replace(".pdf", f" - as sent {snap.created_at:%d-%m-%Y}.pdf")
+    return Response(content=render_pdf(snap.invoice), media_type="application/pdf", headers={
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}",
+        "X-Filename": quote(filename),
+        "Access-Control-Expose-Headers": "X-Filename",
+    })
+
+
 def _get_proforma(db: Session, proforma_id: int) -> Proforma:
     proforma = db.query(Proforma).filter(Proforma.id == proforma_id).first()
     if not proforma:
@@ -443,7 +496,7 @@ def remove_line_item(
     ).first()
     if not line_item:
         raise HTTPException(status_code=404, detail="Line item not found")
-    _require_draft(proforma)
+    _require_draft(proforma, db, current_user)
     if line_item.charge and line_item.charge.code in DERIVED_CODES:
         proforma.suppressed = sorted(set(proforma.suppressed or []) | {line_key(line_item)})
     proforma.line_items.remove(line_item)
@@ -468,8 +521,8 @@ def update_proforma_status(
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
     changes = payload.model_dump(exclude_unset=True)
-    if "bill_rate" in changes:
-        _require_draft(proforma)
+    if "bill_rate" in changes or "bill_to_org_id" in changes:
+        _require_draft(proforma, db, current_user)
     if changes.get("bill_to_org_id") is not None and not db.get(OrganizationEntry, changes["bill_to_org_id"]):
         raise HTTPException(status_code=404, detail="Organization not found")
     if "bill_rate" in changes:
@@ -494,6 +547,14 @@ def update_proforma_status(
             setattr(proforma, field, value)
     if "bill_rate" in changes:
         sync_gst_difference(db, proforma)
+        partner = _hss_partner(db, proforma)
+        if partner is not None and (partner.bill_rate != proforma.bill_rate
+                                    or partner.bill_rate_manual != proforma.bill_rate_manual):
+            # buyer and seller copies carry the same bill rate (client, 2026-10-07)
+            _require_draft(partner, db, current_user)
+            record_change(db, "proformas", partner.id, "bill_rate", partner.bill_rate, proforma.bill_rate, current_user.id)
+            partner.bill_rate, partner.bill_rate_manual = proforma.bill_rate, proforma.bill_rate_manual
+            sync_gst_difference(db, partner)
     sent_now = changes.get("status") == ProformaStatus.SENT
     db.commit()
     if sent_now:  # the version that went to the client: keep its PDF (local + Drive)
@@ -524,8 +585,21 @@ def delete_draft_proforma(
     db.commit()
 
 
+def _hss_partner(db: Session, proforma: Proforma) -> Optional[Proforma]:
+    """HSS: the working invoice for the other party (seller <-> buyer)."""
+    if proforma.bill_to_role not in ("seller", "buyer"):
+        return None
+    other = "buyer" if proforma.bill_to_role == "seller" else "seller"
+    return (db.query(Proforma).filter(Proforma.shipment_id == proforma.shipment_id, Proforma.bill_to_role == other,
+                                      Proforma.status != ProformaStatus.SUPERSEDED)
+            .order_by(Proforma.version_number.desc()).first())
+
+
 def _to_out(proforma: Proforma) -> ProformaOut:
     out = ProformaOut.model_validate(proforma)
+    who = copy_for(proforma)
+    out.party = who[4:] if who else None  # "For Mahrishi" -> "Mahrishi"
+    out.revisions = len(proforma.snapshots)
     out.line_items = sorted(out.line_items, key=lambda li: li.id)
     # payable to Clarus: everything except the shipping line cost inclusion
     # (rounded to the rupee — see build.round_off)

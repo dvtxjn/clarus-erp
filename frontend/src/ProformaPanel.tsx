@@ -17,12 +17,14 @@ import {
   downloadInvoice,
   listOrganizations,
   restoreProformaLine,
+  getProformaHistory,
+  downloadProformaSnapshot,
 } from "./api";
 import { useSaveShipment } from "./useSaveShipment";
 import { OrganizationForm } from "./DailyUpdates";
 import FinalInvoicesPanel from "./FinalInvoicesPanel";
 import { useConfirm } from "./ConfirmDialog";
-import type { Proforma, ChargeMasterEntry, Shipment, ChargeCategory, InvoiceView, InvoiceLine, Organization } from "./types";
+import type { Proforma, ProformaSnapshot, ChargeMasterEntry, Shipment, ChargeCategory, InvoiceView, InvoiceLine, Organization } from "./types";
 import { usePhone } from "./usePhone";
 
 export default function ProformaPanel({
@@ -50,13 +52,18 @@ export default function ProformaPanel({
         setCharges(c);
         if (p.length && activeId === null) {
           const pf = wanted.current.pf;
-          setActiveId(pf && p.some((x) => x.id === pf) ? pf : p[0].id);
+          setActiveId(pf && p.some((x) => x.id === pf) ? pf : (p.find((x) => x.status !== "superseded") ?? p[0]).id);
         }
       })
       .finally(() => setLoading(false));
   }
 
   useEffect(refresh, [shipment.id]);
+
+  // after a change, reload quietly: a bill rate typed on one HSS invoice is copied to the other
+  function reloadQuietly() {
+    listProformas(shipment.id).then(setProformas).catch(() => {});
+  }
 
   const [freshId, setFreshId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -84,6 +91,13 @@ export default function ProformaPanel({
   }
 
   const active = proformas.find((p) => p.id === activeId) ?? null;
+  const [showOld, setShowOld] = useState(false);
+  const working = proformas.filter((p) => p.status !== "superseded");
+  const shownTabs = showOld ? proformas : proformas.filter((p) => p.status !== "superseded" || p.id === activeId);
+  const oldCount = proformas.length - working.length;
+  const workingOf = (role: "seller" | "buyer") => working.filter((p) => p.bill_to_role === role).at(-1) ?? null;
+  const partyName = (role: "seller" | "buyer") =>
+    workingOf(role)?.party ?? (role === "seller" ? shipment.hss_seller : shipment.hss_buyer) ?? role;
 
   async function handleDeleteDraft() {
     if (!active || active.status !== "draft") return;
@@ -107,7 +121,7 @@ export default function ProformaPanel({
     <>
       <div className="proforma-toolbar">
         <div className="version-tabs">
-          {proformas.map((p) => (
+          {shownTabs.map((p) => (
             <button
               key={p.id}
               className={p.id === activeId ? "tab active" : "tab"}
@@ -117,10 +131,20 @@ export default function ProformaPanel({
               }}
               title={p.bill_to ? `Bill to ${p.bill_to}` : undefined}
             >
-              {p.bill_to_role && <span className={`party-badge party-${p.bill_to_role}`}>{p.bill_to_role}</span>}
+              {p.bill_to_role && (
+                <span className={`party-badge party-${p.bill_to_role}`} translate="no">
+                  {p.party ?? p.bill_to_role}
+                </span>
+              )}
               {p.name || `v${p.version_number}`} · {p.status}
+              {p.revisions > 0 && ` · edited ${p.revisions}×`}
             </button>
           ))}
+          {oldCount > 0 && (
+            <button type="button" className="link-button" onClick={() => setShowOld((v) => !v)} aria-pressed={showOld}>
+              {showOld ? "Hide old versions" : `Show old versions (${oldCount})`}
+            </button>
+          )}
         </div>
         <div className="proforma-toolbar-actions">
           {active && !renaming && (
@@ -140,16 +164,32 @@ export default function ProformaPanel({
             </button>
           )}
           {shipment.is_hss ? (
-            <>
-              <button onClick={() => handleNewVersion("seller")} title="HSS: invoice addressed to the seller">
-                + Seller invoice{shipment.hss_seller ? ` (${shipment.hss_seller})` : ""}
-              </button>
-              <button onClick={() => handleNewVersion("buyer")} title="HSS: invoice addressed to the buyer">
-                + Buyer invoice{shipment.hss_buyer ? ` (${shipment.hss_buyer})` : ""}
-              </button>
-            </>
+            (["seller", "buyer"] as const).map((role) =>
+              workingOf(role) ? (
+                <button
+                  key={role}
+                  className="btn-secondary"
+                  onClick={() => handleNewVersion(role)}
+                  title={`Start a fresh ${partyName(role)} invoice; the current one moves to old versions. Usually just edit the current one.`}
+                >
+                  New {partyName(role)} version
+                </button>
+              ) : (
+                <button key={role} onClick={() => handleNewVersion(role)} title={`HSS ${role}`}>
+                  + {partyName(role)} invoice
+                </button>
+              ),
+            )
+          ) : working.length ? (
+            <button
+              className="btn-secondary"
+              onClick={() => handleNewVersion()}
+              title="Start a fresh proforma; the current one moves to old versions. Usually just edit the current one."
+            >
+              New version
+            </button>
           ) : (
-            <button onClick={() => handleNewVersion()}>+ New Version</button>
+            <button onClick={() => handleNewVersion()}>+ New proforma</button>
           )}
         </div>
       </div>
@@ -179,11 +219,12 @@ export default function ProformaPanel({
       )}
 
       {createError && <div role="alert" className="invoice-error">{createError}</div>}
+      {shipment.is_hss && <RateMismatch seller={workingOf("seller")} buyer={workingOf("buyer")} />}
       <HssSwitch shipment={shipment} onShipmentChange={onShipmentChange} onSaved={refresh} />
       {shipment.is_hss && (
         <div className="hss-banner">
           <strong>HSS shipment</strong> — two invoices: seller <b>{shipment.hss_seller ?? "?"}</b> and buyer{" "}
-          <b>{shipment.hss_buyer ?? "?"}</b>. Change the parties on the Overview tab.
+          <b>{shipment.hss_buyer ?? "?"}</b>, always at the same bill rate. Change the parties on the Overview tab.
         </div>
       )}
       {active?.bill_to && (
@@ -192,6 +233,10 @@ export default function ProformaPanel({
           {active.bill_to_role && ` (HSS ${active.bill_to_role})`}
         </p>
       )}
+      {active && active.status === "superseded" && (
+        <p className="field-note">Old version — read only. Edit the current invoice instead.</p>
+      )}
+      {active && <SentHistory proforma={active} />}
 
       <ExamReminder
         shipment={shipment}
@@ -241,6 +286,7 @@ export default function ProformaPanel({
           onPrefilled={() => setPrefillChargeId(null)}
           onChange={(updated) => {
             setProformas((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+            if (shipment.is_hss) reloadQuietly();
           }}
         />
       )}
@@ -455,7 +501,9 @@ function ProformaVersion({
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState<"xlsx" | "pdf" | null>(null);
   const confirm = useConfirm();
-  const draft = proforma.status === "draft";
+  // sent invoices stay editable: the sent copy goes to history and the invoice reopens as a draft
+  const draft = proforma.status !== "superseded";
+  const isDraft = proforma.status === "draft";
   const [pane, setPane] = useState<"proforma" | "final">(initialPane);
   const phone = usePhone();
   const [preview, setPreview] = useState(false);
@@ -756,7 +804,7 @@ function ProformaVersion({
               Fill / refresh
             </button>
           )}
-          {draft && proforma.line_items.length > 0 && (
+          {isDraft && proforma.line_items.length > 0 && (
             <button className="btn-secondary" onClick={markSent}>
               Mark as sent
             </button>
@@ -821,12 +869,17 @@ function ProformaVersion({
             <button className="btn-secondary" onClick={() => handleDownload("pdf")} disabled={!!downloading || blocked} title={blockedTitle}>
               {downloading === "pdf" ? "Preparing…" : "Download PDF"}
             </button>
-            {draft && proforma.line_items.length > 0 && (
+            {isDraft && proforma.line_items.length > 0 && (
               <button onClick={markSent}>
                 Mark as Sent
               </button>
             )}
-            {draft && (
+            {proforma.status === "sent" && (
+              <span className="field-note">
+                Sent. You can still edit it — the sent copy is kept under “Sent copies” and this invoice goes back to draft.
+              </span>
+            )}
+            {isDraft && (
               <span className="field-note">
                 Click any shaded cell to edit it. Draft lines update themselves when documents or the challan change — except
                 ones you've edited (marked ✎).
@@ -1591,5 +1644,79 @@ function LineSheet({
         </div>
       </form>
     </div>
+  );
+}
+
+/** HSS: the seller's and buyer's invoices must carry one bill rate — shouted when they don't. */
+function RateMismatch({ seller, buyer }: { seller: Proforma | null; buyer: Proforma | null }) {
+  if (!seller || !buyer) return null;
+  const a = seller.bill_rate == null ? null : Number(seller.bill_rate);
+  const b = buyer.bill_rate == null ? null : Number(buyer.bill_rate);
+  if (a === b) return null;
+  const show = (v: number | null) => (v == null ? "automatic" : `₹${inr(v)}/kg`);
+  return (
+    <div role="alert" className="rate-mismatch">
+      <strong>BILL RATES DON'T MATCH</strong>
+      <div className="rate-mismatch-figures">
+        <span>
+          <small translate="no">{seller.party ?? "Seller"}</small>
+          {show(a)}
+        </span>
+        <span aria-hidden="true">≠</span>
+        <span>
+          <small translate="no">{buyer.party ?? "Buyer"}</small>
+          {show(b)}
+        </span>
+      </div>
+      <p>Set the bill rate again on either invoice — it is copied to the other.</p>
+    </div>
+  );
+}
+
+/** Copies of this invoice as they were sent, before it was edited again. */
+function SentHistory({ proforma }: { proforma: Proforma }) {
+  const [rows, setRows] = useState<ProformaSnapshot[] | null>(null);
+  const [busy, setBusy] = useState<number | null>(null);
+  useEffect(() => {
+    if (!proforma.revisions) return setRows([]);
+    let live = true;
+    getProformaHistory(proforma.id)
+      .then((r) => live && setRows(r))
+      .catch(() => live && setRows([]));
+    return () => {
+      live = false;
+    };
+  }, [proforma.id, proforma.revisions]);
+  if (!rows?.length) return null;
+  const when = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  return (
+    <details className="sent-history">
+      <summary>Sent copies ({rows.length})</summary>
+      <ul>
+        {rows.map((r) => (
+          <li key={r.id}>
+            <span>{when.format(new Date(r.created_at))}</span>
+            <span className="num">{r.bill_rate != null ? `₹${inr(r.bill_rate)}/kg` : "—"}</span>
+            <span className="num">{r.grand_total != null ? `₹${inr(r.grand_total)}` : "—"}</span>
+            <button
+              type="button"
+              className="link-button"
+              disabled={busy === r.id}
+              onClick={() => {
+                setBusy(r.id);
+                downloadProformaSnapshot(r.id).finally(() => setBusy(null));
+              }}
+            >
+              {busy === r.id ? "Preparing…" : "PDF"}
+            </button>
+            {r.drive_file_id && (
+              <a href={`https://drive.google.com/file/d/${r.drive_file_id}/view`} target="_blank" rel="noreferrer">
+                Drive ↗
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

@@ -23,6 +23,7 @@ import type {
   Port,
   TrackerColumn,
   ColumnDataType,
+  ProformaSnapshot,
 } from "./types";
 
 // "" in production (screens and API on one address); the dev server talks to :8000
@@ -421,9 +422,23 @@ export async function getInvoice(proformaId: number): Promise<InvoiceView> {
 
 /** Download the invoice as .xlsx or .pdf (named "{bill to} - {MBL} - {BE} - proforma…"). */
 export async function downloadInvoice(proformaId: number, fmt: "xlsx" | "pdf"): Promise<void> {
-  const res = await client.get(`/proformas/${proformaId}/invoice.${fmt}`, { responseType: "blob" });
+  await saveBlob(`/proformas/${proformaId}/invoice.${fmt}`, `proforma-${proformaId}.${fmt}`);
+}
+
+/** Sent copies of a proforma kept when it was edited after sending (newest first). */
+export async function getProformaHistory(proformaId: number): Promise<ProformaSnapshot[]> {
+  const { data } = await client.get(`/proformas/${proformaId}/history`);
+  return data;
+}
+
+export async function downloadProformaSnapshot(snapshotId: number): Promise<void> {
+  await saveBlob(`/proforma-snapshots/${snapshotId}/invoice.pdf`, `proforma-sent-${snapshotId}.pdf`);
+}
+
+async function saveBlob(path: string, fallback: string): Promise<void> {
+  const res = await client.get(path, { responseType: "blob" });
   const header = res.headers["x-filename"];
-  const name = header ? decodeURIComponent(header) : `proforma-${proformaId}.${fmt}`;
+  const name = header ? decodeURIComponent(header) : fallback;
   const url = URL.createObjectURL(res.data);
   const a = document.createElement("a");
   a.href = url;

@@ -461,6 +461,18 @@ export interface Proforma {
   created_at: string;
   line_items: ProformaLineItem[];
   grand_total: number;
+  party: string | null; // "Earthman" / "Mahrishi" — the bill-to's short name
+  revisions: number; // sent copies kept in history (edited after sending)
+}
+
+/** A sent copy kept when a sent proforma was edited. */
+export interface ProformaSnapshot {
+  id: number;
+  proforma_id: number;
+  bill_rate: number | null;
+  grand_total: number | null;
+  drive_file_id: string | null;
+  created_at: string;
 }
 
 export interface DashboardSummary {

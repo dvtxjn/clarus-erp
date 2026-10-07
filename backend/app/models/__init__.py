@@ -6,7 +6,7 @@ from app.models.user import User, UserPortAccess  # noqa: F401
 from app.models.shipment import Shipment  # noqa: F401
 from app.models.document import HSCode, RequiredDocument, ShipmentDocument  # noqa: F401
 from app.models.charge import ChargeMasterEntry  # noqa: F401
-from app.models.proforma import Proforma, ProformaLineItem  # noqa: F401
+from app.models.proforma import Proforma, ProformaLineItem, ProformaSnapshot  # noqa: F401
 from app.models.audit import AuditLogEntry  # noqa: F401
 from app.models.organization import OrganizationEntry  # noqa: F401
 from app.models.challan import DutyChallan  # noqa: F401

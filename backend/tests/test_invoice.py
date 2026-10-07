@@ -83,10 +83,14 @@ def test_edit_line_and_downloads(client, admin_headers):
     pdf = client.get(f"/proformas/{pid}/invoice.pdf", headers=h)
     assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
 
-    # sent versions are locked
+    # a sent invoice is edited in place: the sent copy goes to history, the invoice is a draft again
     client.patch(f"/proformas/{pid}", json={"status": "sent"}, headers=h)
     r = client.patch(f"/proformas/{pid}/line-items/{agency['id']}", json={"rate": "1"}, headers=h)
-    assert r.status_code == 400
+    assert r.status_code == 200 and r.json()["status"] == "draft" and r.json()["revisions"] == 1
+    hist = client.get(f"/proformas/{pid}/history", headers=h).json()
+    assert len(hist) == 1
+    old = client.get(f"/proforma-snapshots/{hist[0]['id']}/invoice.pdf", headers=h)
+    assert old.status_code == 200 and old.content[:4] == b"%PDF"
 
 
 def test_sample_hss_invoice_matches_client_sheet(client, admin_headers):
@@ -191,6 +195,29 @@ def test_typed_bill_rate_needs_no_10_paise_margin(client, admin_headers):
     assert Decimal(lowest) % Decimal("0.05") == 0                                    # a round 5 paise rate
     step_less = str(Decimal(lowest) - Decimal("0.05"))
     assert client.patch(f"/proformas/{pid}", json={"bill_rate": step_less}, headers=h).status_code == 400
+
+
+def test_buyer_and_seller_share_the_bill_rate(client, admin_headers):
+    """Client, 2026-10-07: a rate typed on one HSS copy goes on the other; a new version
+    replaces the working invoice for that party (the old one becomes history)."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "RATETEST0003", "consignee": "Earthman - Mahrishi", "container": "2"},
+                      headers=h).json()["id"]
+    client.patch(f"/shipments/{sid}", json={"gross_wt": "50.000 MTS", "assessable_value": "500000"}, headers=h)
+    seller = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "seller"}, headers=h).json()
+    buyer = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()
+    assert seller["party"] == "Earthman" and buyer["party"] == "Mahrishi"
+    client.patch(f"/proformas/{buyer['id']}", json={"status": "sent"}, headers=h)
+    rate = client.get(f"/proformas/{seller['id']}/invoice", headers=h).json()["value"]["lowest_bill_rate"]
+    assert client.patch(f"/proformas/{seller['id']}", json={"bill_rate": rate}, headers=h).status_code == 200
+    rows = {p["bill_to_role"]: p for p in client.get(f"/shipments/{sid}/proformas", headers=h).json()}
+    assert rows["buyer"]["bill_rate"] == rows["seller"]["bill_rate"] == rate
+    assert rows["buyer"]["status"] == "draft" and rows["buyer"]["revisions"] == 1   # sent copy kept
+
+    again = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()
+    assert again["bill_rate"] == rate and again["bill_rate_manual"] is True
+    old = next(p for p in client.get(f"/shipments/{sid}/proformas", headers=h).json() if p["id"] == buyer["id"])
+    assert old["status"] == "superseded"
 
 
 def test_bill_to_details_from_organization_repository(client, admin_headers):

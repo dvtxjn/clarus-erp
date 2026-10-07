@@ -372,6 +372,8 @@ def invoice_filename(proforma: Proforma, ext: str) -> str:
     label = "proforma" + (f" (for {who[4:]})" if who else "")  # "... - proforma (for Harekrishna)"
     if proforma.version_number > 1:
         label += f" v{proforma.version_number}"
+    if proforma.snapshots:  # edited again after sending
+        label += f" rev{len(proforma.snapshots)}"
     name = " - ".join(p.strip() for p in parts + [label] if p)
     return re.sub(r'[\\/*?:"<>|]', "", name) + f".{ext}"
 

@@ -2054,3 +2054,15 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 }
 .drive-chooser-list label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .drive-chooser-list a { flex: none; padding: 2px 6px; }
+
+/* HSS: seller and buyer bill rates differ — meant to be impossible to miss */
+.rate-mismatch { border: 3px solid var(--color-danger); background: var(--color-danger-bg); color: var(--color-danger); border-radius: var(--radius); padding: 14px 16px; margin: 10px 0; text-align: center; }
+.rate-mismatch > strong { display: block; font-size: 26px; letter-spacing: 0.02em; line-height: 1.1; }
+.rate-mismatch-figures { display: flex; justify-content: center; align-items: flex-end; gap: 18px; margin: 10px 0 6px; font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; flex-wrap: wrap; }
+.rate-mismatch-figures small { display: block; font-size: 13px; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.rate-mismatch p { margin: 0; font-size: 13px; }
+.sent-history { margin: 8px 0; font-size: 13px; }
+.sent-history summary { cursor: pointer; font-weight: 600; }
+.sent-history ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.sent-history li { display: flex; gap: 12px; align-items: center; padding: 3px 0; flex-wrap: wrap; }
+.sent-history .num { font-variant-numeric: tabular-nums; }
