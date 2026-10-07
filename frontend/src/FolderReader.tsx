@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getFolderFiles, markFolderFile, syncFolder, type FolderFile, type FolderFileStatus } from "./api";
-import { DOCUMENT_GROUPS, DOCUMENT_TYPE_LABELS, LEGACY_DOCUMENT_TYPES, type DocumentType, type Shipment } from "./types";
+import { DOCUMENT_GROUPS, DOCUMENT_TYPE_LABELS, docShort, LEGACY_DOCUMENT_TYPES, type DocumentType, type Shipment } from "./types";
 
 const STATUS: Record<FolderFileStatus, [string, string]> = {
   added: ["Attached now", "ok"],
@@ -21,7 +21,7 @@ const FILTERS: [string, string, (f: FolderFile) => boolean][] = [
 ];
 
 const TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter((t) => !LEGACY_DOCUMENT_TYPES.includes(t));
-const label = (t: string | null) => (t ? DOCUMENT_TYPE_LABELS[t as DocumentType] ?? t : "");
+const label = (t: string | null) => (t ? (t in DOCUMENT_TYPE_LABELS ? docShort(t as DocumentType) : t) : "");
 const errText = (e: unknown, fallback: string) => {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   return typeof d === "string" ? d : fallback;

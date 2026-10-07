@@ -1,3 +1,4 @@
+import LoadError from "./LoadError";
 import { fmtDay } from "./dates";
 import { useEffect, useState } from "react";
 import {
@@ -36,7 +37,15 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () => listFinalInvoices(shipmentId).then(setItems).catch(() => setItems([]));
+  const [loadErr, setLoadErr] = useState(false);
+  const load = () =>
+    listFinalInvoices(shipmentId).then(
+      (x) => {
+        setItems(x);
+        setLoadErr(false);
+      },
+      () => setLoadErr(true),
+    );
   useEffect(() => {
     load();
   }, [shipmentId]);
@@ -113,7 +122,8 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
         )}
       </div>
       {error && <div role="alert" className="invoice-error">{error}</div>}
-      {items.length === 0 && <p className="tracker-subtitle">No final invoices yet.</p>}
+      {loadErr && <LoadError what="final invoices" onRetry={load} />}
+      {items.length === 0 && !loadErr && <p className="tracker-subtitle">No final invoices yet.</p>}
 
       {/* the pair from this proforma: one number, issued together, one PDF or two (client, 2026-09-30) */}
       {pair.length > 0 && (

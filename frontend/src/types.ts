@@ -606,3 +606,27 @@ export interface FinalInvoice {
   proforma_id: number | null;
   shipment_id: number;
 }
+
+// shorter names inside the grouped table (the group already says "Shipping line" / "CFS")
+export const DOCUMENT_SHORT_LABELS: Partial<Record<DocumentType, string>> = {
+  shipping_line_proforma: "Destination Proforma",
+  shipping_line_invoice: "Destination Tax Invoice",
+  shipping_line_receipt: "Receipt",
+  do_empty_letter: "DO + Empty Letter",
+  cfs_proforma_invoice: "Proforma Invoice",
+  cfs_tax_invoice: "Tax Invoice",
+  cfs_receipt: "Receipt",
+  assessed_bill_of_entry: "Assessed BE",
+  ooc_bill_of_entry: "OOC BE",
+  gatepass_bill_of_entry: "OOC Gatepass",
+  fta_certificate_of_origin: "FTA COO",
+  certificate_of_origin: "COO",
+  bl_copy: "BL",
+  hbl_copy: "HBL",
+  commercial_invoice: "ComInv",
+  packing_list: "PL",
+  form_6_9: "F6,9",
+  hss_agreement: "HSS",
+  hss_stamp_duty: "HSS & Stamp (old)",
+};
+export const docShort = (t: DocumentType) => DOCUMENT_SHORT_LABELS[t] ?? DOCUMENT_TYPE_LABELS[t];

@@ -1,3 +1,5 @@
+import { fmtWhen } from "./dates";
+import LoadError from "./LoadError";
 import { useEffect, useState } from "react";
 import { resolveIcegateMail, shipmentIcegateMails, type IcegateMail } from "./api";
 import { istTime } from "./customsMail";
@@ -10,7 +12,7 @@ import type { Shipment } from "./types";
 function BeStatusCard({ s }: { s: Shipment }) {
   const b = s.icegate?.be_status;
   if (!b) return null;
-  const t = (v?: string | null) => (v ? new Date(v.replace(" ", "T").replace(/\.0$/, "") + "+05:30").toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—");
+  const t = (v?: string | null) => (v ? fmtWhen(v.replace(" ", "T").replace(/\.0$/, "") + "+05:30") : "—");
   const rows: [string, string][] = [
     ["Status", b.label],
     ["Appraisement", b.appraisement === "SYSTEM" ? "System (no officer)" : b.appraisement || "—"],
@@ -43,10 +45,18 @@ function BeStatusCard({ s }: { s: Shipment }) {
 
 export default function CustomsTimeline({ shipmentId, shipment }: { shipmentId: number; shipment?: Shipment }) {
   const [rows, setRows] = useState<IcegateMail[] | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    shipmentIcegateMails(shipmentId).then(setRows).catch(() => setRows([]));
-  }, [shipmentId]);
+    shipmentIcegateMails(shipmentId).then(
+      (r) => {
+        setRows(r);
+        setLoadErr(false);
+      },
+      () => setLoadErr(true),
+    );
+  }, [shipmentId, attempt]);
 
   async function done(m: IcegateMail) {
     const x = await resolveIcegateMail(m.id);
@@ -57,7 +67,9 @@ export default function CustomsTimeline({ shipmentId, shipment }: { shipmentId: 
     <section className="detail-section detail-wide customs" id="customs" aria-labelledby="customs-head">
       <h3 id="customs-head">Customs timeline</h3>
       {shipment && <BeStatusCard s={shipment} />}
-      {rows === null ? (
+      {rows === null && loadErr ? (
+        <LoadError what="the ICEGATE mails" onRetry={() => setAttempt((n) => n + 1)} />
+      ) : rows === null ? (
         <p className="field-note">Loading ICEGATE mails…</p>
       ) : rows.length === 0 ? (
         <p className="field-note">No ICEGATE mails for this shipment yet. They appear here once the mails are read on the Customs mail page.</p>

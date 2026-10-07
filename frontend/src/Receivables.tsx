@@ -1,3 +1,4 @@
+import LoadError from "./LoadError";
 import { fmtDay } from "./dates";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -33,6 +34,8 @@ export default function Receivables() {
   const [withPaid, setWithPaid] = useState(false);
   const [rows, setRows] = useState<ClientReceivable[] | null>(null);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [loadErr, setLoadErr] = useState(false);
+  const [payErr, setPayErr] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [paying, setPaying] = useState<ClientReceivable | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -45,8 +48,20 @@ export default function Receivables() {
   const [pSearch, setPSearch] = useState("");
 
   const load = () => {
-    getReceivables(client, withPaid).then((r) => setRows(r.clients)).catch(() => setRows([]));
-    listPayments(client).then(setPayments).catch(() => setPayments([]));
+    getReceivables(client, withPaid).then(
+      (r) => {
+        setRows(r.clients);
+        setLoadErr(false);
+      },
+      () => setLoadErr(true),
+    );
+    listPayments(client).then(
+      (p) => {
+        setPayments(p);
+        setPayErr(false);
+      },
+      () => setPayErr(true),
+    );
   };
   useEffect(() => {
     const t = window.setTimeout(load, 250);
@@ -173,14 +188,21 @@ export default function Receivables() {
             </tr>
           </thead>
           <tbody>
-            {rows === null && (
+            {loadErr && (
+              <tr>
+                <td colSpan={11}>
+                  <LoadError what="receivables" onRetry={load} />
+                </td>
+              </tr>
+            )}
+            {rows === null && !loadErr && (
               <tr>
                 <td colSpan={11} className="tracker-empty">
                   Loading…
                 </td>
               </tr>
             )}
-            {rows?.length === 0 && (
+            {rows?.length === 0 && !loadErr && (
               <tr>
                 <td colSpan={11} className="tracker-empty">
                   Nothing outstanding.
@@ -256,7 +278,14 @@ export default function Receivables() {
             </tr>
           </thead>
           <tbody>
-            {shownPayments.length === 0 && (
+            {payErr && (
+              <tr>
+                <td colSpan={8}>
+                  <LoadError what="payments" onRetry={load} />
+                </td>
+              </tr>
+            )}
+            {shownPayments.length === 0 && !payErr && (
               <tr>
                 <td colSpan={8} className="tracker-empty">
                   {payments.length ? "No payments match these filters." : "No payments recorded yet."}

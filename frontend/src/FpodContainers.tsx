@@ -1,3 +1,5 @@
+import { fmtDay, fmtDayShort } from "./dates";
+import LoadError from "./LoadError";
 import { useEffect, useState, type FormEvent } from "react";
 import axios from "axios";
 import {
@@ -12,14 +14,9 @@ import { useConfirm } from "./ConfirmDialog";
 import type { Shipment } from "./types";
 
 const STANDARD_FREE_DAYS = 14;
-const fmt = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmt = (v: string | null) => fmtDay(v);
 /** "2026-10-04" -> "04 Oct" (the summary line; the table keeps full dates) */
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const short = (v: string | null | undefined) => {
-  const m = v && /^\d{4}-(\d{2})-(\d{2})/.exec(v);
-  return m ? `${m[2]} ${MON[Number(m[1]) - 1]}` : "—";
-};
+const short = (v: string | null | undefined) => fmtDayShort(v);
 const errText = (e: unknown) =>
   axios.isAxiosError(e) && typeof e.response?.data?.detail === "string" ? e.response.data.detail : "Something went wrong — try again.";
 type Patch = Parameters<typeof editContainer>[2];
@@ -58,9 +55,17 @@ export default function FpodContainers({
   const [showAll, setShowAll] = useState(false);
   const confirm = useConfirm();
 
+  const [loadErr, setLoadErr] = useState(false);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
-    listContainers(shipmentId).then(setRows).catch(() => setRows([]));
-  }, [shipmentId]);
+    listContainers(shipmentId).then(
+      (x) => {
+        setRows(x);
+        setLoadErr(false);
+      },
+      () => setLoadErr(true),
+    );
+  }, [shipmentId, reload]);
 
   // the same full read as "Fetch from ICEGATE" in the IGM details (sea IGM containers + ICD BL status arrivals)
   async function fetchIcegate() {
@@ -253,7 +258,9 @@ export default function FpodContainers({
         </form>
         </div>
       )}
-      {rows === null ? (
+      {rows === null && loadErr ? (
+        <LoadError what="containers" onRetry={() => setReload((n) => n + 1)} />
+      ) : rows === null ? (
         <p className="field-note">Loading containers…</p>
       ) : rows.length === 0 ? (
         <p className="field-note">No containers yet: Fetch from ICEGATE (reads the IGM with the MBL), or add them by hand.</p>

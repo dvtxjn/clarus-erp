@@ -1,8 +1,8 @@
+import { fmtWhen } from "./dates";
 import { useEffect, useState } from "react";
 import { getSheetsMirror, runSheetsMirror, setSheetsMirror, type SheetsMirror } from "./api";
 
-const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => fmtWhen(iso);
 
 function errorText(e: unknown): string {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;

@@ -1,3 +1,4 @@
+import { fmtWhen } from "./dates";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   addDocumentFromDrive,
@@ -33,31 +34,10 @@ import {
   type DocumentType,
   type Shipment,
   type ShipmentDocument,
+  docShort,
 } from "./types";
 
-// shorter names inside the grouped table (the group already says "Shipping line" / "CFS")
-const SHORT_LABELS: Partial<Record<DocumentType, string>> = {
-  shipping_line_proforma: "Destination Proforma",
-  shipping_line_invoice: "Destination Tax Invoice",
-  shipping_line_receipt: "Receipt",
-  do_empty_letter: "DO + Empty Letter",
-  cfs_proforma_invoice: "Proforma Invoice",
-  cfs_tax_invoice: "Tax Invoice",
-  cfs_receipt: "Receipt",
-  assessed_bill_of_entry: "Assessed BE",
-  ooc_bill_of_entry: "OOC BE",
-  gatepass_bill_of_entry: "OOC Gatepass",
-  fta_certificate_of_origin: "FTA COO",
-  certificate_of_origin: "COO",
-  bl_copy: "BL",
-  hbl_copy: "HBL",
-  commercial_invoice: "ComInv",
-  packing_list: "PL",
-  form_6_9: "F6,9",
-  hss_agreement: "HSS",
-  hss_stamp_duty: "HSS & Stamp (old)",
-};
-const short = (t: DocumentType) => SHORT_LABELS[t] ?? DOCUMENT_TYPE_LABELS[t];
+const short = docShort;
 
 const UPLOAD_TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter(
   (t) => !LEGACY_DOCUMENT_TYPES.includes(t),
@@ -404,8 +384,8 @@ export default function DocumentManagerPanel({
                         ? "—"
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
-                              <span title={new Date(d.uploaded_at).toLocaleString("en-IN")}>
-                                {new Date(d.uploaded_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                              <span title={fmtWhen(d.uploaded_at, true)}>
+                                {new Date(d.uploaded_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" })}
                               </span>
                               {READ_ON_UPLOAD.includes(d.document_type) && (
                                 <>

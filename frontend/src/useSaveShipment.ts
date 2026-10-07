@@ -23,7 +23,7 @@ const show = (v: unknown) => (v === null || v === undefined || v === "" ? "(blan
 export function conflictText(c: ShipmentConflict, label?: string): string {
   const who = c.changed_by ?? "Someone";
   const when = c.changed_at
-    ? ` at ${new Date(c.changed_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}`
+    ? ` at ${new Date(c.changed_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}`
     : "";
   return `${who} changed ${label ?? c.field.replace(/_/g, " ")} to “${show(c.current)}”${when}, after you opened it. You entered “${show(c.yours)}”.`;
 }

@@ -1,3 +1,4 @@
+import LoadError from "./LoadError";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { allHistory, historyFilters, type HistoryEntry } from "./api";
@@ -20,6 +21,8 @@ export default function HistoryPage() {
   const q = params.get("q") ?? "";
   const [text, setText] = useState(q);
   const [rows, setRows] = useState<HistoryEntry[] | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [limit, setLimit] = useState(PAGE); // "Load more" raises it (QA 2026-10-07)
   const [f, setF] = useState<{ users: { id: number; name: string }[]; kinds: { kind: string; label: string }[] }>({ users: [], kinds: [] });
 
@@ -29,10 +32,11 @@ export default function HistoryPage() {
   useEffect(() => setLimit(PAGE), [who, kind, from, to, q]);
   useEffect(() => {
     if (limit === PAGE) setRows(null);
+    setLoadErr(false);
     allHistory({ limit, who: who || undefined, kind: kind || undefined, date_from: from || undefined, date_to: to || undefined, q: q || undefined })
       .then(setRows)
-      .catch(() => setRows((x) => x ?? []));
-  }, [who, kind, from, to, q, limit]);
+      .catch(() => setLoadErr(true));
+  }, [who, kind, from, to, q, limit, attempt]);
   useEffect(() => {
     const t = window.setTimeout(() => text !== q && set("q", text.trim()), 400);
     return () => window.clearTimeout(t);
@@ -100,7 +104,9 @@ export default function HistoryPage() {
           </span>
         )}
       </div>
-      {rows === null ? (
+      {rows === null && loadErr ? (
+        <LoadError what="the change history" onRetry={() => setAttempt((n) => n + 1)} />
+      ) : rows === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : rows.length === 0 ? (
         <div className="tracker-empty">{filtered ? "No changes match these filters." : "No changes recorded yet."}</div>
@@ -113,7 +119,7 @@ export default function HistoryPage() {
                 <th>Who</th>
                 <th>Job</th>
                 <th>BL</th>
-                <th>BE no</th>
+                <th>BE No</th>
                 <th>What</th>
                 <th>Was</th>
                 <th>Now</th>

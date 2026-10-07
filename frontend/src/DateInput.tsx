@@ -88,7 +88,10 @@ export default function DateInput({
             e.preventDefault();
             commit();
           }
-          if (e.key === "Escape") onCancel?.();
+          if (e.key === "Escape" && onCancel) {
+            e.preventDefault(); // cancels this box only, not the panel around it
+            onCancel();
+          }
         }}
       />
       <button

@@ -93,7 +93,7 @@ export default function NeedsAttention() {
         <p className="field-note">Checking deadlines, free days and documents…</p>
       ) : alerts.length === 0 ? (
         <p className="attention-empty">
-          All clear: no “d” deadlines, free-day limits, missing documents, ICEGATE queries or IGMs missing near the ETA.
+          All clear: no “d” deadlines, free-day limits, documents not attached, ICEGATE queries or IGMs missing near the ETA.
         </p>
       ) : (
         <>

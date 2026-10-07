@@ -1,3 +1,4 @@
+import { fmtWhen } from "./dates";
 import { tabKeys } from "./tabKeys";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -208,7 +209,11 @@ export default function ProformaPanel({
             placeholder={`v${active.version_number}`}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setRenaming(false)}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return;
+              e.preventDefault();
+              setRenaming(false);
+            }}
             aria-label="Proforma name"
           />
           <button type="submit">Save name</button>
@@ -945,7 +950,7 @@ function DutyNotice({ invoice }: { invoice: InvoiceView }) {
   if (!cd.challan_today)
     return (
       <div className="duty-notice duty-action" role="alert">
-        <strong>Proforma not complete — today's challan isn't uploaded.</strong> Using the list from {new Date(cd.challan_uploaded_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })} ({interest}) — upload today's list on the Dashboard, then{" "}
+        <strong>Proforma not complete — today's challan isn't uploaded.</strong> Using the list from {fmtWhen(cd.challan_uploaded_at)} ({interest}) — upload today's list on the Dashboard, then{" "}
         <b>Fill / refresh</b> for current interest.
       </div>
     );
@@ -1364,7 +1369,10 @@ function EditCell({
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-          if (e.key === "Escape") setEditing(false);
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(false);
+          }
         }}
       />
     </td>
@@ -1711,14 +1719,13 @@ function SentHistory({ proforma }: { proforma: Proforma }) {
     };
   }, [proforma.id, proforma.revisions]);
   if (!rows?.length) return null;
-  const when = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
   return (
     <details className="sent-history">
       <summary>Sent copies ({rows.length})</summary>
       <ul>
         {rows.map((r) => (
           <li key={r.id}>
-            <span>{when.format(new Date(r.created_at))}</span>
+            <span>{fmtWhen(r.created_at, true)}</span>
             <span className="num">{r.bill_rate != null ? `₹${inr(r.bill_rate)}/kg` : "—"}</span>
             <span className="num">{r.grand_total != null ? `₹${inr(r.grand_total)}` : "—"}</span>
             <button

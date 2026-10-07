@@ -34,7 +34,8 @@ router = APIRouter(tags=["history"])
 KINDS = {"shipments": "Shipment", "shipment_containers": "Container", "shipment_documents": "Document",
          "proformas": "Proforma", "proforma_line_items": "Proforma line", "final_invoices": "Invoice",
          "payments": "Payment", "duty_challans": "Duty challan", "organizations": "Organisation",
-         "app_settings": "Settings", "users": "User", "invoice_counters": "Invoice numbering"}
+         "app_settings": "Settings", "users": "User", "invoice_counters": "Invoice numbering",
+         "charge_master_entries": "Rate rule", "licences": "Licence"}
 EDITABLE = set(ShipmentUpdate.model_fields) - {"base", "custom_fields"}
 
 
@@ -44,10 +45,13 @@ def _labels(db: Session) -> dict[str, str]:
     return {c.key: c.label for c in db.query(TrackerColumn).all()}
 
 
+_FIXED = {"missing_from_sheet": "Not in sheet"}  # say what it is, not "missing"
+
+
 def _label(field: str, labels: dict[str, str]) -> str:
     if field.startswith("custom:"):
         return labels.get(field[7:], field[7:])
-    return labels.get(field) or field.replace("_", " ").capitalize()
+    return labels.get(field) or _FIXED.get(field) or field.replace("_", " ").capitalize()
 
 
 def _typed(field: str, raw: Optional[str], model=Shipment) -> tuple[bool, Any]:

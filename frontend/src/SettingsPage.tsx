@@ -1,3 +1,4 @@
+import { fmtWhen } from "./dates";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
@@ -145,7 +146,7 @@ export default function SettingsPage() {
             <span className="field-label">Last backup</span>
             <span>
               {sys.backups.last_ok_at
-                ? `${new Date(sys.backups.last_ok_at).toLocaleString("en-IN")} (${sys.backups.last_ok_age_hours} h ago)${sys.backups.in_drive ? " · in Drive" : ""}`
+                ? `${fmtWhen(sys.backups.last_ok_at, true)} (${sys.backups.last_ok_age_hours} h ago)${sys.backups.in_drive ? " · in Drive" : ""}`
                 : "None yet"}
             </span>
             {sys.backups.warnings.length > 0 && (

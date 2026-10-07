@@ -1,3 +1,4 @@
+import { fmtWhen } from "./dates";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import axios from "axios";
 import { createUser, listUsers, setUserPassword, updateUser } from "./api";
@@ -141,7 +142,7 @@ export default function UsersPage() {
                     ))}
                   </select>
                 </td>
-                <td>{u.last_login_at ? new Date(u.last_login_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—"}</td>
+                <td>{fmtWhen(u.last_login_at, true)}</td>
                 <td>
                   {!u.is_active ? "Switched off" : u.password_reset_requested_at ? <span className="exception-badge">Reset requested</span> : u.read_only ? "View-only" : "Active"}
                 </td>

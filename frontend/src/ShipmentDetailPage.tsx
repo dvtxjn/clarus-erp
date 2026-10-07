@@ -1,3 +1,5 @@
+import { fmtDay, fmtDayShort, fmtWhen } from "./dates";
+import LoadError from "./LoadError";
 import { tabKeys } from "./tabKeys";
 import { copyText } from "./clipboard";
 import CustomsTimeline from "./CustomsTimeline";
@@ -8,7 +10,7 @@ import { useAuth } from "./AuthContext";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, refreshIcegate, setCostInclusion } from "./api";
 import { useSaveShipment } from "./useSaveShipment";
-import { DOCUMENT_TYPE_LABELS, SHIPMENT_STATUS_LABELS, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
+import { SHIPMENT_STATUS_LABELS, docShort, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
 import ProformaPanel from "./ProformaPanel";
 import FpodContainers from "./FpodContainers";
@@ -21,13 +23,9 @@ type Tab = "overview" | "customs" | "documents" | "history" | "proforma";
 // sea ports: free days start at the POD inward; every other port is inland (ICD) — client, 2026-09-30
 const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 /** "2026-08-27" -> "27 Aug 2026" */
 function fmtDate(v: string | null): string | null {
-  if (!v) return null;
-  const [y, m, d] = v.split("-");
-  return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
+  return v ? fmtDay(v) : null;
 }
 
 /** "108560.00" -> "₹1,08,560.00" (Indian grouping) */
@@ -99,6 +97,9 @@ export function ShipmentDetail({
   const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
   const [loading, setLoading] = useState(true);
+  // why the load failed: 404 = gone; anything else (network, 500) gets a Retry, never "doesn't exist"
+  const [loadErr, setLoadErr] = useState<"gone" | "failed" | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [localTab, setLocalTab] = useState<Tab>("overview"); // peek panel: no URL of its own
   const tab = tabProp ?? localTab;
   const setTab = onTab ?? setLocalTab;
@@ -113,14 +114,22 @@ export function ShipmentDetail({
     // documents come with the first load, so the Overview draws complete (no late push-down)
     const docs = listDocuments(shipmentId).then((all) => void docsCache.set(shipmentId, all)).catch(() => {});
     const one = getShipment(shipmentId).then(
-      (s) => live && setShipment(s),
-      () => live && setShipment(null),
+      (s) => {
+        if (!live) return;
+        setShipment(s);
+        setLoadErr(null);
+      },
+      (e) => {
+        if (!live) return;
+        setShipment(null);
+        setLoadErr(axios.isAxiosError(e) && e.response?.status === 404 ? "gone" : "failed");
+      },
     );
     Promise.all([one, docs]).finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
-  }, [shipmentId]);
+  }, [shipmentId, reloadKey]);
 
   // tabs: one underline that slides to the active tab (transform only), so the labels never shift
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -139,6 +148,8 @@ export function ShipmentDetail({
   }, [peek, job]);
 
   if (!shipment && loading) return <DetailSkeleton peek={peek && !full} />;
+  if (!shipment && loadErr === "failed")
+    return <LoadError what="this shipment" onRetry={() => setReloadKey((n) => n + 1)} />;
   if (!shipment)
     return (
       <div className="tracker-empty">
@@ -292,11 +303,11 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           <div className="field-grid">
             <EditField label="Port (POD)" field="port" kind="port" s={s} onChange={onChange} display={formatPort(s.port, ports) || null} />
             <EditField label="ETA" field="eta" kind="date" s={s} onChange={onChange} display={fmtDate(s.eta)} />
-            <EditField label="INW" field="inw" s={s} onChange={onChange} hint="Typed like the sheet, e.g. 19-Sep-2026" />
+            <EditField label="INW" field="inw" s={s} onChange={onChange} display={s.inw ? s.inw.replace(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/, (_, d, m, y) => `${d.padStart(2, "0")} ${m} ${y}`) : null} hint="Typed like the sheet, e.g. 19-Sep-2026" />
             <Field label="Day" value={s.days} />
             <EditField label="Containers" field="container" s={s} onChange={onChange} />
             <EditField label="Gross Wt" field="gross_wt" s={s} onChange={onChange} />
-            <EditField label="Cont. status" field="container_status" s={s} onChange={onChange} />
+            <EditField label="Container status" field="container_status" s={s} onChange={onChange} />
             <EditField label="CFS" field="cfs" s={s} onChange={onChange} />
             <EditField label="POC" field="poc" s={s} onChange={onChange} />
             <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
@@ -874,7 +885,7 @@ function InvoiceGroup({
         <div key={d.id} className={`invoice-row${counted.has(d.id) ? "" : " invoice-not-counted"}`}>
           <div className="invoice-row-head">
             <span title={d.generated_filename}>
-              {DOCUMENT_TYPE_LABELS[d.document_type]}
+              {docShort(d.document_type)}
               {!counted.has(d.id) && <span className="field-note"> · not counted (tax invoice received)</span>}
               {d.amounts_edited && <span className="edited-tag">corrected</span>}
             </span>
@@ -1021,7 +1032,11 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
     const away = (e: MouseEvent) => {
       if (popover.current && !popover.current.contains(e.target as Node)) setOpen(null);
     };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(null);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault(); // the picker only — the peek stays
+      setOpen(null);
+    };
     const scrolled = (e: Event) => {
       if (!(e.target instanceof Node && popover.current?.contains(e.target))) setOpen(null);
     };
@@ -1158,9 +1173,7 @@ function NextStepBar({ shipment }: { shipment: Shipment }) {
 
 /** "2026-10-04" (or an ICEGATE timestamp starting with one) -> "04 Oct"; anything else as it came. */
 function shortDate(v: string | null | undefined): string | null {
-  if (!v) return null;
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
-  return m ? `${m[3]} ${MONTHS[Number(m[2]) - 1]}` : v.split(" ")[0];
+  return v ? fmtDayShort(v) : null;
 }
 
 /** One card, six cells: the keys everything is filed and searched by, and where the shipment is. */
@@ -1176,8 +1189,8 @@ function KeyStrip({ s }: { s: Shipment }) {
       wide: true,
     },
     {
-      label: "BE",
-      value: s.be_no ? <CopyValue value={s.be_no} label="BE no" /> : "Not filed yet",
+      label: "BE No",
+      value: s.be_no ? <CopyValue value={s.be_no} label="BE No" /> : "Not filed yet",
       sub: s.be_no ? fmtDate(s.be_dt) ?? "date not entered" : null,
       empty: !s.be_no,
     },
@@ -1363,7 +1376,10 @@ function EditField({
     }
   };
   const keys = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Escape") {
+      e.preventDefault(); // cancels the edit only — the peek stays
+      setEditing(false);
+    }
     if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       save();
@@ -1463,7 +1479,7 @@ function IcegateBar({ s, onChange, open, onToggle }: { s: Shipment; onChange: (s
     }
   }
   const at = s.icegate?.fetched_at
-    ? new Date(s.icegate.fetched_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+    ? fmtWhen(s.icegate.fetched_at)
     : null;
   return (
     <>

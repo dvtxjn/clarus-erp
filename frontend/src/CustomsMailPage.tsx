@@ -1,3 +1,4 @@
+import LoadError from "./LoadError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
@@ -45,6 +46,7 @@ export default function CustomsMailPage() {
   const [kinds, setKinds] = useState<{ kind: string; label: string }[]>([]);
   const ports = usePorts();
   const [rows, setRows] = useState<IcegateMail[] | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -60,8 +62,11 @@ export default function CustomsMailPage() {
       date_to: to || undefined,
     } as const;
     listIcegateMails({ ...f, attention: view === "attention", unmatched: view === "unmatched" })
-      .then(setRows)
-      .catch(() => setRows([]));
+      .then((r) => {
+        setRows(r);
+        setLoadErr(false);
+      })
+      .catch(() => setLoadErr(true));
     listIcegateMails({ ...f, attention: true, limit: 2000 })
       .then((r) => setCounts((c) => ({ ...c, attention: r.length })))
       .catch(() => undefined);
@@ -290,7 +295,9 @@ export default function CustomsMailPage() {
         )}
       </div>
 
-      {shown === null ? (
+      {shown === null && loadErr ? (
+        <LoadError what="customs mails" onRetry={load} />
+      ) : shown === null ? (
         <div className="tracker-empty">Loading…</div>
       ) : shown.length === 0 ? (
         <div className="tracker-empty">
@@ -310,7 +317,7 @@ export default function CustomsMailPage() {
                 <th>Received</th>
                 <th>Type</th>
                 <th>Job</th>
-                <th>BE no</th>
+                <th>BE No</th>
                 <th>BL</th>
                 <th>Client</th>
                 <th>What it says</th>

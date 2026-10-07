@@ -1,3 +1,6 @@
+import { useDismiss } from "./useDismiss";
+import { fmtWhen } from "./dates";
+import LoadError from "./LoadError";
 import { tabKeys } from "./tabKeys";
 import { copyText } from "./clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
@@ -264,28 +267,37 @@ const FLAG_LABELS = Object.fromEntries([...FLAGS, ...CFS_TDS_FLAGS].map(([f, , t
 >;
 
 interface GridContext {
-  toggleFlag: (s: Shipment, field: FlagField) => void;
+  toggleFlag: (s: Shipment, field: FlagField) => Promise<void>;
   saveText: (s: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => Promise<void>;
 }
 
 function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & { flags: FlagList }) {
+  // the chip flips at once and holds still until the save answers (no double-click toggling it back)
+  const [busy, setBusy] = useState<FlagField | null>(null);
   if (!p.data) return null;
   const s = p.data;
   return (
     <span className="checklist-cell">
-      {p.flags.map(([f, label, tip]) => (
-        <button
-          key={f}
-          type="button"
-          className={s[f] ? "check-chip is-on" : "check-chip"}
-          aria-pressed={!!s[f]}
-          title={`${tip}: ${s[f] ? "Yes" : "No"} — click to change`}
-          onClick={() => p.context.toggleFlag(s, f)}
-        >
-          {s[f] && <span aria-hidden="true">✓ </span>}
-          {label}
-        </button>
-      ))}
+      {p.flags.map(([f, label, tip]) => {
+        const on = busy === f ? !s[f] : !!s[f];
+        return (
+          <button
+            key={f}
+            type="button"
+            className={`check-chip${on ? " is-on" : ""}${busy === f ? " is-pending" : ""}`}
+            aria-pressed={on}
+            aria-busy={busy === f || undefined}
+            title={`${tip}: ${on ? "Yes" : "No"} — click to change`}
+            onClick={() => {
+              setBusy(f);
+              Promise.resolve(p.context.toggleFlag(s, f)).finally(() => setBusy(null));
+            }}
+          >
+            {on && <span aria-hidden="true">✓ </span>}
+            {label}
+          </button>
+        );
+      })}
     </span>
   );
 }
@@ -346,7 +358,7 @@ function withSavedState(defs: ColDef<Shipment>[], key: string): ColDef<Shipment>
           ...d,
           ...(c.width ? { width: c.width } : {}),
           hide: !!c.hide,
-          pinned: c.pinned ?? null,
+          pinned: d.pinned ?? c.pinned ?? null, // the keys (Job, MBL, BE No) stay pinned whatever was saved
           ...(hasSort ? { sort: c.sort ?? null, sortIndex: c.sortIndex ?? null } : {}),
         },
         order,
@@ -411,7 +423,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         </span>
       ),
     },
-    text("be_no", "BE No", 82),
+    { ...text("be_no", "BE No", 82), pinned: "left" }, // with Job and MBL: the keys stay in view beside the peek
     { ...dateCol("be_dt", "BE Dt", 80), valueFormatter: (p: ValueFormatterParams) => shortDate(p.value as string | null, true) },
     { ...text("be_description", "Desc", 220), headerTooltip: "BE Description" },
     {
@@ -495,7 +507,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       valueGetter: (p) => p.data?.icegate?.be_status?.label ?? "",
       tooltipValueGetter: (p) => {
         const b = p.data?.icegate?.be_status;
-        return b ? `${b.label}\nRead ${new Date(b.fetched_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}` : "";
+        return b ? `${b.label}\nRead ${fmtWhen(b.fetched_at)}` : "";
       },
     },
     text("igm", "IGM", 78),
@@ -655,8 +667,16 @@ export default function ShipmentGridPage() {
   );
   useEffect(() => {
     const open = (e: Event) => setPeek((e as CustomEvent<number>).detail);
+    // Esc closes only the topmost layer: a popover/menu/field that handled it calls preventDefault first
     const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector(".ag-cell-inline-editing, .confirm-dialog")) setPeek(null);
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, [contenteditable='true']")) {
+        t.blur();
+        return;
+      }
+      if (document.querySelector(".ag-cell-inline-editing, .confirm-dialog, .modal-backdrop")) return;
+      setPeek(null);
     };
     window.addEventListener("tracker:peek", open);
     window.addEventListener("keydown", esc);
@@ -675,6 +695,12 @@ export default function ShipmentGridPage() {
   const [showImport, setShowImport] = useState(false);
   const [showFolders, setShowFolders] = useState(false);
   const toolsRef = useRef<HTMLDetailsElement>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  useDismiss(toolsRef, toolsOpen, () => toolsRef.current?.removeAttribute("open"));
+  const columnsRef = useRef<HTMLDivElement>(null);
+  useDismiss(columnsRef, showColumns, () => setShowColumns(false));
+  const chipFoldRef = useRef<HTMLDivElement>(null);
+  useDismiss(chipFoldRef, chipsOpen, () => setChipsOpen(false));
   const [showIcegate, setShowIcegate] = useState(false);
   const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set());
   const [colView, setColView] = useState<ColumnView>(() => {
@@ -730,16 +756,18 @@ export default function ShipmentGridPage() {
     setTrackerCols((prev) => (JSON.stringify(prev) === JSON.stringify(cols) ? prev : cols));
   }, [statusFilter, tab]);
 
+  const [loadErr, setLoadErr] = useState(false);
+  const load = useCallback(() => refresh().then(() => setLoadErr(false), () => setLoadErr(true)), [refresh]);
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    load();
+  }, [load]);
 
   // Keep the tracker current (Day counts, other people's edits) without a
   // manual reload — but never while someone is mid-edit in a cell.
   useEffect(() => {
     const isEditing = () => sectionApis().some((api) => api.getEditingCells().length > 0);
     const tick = () => {
-      if (document.visibilityState === "visible" && !isEditing()) refresh();
+      if (document.visibilityState === "visible" && !isEditing()) load();
     };
     const id = setInterval(tick, AUTO_REFRESH_MS);
     document.addEventListener("visibilitychange", tick);
@@ -748,7 +776,7 @@ export default function ShipmentGridPage() {
       document.removeEventListener("visibilitychange", tick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh]);
+  }, [load]);
 
   // --- live updates: other people's edits appear within about a second ---
   const [live, setLive] = useState(false);
@@ -1159,7 +1187,13 @@ export default function ShipmentGridPage() {
   function onHeaderReady() {
     try {
       const saved = localStorage.getItem(columnStateKey);
-      if (saved) headerRef.current?.api.applyColumnState({ state: JSON.parse(saved), applyOrder: true });
+      if (saved) {
+        const keys = new Set(["job", "mbl", "be_no"]);
+        const state = (JSON.parse(saved) as ColumnState[]).map((c) =>
+          keys.has(c.colId) ? { ...c, pinned: "left" as const } : c,
+        );
+        headerRef.current?.api.applyColumnState({ state, applyOrder: true });
+      }
     } catch {
       /* ignore bad saved state */
     }
@@ -1628,7 +1662,7 @@ export default function ShipmentGridPage() {
         <div className="tracker-search">
           <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
         </div>
-        <div className="columns-anchor">
+        <div className="columns-anchor" ref={columnsRef}>
           <button className="btn-secondary" onClick={() => { syncHidden(); setShowColumns((v) => !v); }}>
             Columns{hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ""}
           </button>
@@ -1655,7 +1689,7 @@ export default function ShipmentGridPage() {
           </button>
         )}
         {(isAdmin || driveReady) && (
-          <details className="tools-menu" ref={toolsRef}>
+          <details className="tools-menu" ref={toolsRef} onToggle={(e) => setToolsOpen(e.currentTarget.open)}>
             <summary className="btn-secondary">Admin tools…</summary>
             <div className="tools-menu-list" role="menu" onClick={() => toolsRef.current?.removeAttribute("open")}>
               {isAdmin && (
@@ -1706,12 +1740,20 @@ export default function ShipmentGridPage() {
       )}
 
       {shipments === null ? (
-        <div className="tracker-empty">Loading…</div>
+        loadErr ? (
+          <LoadError what="shipments" onRetry={load} />
+        ) : (
+          <div className="grid-skeleton" aria-busy="true" aria-label="Loading shipments">
+            {Array.from({ length: 10 }, (_, i) => (
+              <div key={i} className="sk sk-row" />
+            ))}
+          </div>
+        )
       ) : (
         <SettledStack key={`${tab}.${view}`}>
           <div className="grid-sticky-top">
           {tab === "ongoing" && (
-            <div className="chip-fold">
+            <div className="chip-fold" ref={chipFoldRef}>
             {/* a narrow tracker (the peek open beside it) folds the chips under one button */}
             <button
               type="button"
@@ -2173,7 +2215,10 @@ function MiniFieldPopover({
   };
   const keys = (e: React.KeyboardEvent) => {
     e.stopPropagation();
-    if (e.key === "Escape") onClose();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
     if (e.key === "Enter" && (!multiline || e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       save();

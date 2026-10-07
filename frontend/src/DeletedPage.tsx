@@ -1,3 +1,4 @@
+import { fmtWhen } from "./dates";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { listDeleted, restoreDeleted, type DeletedItem } from "./api";
@@ -153,7 +154,7 @@ export default function DeletedPage() {
                   )}
                   {d.shipment_deleted && <span className="exception-badge"> shipment deleted</span>}
                 </td>
-                <td>{new Date(d.deleted_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</td>
+                <td>{fmtWhen(d.deleted_at, true)}</td>
                 <td>{d.deleted_by ?? "—"}</td>
                 <td className="num">
                   <button

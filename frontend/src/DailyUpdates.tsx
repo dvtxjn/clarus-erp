@@ -18,8 +18,8 @@ function when(iso: string | null): string {
   if (!iso) return "never";
   const d = new Date(iso);
   const today = new Date().toDateString() === d.toDateString();
-  const time = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  return today ? `today ${time}` : `${d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} ${time}`;
+  const time = d.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  return today ? `today ${time}` : `${d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" })} ${time}`;
 }
 
 function errorText(e: unknown): string {

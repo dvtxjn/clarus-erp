@@ -1,3 +1,4 @@
+import { useDismiss } from "./useDismiss";
 import IdleLogout from "./IdleLogout";
 import UpdateCheck from "./UpdateCheck";
 import ClarusLogo from "./ClarusLogo";
@@ -48,6 +49,7 @@ export default function AppLayout() {
   const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false); // phone: the "More" sheet
   useEffect(() => setMoreOpen(false), [pathname]);
+  useDismiss(null, moreOpen, () => setMoreOpen(false));
   useEffect(() => {
     const [section, id] = pathname.split("/").filter(Boolean);
     const name = section === "shipments" && id ? "Shipment" : PAGE_TITLES[section ?? ""];
@@ -70,6 +72,7 @@ export default function AppLayout() {
     if (!appearanceOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      e.preventDefault();
       setAppearanceOpen(false);
       appearanceBtn.current?.focus();
     };
@@ -248,16 +251,18 @@ export default function AppLayout() {
       {moreOpen && (
         <div className="m-sheet-backdrop" onClick={() => setMoreOpen(false)}>
           <div className="m-sheet" role="dialog" aria-modal="true" aria-label="More" onClick={(e) => e.stopPropagation()}>
-            {user?.role === "admin" && (
-              <nav className="m-sheet-links" aria-label="More pages">
-                <NavLink to="/customs-mail">{ICONS.mail}Customs mail</NavLink>
-                <NavLink to="/rates">{ICONS.rates}Rates</NavLink>
-                <NavLink to="/users">{ICONS.users}Users</NavLink>
-                <NavLink to="/history">{ICONS.history}Change history</NavLink>
-                <NavLink to="/deleted">{ICONS.deleted}Recently deleted</NavLink>
-                <NavLink to="/settings">{ICONS.settings}Settings</NavLink>
-              </nav>
-            )}
+            <nav className="m-sheet-links" aria-label="More pages">
+              <NavLink to="/customs-mail">{ICONS.mail}Customs mail</NavLink>
+              {user?.role === "admin" && (
+                <>
+                  <NavLink to="/rates">{ICONS.rates}Rates</NavLink>
+                  <NavLink to="/users">{ICONS.users}Users</NavLink>
+                  <NavLink to="/history">{ICONS.history}Change history</NavLink>
+                  <NavLink to="/deleted">{ICONS.deleted}Recently deleted</NavLink>
+                  <NavLink to="/settings">{ICONS.settings}Settings</NavLink>
+                </>
+              )}
+            </nav>
             <div className="theme-switch" role="radiogroup" aria-label="Theme">
               {THEMES.map((t) => (
                 <button

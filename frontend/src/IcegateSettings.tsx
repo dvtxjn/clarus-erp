@@ -1,8 +1,8 @@
+import { fmtWhen } from "./dates";
 import { useEffect, useRef, useState } from "react";
 import { getIcegateStatus, listShipments, refreshIcegate, type IcegateStatus } from "./api";
 
-const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+const when = (iso: string) => fmtWhen(iso);
 
 /**
  * Shipments → Read ICEGATE (client, 2026-09-30; moved from Settings to sit by the shipments): the automatic read every 6 h (which shipments it takes), and a

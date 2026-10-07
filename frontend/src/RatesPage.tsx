@@ -465,7 +465,7 @@ function HssRules({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
               <div className="org-form-actions">
                 <button disabled={!p.dirty} onClick={() => save(p)}>Save rule</button>
                 {(p.rules.seller || p.rules.buyer) && (
-                  <button className="btn-secondary link-danger" onClick={() => remove(p)}>Delete rule</button>
+                  <button className="btn-secondary link-danger danger-apart" onClick={() => remove(p)}>Delete rule</button>
                 )}
               </div>
             )}

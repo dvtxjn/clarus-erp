@@ -364,7 +364,6 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .accent-picker button.on { box-shadow: 0 0 0 2px var(--color-text); }
 .app-main { flex: 1; min-width: 0; }
 /* page tools in the sidebar: it widens only while a page has put something there */
-.app-sidebar { transition: width .15s; }
 .app-sidebar:has(.app-sidebar-slot:not(:empty)) { width: 300px; }
 .app-sidebar-slot { flex: 1; min-height: 0; overflow: auto; margin: 6px -10px 0; padding: 0 10px; }
 .app-sidebar-slot:empty { display: none; }
@@ -891,7 +890,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 
 /* --- Standard rates --- */
 .rates-page { padding: 18px 24px; display: flex; flex-direction: column; gap: 14px; }
-.rates-page h1 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+.rates-page h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.011em; }
 .rates-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
 .rates-actions { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
 .rates-actions input[type="search"] { width: 220px; }
@@ -1199,7 +1198,6 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 @media (max-width: 1400px) { .dash-pair { grid-template-columns: 1fr; } }
 
 /* Rates: tabs, licences side by side */
-.rates-page h1 { margin: 0; }
 .rates-tabs { margin-top: 4px; }
 .rates-page .hss-rules { margin-top: 0; }
 /* licences: one row each, click to open its rates */
@@ -1238,7 +1236,6 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .peek-panel {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: var(--z-panel); width: min(1180px, 72vw); overflow-y: auto;
   background: var(--color-bg); border-left: 1px solid var(--color-border); box-shadow: var(--shadow-lg);
-  animation: peek-in .16s ease-out;
 }
 @keyframes peek-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .detail-peek { padding: 12px 18px 24px; }
@@ -1448,8 +1445,8 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .settings-form .settings-wide { grid-column: 1 / -1; }
 .settings-form input, .settings-form textarea, .settings-list textarea { width: 100%; font-family: inherit; font-size: 13px; padding: 6px 9px; }
 .settings-save { display: flex; gap: 8px; align-items: center; }
-.settings-unsaved { color: var(--warn-fg, #b45309); font-size: 12.5px; font-weight: 500; }
-.settings-section:has(.settings-save.is-dirty) { box-shadow: inset 3px 0 0 var(--warn-fg, #b45309); padding-left: 12px; }
+.settings-unsaved { color: var(--warn-fg); font-size: 12.5px; font-weight: 500; }
+.settings-section:has(.settings-save.is-dirty) { box-shadow: inset 3px 0 0 var(--warn-fg); padding-left: 12px; }
 .settings-page textarea { field-sizing: content; min-height: 3lh; resize: vertical; }
 .settings-ok { color: var(--ok-fg); font-size: 12.5px; }
 .settings-rows { display: flex; flex-direction: column; gap: 6px; }
@@ -1929,13 +1926,11 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 /* peek panel: half view <-> full width over the tracker (the tracker stays loaded behind it) */
 .peek-panel.is-full { width: calc(100vw - 216px); animation: none; }
 .sidebar-collapsed .peek-panel.is-full { width: calc(100vw - 52px); }
-.peek-panel { transition: width .16s ease-out; }
 .peek-size { height: 30px; padding: 0 12px; font-size: var(--text-sm); }
 .peek-bar-right { display: flex; align-items: center; gap: 6px; }
 .peek-newtab { font-size: var(--text-xs); color: var(--color-text-muted); text-decoration: none; padding: 4px 6px; border-radius: var(--radius-sm); }
 .peek-newtab:hover { color: var(--color-text); background: var(--color-hover); }
 .peek-panel.is-full > .detail-page { padding: 12px 24px 24px; }
-@media (prefers-reduced-motion: reduce) { .peek-panel { transition: none; } }
 @media (max-width: 900px) { .peek-panel.is-full { width: 100vw; } }
 .auth-notice { font-size: var(--text-sm); padding: 8px 10px; border-radius: var(--radius); background: var(--info-bg); color: var(--info-fg); }
 .idle-backdrop { z-index: calc(var(--z-modal) + 5); }
@@ -1974,7 +1969,7 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .tools-menu[open] > summary { background: var(--color-subtle); border-color: var(--color-text-muted); }
 .tools-menu > summary::-webkit-details-marker { display: none; }
 .tools-menu-list { position: absolute; right: 0; top: calc(100% + 4px); z-index: var(--z-popover); min-width: 260px; display: flex; flex-direction: column; padding: 4px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
-.tools-menu-list button { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm, 4px); cursor: pointer; font-size: 13px; }
+.tools-menu-list button { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; }
 .tools-menu-list button:hover, .tools-menu-list button:focus-visible { background: var(--color-hover); }
 .tools-menu-list button:focus-visible { box-shadow: var(--focus-ring); }
 .field-jump { justify-self: start; align-self: center; font-size: var(--text-sm); }
@@ -1982,9 +1977,9 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 
 /* Next step in the clearance (clearanceFlow.ts), under the shipment header */
 .next-step { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--color-border-soft); border-left: 3px solid var(--color-accent); border-radius: var(--radius-sm); font-size: 13px; }
-.next-step.is-blocked { border-left-color: var(--warn-fg, #b45309); }
+.next-step.is-blocked { border-left-color: var(--warn-fg); }
 .next-step-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
-.next-step.is-blocked .next-step-label { color: var(--warn-fg, #b45309); }
+.next-step.is-blocked .next-step-label { color: var(--warn-fg); }
 .next-step-detail { color: var(--color-text-muted); min-width: 0; overflow-wrap: anywhere; }
 .next-step-also { color: var(--color-text-muted); font-size: 12px; }
 /* stacked on a phone, the row flex-basis above would become a height: size the header cards to their content */
@@ -2001,7 +1996,7 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 @media (max-width: 767px) { .update-banner { bottom: calc(72px + env(safe-area-inset-bottom)); } }
 
 /* Receivables — date filters with a visible label */
-.final-field-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-muted, #6b7280); }
+.final-field-inline { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-muted); }
 
 /* Mac overlay scrollbars sat on top of each section's last row (client, 2026-10-01): give the sideways
    scrollbar its own strip under the rows; the header grid has no rows, so it needs none */
@@ -2020,10 +2015,10 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .folder-reader-table { width: 100%; }
 .folder-reader-table select { max-width: 260px; width: 100%; }
 .folder-status { font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: normal; }
-.folder-status-ok { background: color-mix(in srgb, var(--color-success, #1a7f37) 15%, transparent); }
-.folder-status-warn { background: color-mix(in srgb, var(--color-warning, #b26a00) 18%, transparent); }
+.folder-status-ok { background: color-mix(in srgb, var(--ok-fg) 15%, transparent); }
+.folder-status-warn { background: color-mix(in srgb, var(--warn-fg) 18%, transparent); }
 .folder-status-muted { opacity: 0.7; }
-.folder-status-bad { background: color-mix(in srgb, var(--color-danger, #c62828) 15%, transparent); }
+.folder-status-bad { background: color-mix(in srgb, var(--color-danger) 15%, transparent); }
 
 /* Destructive actions read as red at a glance (client, 2026-10-05): delete / cancel buttons are filled red,
    button labels a size up so options are easy to read. */
@@ -2099,14 +2094,14 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .app-foot-row .app-user { flex: 1; }
 .appearance-toggle { background: none; border: none; box-shadow: none; padding: 2px 8px; border-radius: var(--radius); color: var(--color-text-muted); font-size: 14px; line-height: 1.4; }
 .appearance-toggle:hover, .appearance-toggle[aria-expanded="true"] { background: var(--color-hover); color: var(--color-text); }
-.appearance-pop { position: fixed; z-index: 1000; width: 220px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.appearance-pop { position: fixed; z-index: var(--z-modal); width: 220px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
 .appearance-pop-title { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
 .sidebar-collapsed .appearance-toggle, .sidebar-collapsed .appearance-pop { display: none; }
 
 /* peek: NEXT first, with Duty / CFS / Line ticks (no amounts) */
 .next-ticks { display: inline-flex; gap: 10px; margin-left: auto; font-size: 12px; color: var(--color-text-muted); }
 .next-ticks .ok { color: var(--color-text); }
-.next-ticks .ok::before { content: "✓ "; color: var(--ok-fg, #15803d); }
+.next-ticks .ok::before { content: "✓ "; color: var(--ok-fg); }
 .next-ticks .no::before { content: "✗ "; }
 
 /* Final invoices: breathing room between Outstanding and Status */
@@ -2403,7 +2398,13 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
   .chip-fold-btn { display: inline-flex; }
   .chip-fold > .filter-chips { display: none; }
   .chip-fold > .filter-chips.is-open {
-    display: flex; position: absolute; top: 100%; left: 0; z-index: 20; width: min(420px, 100%); margin: 0;
+    display: flex; position: absolute; top: 100%; left: 0; z-index: var(--z-popover); width: min(420px, 100%); margin: 0;
     padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
   }
 }
+
+/* FE audit v1 — C2/C3/C4 */
+.check-chip.is-pending { opacity: .6; pointer-events: none; }
+.ag-cell { font-variant-numeric: tabular-nums; }
+.grid-skeleton { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
+.sk-row { height: 20px; border-radius: var(--radius-sm); }

@@ -1,3 +1,4 @@
+import LoadError from "./LoadError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { editContainer, shipmentHistory, updateShipment, type HistoryEntry } from "./api";
 import { useConfirm } from "./ConfirmDialog";
@@ -16,6 +17,7 @@ function errorText(e: unknown): string {
  */
 export default function ShipmentHistory({ shipment, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
   const [rows, setRows] = useState<HistoryEntry[] | null>(null);
+  const [loadErr, setLoadErr] = useState(false);
   const [kind, setKind] = useState("");
   const [who, setWho] = useState("");
   const [field, setField] = useState("");
@@ -24,7 +26,13 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
   const confirm = useConfirm();
 
   const load = useCallback(() => {
-    shipmentHistory(shipment.id).then(setRows).catch(() => setRows([]));
+    shipmentHistory(shipment.id).then(
+      (r) => {
+        setRows(r);
+        setLoadErr(false);
+      },
+      () => setLoadErr(true),
+    );
   }, [shipment.id]);
   useEffect(load, [load, shipment.version]);
 
@@ -116,7 +124,9 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
           {msg.text}
         </div>
       )}
-      {rows === null ? (
+      {rows === null && loadErr ? (
+        <LoadError what="the history" onRetry={load} />
+      ) : rows === null ? (
         <p className="field-note">Loading history…</p>
       ) : shown.length === 0 ? (
         <p className="field-note">{filtered ? "No changes match these filters." : "No changes recorded yet."}</p>
