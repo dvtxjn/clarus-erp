@@ -321,3 +321,40 @@ def test_drive_status_without_server_drive(client, admin_headers):
     assert client.get("/drive/status", headers=admin_headers).json() == {"server": False}
     assert client.get("/drive/folders", params={"q": "abc"}).status_code == 401
     assert client.get("/drive/folders", params={"q": "abc"}, headers=admin_headers).status_code == 400
+
+
+def test_big_upload_goes_in_resumable_pieces_and_survives_a_stalled_piece(monkeypatch):
+    """Backups are bigger than one request can carry in time: pieces, and a timed-out piece is resumed."""
+    import httpx
+    from app.storage import drive_client as dc
+
+    monkeypatch.setattr(dc, "CHUNK", 256 * 1024)
+    monkeypatch.setattr(dc.time, "sleep", lambda s: None)
+    data = os.urandom(dc.ONE_SHOT_MAX + 300 * 1024)
+    got, stalled = bytearray(), []
+
+    def handler(req: httpx.Request):
+        if req.method == "DELETE":
+            raise AssertionError("no deletes")
+        if req.method == "POST":
+            assert req.url.params["uploadType"] == "resumable"
+            assert req.headers["x-upload-content-length"] == str(len(data))
+            return httpx.Response(200, headers={"Location": "https://upload.example/session1"})
+        rng = req.headers["content-range"]
+        if rng.startswith("bytes */"):  # status query after the stall
+            return httpx.Response(308, headers={"Range": f"bytes=0-{len(got) - 1}"} if got else {})
+        start = int(rng.split(" ")[1].split("-")[0])
+        if start == 512 * 1024 and not stalled:
+            stalled.append(1)
+            raise httpx.ReadTimeout("The read operation timed out", request=req)
+        assert start == len(got)
+        got.extend(req.content)
+        if len(got) == len(data):
+            return httpx.Response(200, json={"id": "big1", "size": str(len(data))})
+        return httpx.Response(308, headers={"Range": f"bytes=0-{len(got) - 1}"})
+
+    c = DriveClient(ROOTS.values(), service_account={"client_email": "x", "private_key": "x"})
+    c._http = httpx.Client(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(c, "_auth", lambda: {"Authorization": "Bearer t"})
+    meta = c.upload("root-bak", "b.enc", data, "application/octet-stream", linked=True)
+    assert meta["id"] == "big1" and bytes(got) == data and stalled

@@ -25,6 +25,18 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 SHARED = {"supportsAllDrives": "true"}
 
 
+ONE_SHOT_MAX = 5 * 1024 * 1024  # Google: one-request uploads only up to 5 MB
+CHUNK = 8 * 1024 * 1024  # resumable pieces (a multiple of 256 KB)
+CHUNK_TIMEOUT = httpx.Timeout(300, connect=30)
+RETRIES = 5
+
+
+def _received(r: httpx.Response) -> int:
+    """Bytes Google holds so far, from a 308's "Range: bytes=0-N" (none yet when absent)."""
+    rng = r.headers.get("range")
+    return int(rng.rsplit("-", 1)[1]) + 1 if rng else 0
+
+
 class DriveError(Exception):
     pass
 
@@ -154,6 +166,8 @@ class DriveClient:
         linked=True: a shipment folder staff linked (or picked at save time) — it may sit outside the roots."""
         if not linked:
             self.check_inside(parent_id)
+        if len(data) > ONE_SHOT_MAX:
+            return self._upload_resumable(parent_id, name, data, mime)
         boundary = "erp-upload-boundary"
         meta = json.dumps({"name": name, "parents": [parent_id]})
         body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n"
@@ -165,6 +179,46 @@ class DriveClient:
         if r.status_code >= 400:
             raise DriveError(f"Drive upload: {r.status_code} {r.text[:200]}")
         return r.json()
+
+    def _upload_resumable(self, parent_id: str, name: str, data: bytes, mime: str) -> dict:
+        """Big files (backups): Google's resumable upload in pieces, so no single request has to
+        carry the whole file inside the timeout. A piece that stalls is asked about and resent."""
+        total = len(data)
+        r = self._http.post(f"{UPLOAD}/files",
+                            params={**SHARED, "uploadType": "resumable", "fields": "id,webViewLink,size,md5Checksum"},
+                            json={"name": name, "parents": [parent_id]},
+                            headers={**self._auth(), "X-Upload-Content-Type": mime, "X-Upload-Content-Length": str(total)})
+        if r.status_code >= 400 or "location" not in r.headers:
+            raise DriveError(f"Drive upload (start): {r.status_code} {r.text[:200]}")
+        session = r.headers["location"]
+        sent, tries = 0, 0
+        while True:
+            end = min(sent + CHUNK, total)
+            try:
+                r = self._http.put(session, content=data[sent:end], timeout=CHUNK_TIMEOUT,
+                                   headers={**self._auth(), "Content-Range": f"bytes {sent}-{end - 1}/{total}"})
+            except httpx.TransportError:
+                r = None
+            if r is not None and r.status_code in (200, 201):
+                return r.json()
+            if r is not None and r.status_code == 308:  # piece received; Range says how much Google has
+                sent, tries = _received(r), 0
+                continue
+            if r is not None and r.status_code < 500 and r.status_code != 429:
+                raise DriveError(f"Drive upload: {r.status_code} {r.text[:200]}")
+            tries += 1  # timeout / 5xx / 429: ask Google how far it got, then carry on from there
+            if tries > RETRIES:
+                raise DriveError(f"Drive upload stopped at {sent:,} of {total:,} bytes after {RETRIES} retries")
+            time.sleep(2 ** tries)
+            try:
+                q = self._http.put(session, content=b"", timeout=CHUNK_TIMEOUT,
+                                   headers={**self._auth(), "Content-Range": f"bytes */{total}"})
+            except httpx.TransportError:
+                continue
+            if q.status_code in (200, 201):
+                return q.json()
+            if q.status_code == 308:
+                sent = _received(q)
 
     def rename(self, file_id: str, new_name: str, linked: bool = False) -> None:
         """Only the name changes (e.g. "[removed] …"); the file stays where it is.
