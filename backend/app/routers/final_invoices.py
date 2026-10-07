@@ -205,6 +205,9 @@ def export_register(fy: Optional[str] = None, month: Optional[str] = None, kind:
                    float(r["taxable"]), float(r["non_gst"]), float(r["gst"]), float(r["net_payable"]), r["irn"]])
     for col, w in zip("ABCDEFGHIJKLMN", (18, 14, 10, 12, 34, 18, 8, 20, 12, 13, 13, 12, 14, 30)):
         ws.column_dimensions[col].width = w
+    from app.core.xlsx_safe import defuse
+
+    defuse(wb)
     buf = io.BytesIO()
     wb.save(buf)
     filename = f"Invoice register{' ' + fy if fy else ''}.xlsx"

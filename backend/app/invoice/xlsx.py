@@ -285,6 +285,9 @@ def render_xlsx(inv: dict) -> bytes:
     ws.cell(r - 1, 5, "Authorised Signatory").font = Font(name="Arial", size=9, color=GREY)
     ws.print_area = f"A1:{get_column_letter(COLS)}{r}"
 
+    from app.core.xlsx_safe import defuse
+
+    defuse(wb)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
