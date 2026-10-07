@@ -1082,7 +1082,7 @@ function InvoiceSheet({
             <button
               type="button"
               className="link-button"
-              title="Lowest rate above the value/kg that still leaves a GST difference above zero"
+              title="Lowest round rate (multiple of 5 paise) above the value/kg that still leaves a GST difference above zero"
               onClick={() => onSaveProforma({ bill_rate: Number(inv.value?.lowest_bill_rate) }).catch(() => {})}
             >
               Minimise GST difference (₹{inr(inv.value.lowest_bill_rate)}/kg)

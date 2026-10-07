@@ -188,8 +188,9 @@ def test_typed_bill_rate_needs_no_10_paise_margin(client, admin_headers):
     lowest = client.get(f"/proformas/{pid}/invoice", headers=h).json()["value"]["lowest_bill_rate"]
     best = client.patch(f"/proformas/{pid}", json={"bill_rate": lowest}, headers=h)
     assert best.status_code == 200                                                   # minimise: allowed
-    paisa_less = str(Decimal(lowest) - Decimal("0.01"))
-    assert client.patch(f"/proformas/{pid}", json={"bill_rate": paisa_less}, headers=h).status_code == 400
+    assert Decimal(lowest) % Decimal("0.05") == 0                                    # a round 5 paise rate
+    step_less = str(Decimal(lowest) - Decimal("0.05"))
+    assert client.patch(f"/proformas/{pid}", json={"bill_rate": step_less}, headers=h).status_code == 400
 
 
 def test_bill_to_details_from_organization_repository(client, admin_headers):
