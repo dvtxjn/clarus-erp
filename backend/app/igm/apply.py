@@ -9,6 +9,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_change
+from app.core.shipment_checks import eta_from_inward
 from app.models.shipment import Shipment
 
 
@@ -69,6 +70,9 @@ def plan(s: Shipment, data: dict) -> tuple[dict, list[str]]:
     if s.igm and new["igm"] and s.igm.strip() != new["igm"]:
         notes.append(f"IGM no. changed: was {s.igm}, ICEGATE {new['igm']}")
 
+    eta = getattr(s, "eta", None)
+    if eta_from_inward(eta, new["inw"]) != eta:
+        new["eta"] = eta_from_inward(eta, new["inw"])  # inwarded before the ETA: the ETA was the inward date
     return {f: v for f, v in new.items() if v not in (None, "")}, notes
 
 

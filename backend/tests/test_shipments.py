@@ -111,3 +111,11 @@ def test_cleared_loads_separately(client, admin_headers):
     assert {gap, live} <= ongoing and done not in ongoing  # a Cleared Date with a check missing stays Ongoing
     assert done in cleared and not {gap, live} & cleared
     assert client.get("/shipments/cleared-count", headers=h).json()["count"] == len(cleared)
+
+
+def test_names_list_every_client_once(client, admin_headers):
+    h = admin_headers
+    for mbl, name in (("NAMES1", "Zeta Tyres"), ("NAMES2", "ZETA TYRES"), ("NAMES3", "Zeta Tyres")):
+        assert client.post("/shipments", json={"mbl": mbl, "client": name}, headers=h).status_code == 201
+    names = client.get("/shipments/names", headers=h).json()["clients"]
+    assert "Zeta Tyres" in names and "ZETA TYRES" not in names

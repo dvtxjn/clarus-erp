@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.core.audit import record_change
 from app.core.enums import DocumentType, ShipmentStatus
 from app.core.status_rules import EVIDENCE_FIELDS, proven_status, status_after_evidence_change
+from app.core.shipment_checks import eta_from_inward
 from app.import_tracker_csv import _clean, _date, _name, _normalize_headers, _yes
 from app.models.document import HSCode, ShipmentDocument
 from app.models.shipment import Shipment
@@ -189,6 +190,8 @@ def _parse_table(headers: list[str], numbered, rows: list[dict], unknown: list[s
             continue
         fields = {field: parse(r[col]) for col, (field, parse) in COLUMNS.items() if col in r}
         fields["mbl"], fields["hbl"] = mbl or "", hbl
+        if fields.get("eta") and fields.get("inw"):
+            fields["eta"] = eta_from_inward(fields["eta"], fields["inw"])
         if fta:  # only when the sheet has one — never blanks an FTA no typed in the app
             fields["fta_info"] = fta
         pod = fields.get("pod")

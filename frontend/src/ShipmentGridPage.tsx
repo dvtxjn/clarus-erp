@@ -26,6 +26,7 @@ import {
   billShipment,
   unbillShipment,
   createShipment,
+  getShipmentNames,
   deleteTrackerColumn,
   listShipments,
   clearedShipmentCount,
@@ -1689,8 +1690,6 @@ export default function ShipmentGridPage() {
 
       {showAddForm && (
         <AddShipmentForm
-          clients={distinctValues(shipments, "client")}
-          consignees={distinctValues(shipments, "consignee")}
           onCreated={() => {
             setShowAddForm(false);
             refresh();
@@ -1950,73 +1949,43 @@ function ClientName({ name, onRename }: { name: string; onRename: (newName: stri
   );
 }
 
-function distinctValues(rows: Shipment[] | null, field: "client" | "consignee"): string[] {
-  const seen = new Map<string, string>(); // case-insensitive de-dupe, keep first spelling
-  for (const r of rows ?? []) {
-    const v = r[field]?.trim();
-    if (v && !seen.has(v.toLowerCase())) seen.set(v.toLowerCase(), v);
-  }
-  return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-}
-
-const ADD_NEW = "__add_new__";
-
-/** Dropdown of existing names, with "+ Add new…" switching to a text box. */
+/**
+ * Type-to-search picker over every client / consignee ever used (client, 2026-10-07). A name that
+ * matches one in the list except for capitals takes the list's spelling; anything else is a new name.
+ */
 function PickOrAdd(props: { label: string; options: string[]; value: string; onChange: (v: string) => void }) {
-  const [adding, setAdding] = useState(false);
-  if (adding) {
-    return (
-      <span className="pick-or-add">
-        <input
-          autoFocus
-          placeholder={`New ${props.label.toLowerCase()}`}
-          value={props.value}
-          onChange={(e) => props.onChange(e.target.value)}
-        />
-        <button
-          type="button"
-          className="link-btn"
-          onClick={() => {
-            setAdding(false);
-            props.onChange("");
-          }}
-        >
-          back to list
-        </button>
-      </span>
-    );
-  }
+  const id = `pick-${props.label.toLowerCase()}`;
+  const typed = props.value.trim();
+  const known = props.options.find((o) => o.toUpperCase() === typed.toUpperCase());
   return (
-    <select
-      aria-label={props.label}
-      value={props.value}
-      onChange={(e) => {
-        if (e.target.value === ADD_NEW) {
-          setAdding(true);
-          props.onChange("");
-        } else props.onChange(e.target.value);
-      }}
-    >
-      <option value="">{props.label}…</option>
-      {props.options.map((o) => (
-        <option key={o} value={o}>
-          {o}
-        </option>
-      ))}
-      <option value={ADD_NEW}>+ Add new {props.label.toLowerCase()}…</option>
-    </select>
+    <span className="pick-or-add">
+      <input
+        list={id}
+        aria-label={props.label}
+        placeholder={`${props.label} — type to search…`}
+        autoComplete="off"
+        spellCheck={false}
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value)}
+        onBlur={() => known && known !== props.value && props.onChange(known)}
+      />
+      <datalist id={id}>
+        {props.options.map((o) => (
+          <option key={o} value={o} />
+        ))}
+      </datalist>
+      {typed && !known && <span className="field-note">new {props.label.toLowerCase()}</span>}
+    </span>
   );
 }
 
-function AddShipmentForm({
-  clients,
-  consignees,
-  onCreated,
-}: {
-  clients: string[];
-  consignees: string[];
-  onCreated: () => void;
-}) {
+function AddShipmentForm({ onCreated }: { onCreated: () => void }) {
+  const [names, setNames] = useState<{ clients: string[]; consignees: string[] }>({ clients: [], consignees: [] });
+  useEffect(() => {
+    getShipmentNames()
+      .then(setNames)
+      .catch(() => {});
+  }, []);
   const [job, setJob] = useState("");
   const [mbl, setMbl] = useState("");
   const [port, setPort] = useState("");
@@ -2058,8 +2027,8 @@ function AddShipmentForm({
           </option>
         ))}
       </select>
-      <PickOrAdd label="Client" options={clients} value={client} onChange={setClient} />
-      <PickOrAdd label="Consignee" options={consignees} value={consignee} onChange={setConsignee} />
+      <PickOrAdd label="Client" options={names.clients} value={client} onChange={setClient} />
+      <PickOrAdd label="Consignee" options={names.consignees} value={consignee} onChange={setConsignee} />
       <button type="submit" disabled={submitting}>
         {submitting ? "Creating…" : "Create Shipment"}
       </button>

@@ -50,3 +50,14 @@ def test_good_values_are_tidied(client, admin_headers):
     assert (s["job"], s["port"], s["inw"]) == ("951", "INMUN1", "05-Oct-2026")
     assert _edit(client, h, sid, cleared_date="2026-08-01").status_code == 422  # before the ETA
     assert _edit(client, h, sid, client="").status_code == 200  # never set, so it may stay empty
+
+
+def test_inward_before_eta_moves_the_eta(client, admin_headers):
+    h = admin_headers
+    sid = _new(client, h, mbl="CHKINW1", eta="2026-09-20").json()["id"]
+    s = _edit(client, h, sid, inw="12-Sep-2026").json()
+    assert s["eta"] == "2026-09-12"
+    s = _edit(client, h, sid, eta="2026-09-25").json()  # a later ETA still loses to the inward
+    assert s["eta"] == "2026-09-12"
+    s = _edit(client, h, sid, eta="2026-09-01").json()  # an earlier ETA is fine
+    assert s["eta"] == "2026-09-01"

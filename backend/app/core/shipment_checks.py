@@ -55,6 +55,12 @@ def parse_inw(v: str) -> Optional[date]:
     return None
 
 
+def eta_from_inward(eta: Optional[date], inw: Optional[str]) -> Optional[date]:
+    """A box can't be inwarded before it arrives: an inward before the ETA means the ETA was the inward date."""
+    d = parse_inw(inw) if inw else None
+    return d if d and eta and d < eta else eta
+
+
 def _number(v: str, label: str, *, whole: bool, unit: str = "") -> None:
     s = str(v).strip()
     if unit:
@@ -115,6 +121,10 @@ def check_shipment(db: Session, shipment: Optional[Shipment], changes: dict) -> 
         if d < EARLIEST or d > today:
             _bad(f"Inward date {d:%d-%b-%Y} can't be in the future or before 2020.")
         changes["inw"] = d.strftime("%d-%b-%Y")
+    if {"eta", "inw"} & set(changes):
+        fixed = eta_from_inward(now("eta"), now("inw"))
+        if fixed != now("eta"):
+            changes["eta"] = fixed
     if {"cleared_date", "eta"} & set(changes) and now("cleared_date") and now("eta") \
             and now("cleared_date") < now("eta"):
         _bad("Cleared date is before the ETA — fix the ETA first.")

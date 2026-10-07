@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -94,6 +95,26 @@ def cleared_count(db: Session = Depends(get_db), current_user: User = Depends(ge
     if allowed_ports is not None:
         q = q.filter(Shipment.port.in_(allowed_ports))
     return {"count": sum(1 for s in q if s.is_fully_cleared)}
+
+
+@router.get("/names")
+def shipment_names(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Every client and consignee ever used (billed ones too) for the Add Shipment pickers.
+    Spellings that differ only in capitals show once, as the most used one."""
+    out = {}
+    allowed_ports = get_user_allowed_ports(current_user)
+    for field in ("client", "consignee"):
+        col = getattr(Shipment, field)
+        q = db.query(col, func.count()).filter(col.isnot(None))
+        if allowed_ports is not None:
+            q = q.filter(Shipment.port.in_(allowed_ports))
+        counts: dict[str, dict[str, int]] = {}
+        for name, n in q.group_by(col):
+            name = " ".join(name.split())
+            if name:
+                counts.setdefault(name.upper(), {})[name] = counts.get(name.upper(), {}).get(name, 0) + n
+        out[field + "s"] = sorted((max(v, key=v.get) for v in counts.values()), key=str.upper)
+    return out
 
 
 def _containers(s: Shipment) -> int:

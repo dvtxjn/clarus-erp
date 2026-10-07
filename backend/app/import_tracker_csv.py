@@ -26,6 +26,7 @@ from typing import Optional
 from app.core.database import SessionLocal
 from app.core.migrate import run_migrations
 from app.core.enums import ShipmentStatus
+from app.core.shipment_checks import eta_from_inward
 from app.models.document import HSCode
 from app.models.shipment import Shipment
 from app.seed import TYRE_HS_CODE
@@ -87,7 +88,7 @@ def row_to_fields(r: dict) -> dict:
         job=_clean(r["job"]) or "",
         mbl=_clean(r["mbl"]),
         be_description=_clean(r["be description"]),
-        eta=_date(r["eta"]),
+        eta=eta_from_inward(_date(r["eta"]), _clean(r["inw"])),
         inw=_clean(r["inw"]),
         license=_clean(r["license"]),
         client=_name(r["client"]),
