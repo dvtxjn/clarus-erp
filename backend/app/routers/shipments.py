@@ -21,6 +21,7 @@ from app.models.tracker_column import TrackerColumn
 from app.models.user import User
 from app.schemas.shipment import ClientRename, ClientRenameOut, ValueRename, ShipmentCreate, ShipmentUpdate, ShipmentOut
 from app.core.audit import record_change
+from app.core.shipment_checks import check_can_bill, check_shipment
 from app.core.status_rules import EVIDENCE_FIELDS, proven_status, status_after_evidence_change
 
 # shipment fields that draft proformas are built from
@@ -293,7 +294,7 @@ def get_shipment(shipment_id: int, db: Session = Depends(get_db), current_user: 
 
 @router.post("", response_model=ShipmentOut, status_code=status.HTTP_201_CREATED)
 def create_shipment(payload: ShipmentCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    data = payload.model_dump()
+    data = check_shipment(db, None, payload.model_dump())
     explicit_hss = data.pop("is_hss")
     shipment = Shipment(**data, created_by_id=current_user.id)
     if explicit_hss is None:
@@ -330,6 +331,7 @@ def update_shipment(
                 "conflicts": conflicts, "version": shipment.version,
                 "shipment": ShipmentOut.model_validate(shipment).model_dump(mode="json")})
     custom = changes.pop("custom_fields", None)
+    changes = check_shipment(db, shipment, changes)
     if changes.get("cfs_paid_by_us") and not shipment.cfs_paid_by_us and "tds_on_cfs" not in changes:
         changes["tds_on_cfs"] = True  # we normally cut 2% TDS when we pay the CFS
     if changes.get("cfs_tds_rate") is not None:
@@ -396,6 +398,7 @@ def mark_shipment_billed(shipment_id: int, db: Session = Depends(get_db),
     shipment = locked_shipment_or_404(db, shipment_id)
     if shipment.is_billed:
         return shipment
+    check_can_bill(shipment)
     changes = {"is_billed": True, "is_archived": True, "billed_at": datetime.now(timezone.utc),
                "status": ShipmentStatus.BILLED}
     for field, value in changes.items():

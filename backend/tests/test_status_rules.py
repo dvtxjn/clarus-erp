@@ -32,18 +32,18 @@ def test_jumps_forward_and_manual_status_wins(client, admin_headers):
     sid = client.post("/shipments", json={"mbl": "RULES2"}, headers=h).json()["id"]
     assert _patch(client, h, sid, ooc=True) == "ooc_done"  # evidence can skip steps
     # a status typed by hand in the same edit is kept
-    assert _patch(client, h, sid, be_no="1", status="under_ooc") == "under_ooc"
+    assert _patch(client, h, sid, be_no="1000001", status="under_ooc") == "under_ooc"
     # Under OOC has no evidence rule, so unrelated evidence changes don't pull it back
     assert _patch(client, h, sid, igm="99") == "ooc_done"  # ...but more evidence can still move it forward
 
 
 def test_new_shipment_gets_status_from_its_evidence(client, admin_headers):
-    s = client.post("/shipments", json={"mbl": "RULES3", "igm": "1", "be_no": "2"}, headers=admin_headers).json()
+    s = client.post("/shipments", json={"mbl": "RULES3", "igm": "1", "be_no": "2000002"}, headers=admin_headers).json()
     assert s["status"] == "be_filed"
 
 
 def test_billed_is_left_alone(client, admin_headers):
     h = admin_headers
-    sid = client.post("/shipments", json={"mbl": "RULES4"}, headers=h).json()["id"]
-    client.post(f"/shipments/{sid}/bill", headers=h)
+    sid = client.post("/shipments", json={"mbl": "RULES4", "cleared_date": "2026-09-10"}, headers=h).json()["id"]
+    assert client.post(f"/shipments/{sid}/bill", headers=h).status_code == 200
     assert _patch(client, h, sid, igm="5") == "billed"

@@ -123,3 +123,14 @@ def _proforma_document_gate(request, monkeypatch):
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "document_gate: keep the proforma 'not attached' gate on")
+
+
+@pytest.fixture(autouse=True)
+def _duplicate_bl_check(request, monkeypatch):
+    """Tests share one database and reuse BL numbers; the duplicate BL / job check is
+    tested on its own (mark a test `duplicates` to keep it on)."""
+    if request.node.get_closest_marker("duplicates"):
+        return
+    from app.core import shipment_checks
+
+    monkeypatch.setattr(shipment_checks, "_check_duplicates", lambda *a, **k: None)

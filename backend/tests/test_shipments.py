@@ -58,7 +58,8 @@ def test_remove_and_restore_builtin(client, admin_headers):
 def test_bill_and_unbill_restores_status(client, admin_headers):
     h = admin_headers
     sid = client.post("/shipments", json={"mbl": "BILL1", "cleared_date": "2026-09-10"}, headers=h).json()["id"]
-    client.patch(f"/shipments/{sid}", json={"status": "cleared"}, headers=h)
+    client.patch(f"/shipments/{sid}", json={"duty_paid": True, "cfs_inv_received": True, "line_paid": True,
+                                            "ooc": True, "do": True}, headers=h)
     s = client.post(f"/shipments/{sid}/bill", headers=h).json()
     assert s["is_billed"] and s["status"] == "billed" and s["billed_at"] is not None
     s = client.post(f"/shipments/{sid}/unbill", headers=h).json()
