@@ -27,8 +27,25 @@ const errText = (e: unknown, fallback: string) => {
   return typeof d === "string" ? d : fallback;
 };
 
-// read once per shipment per session on opening; again whenever the folder link changes
-const readThisSession = new Set<string>();
+// read once per shipment per browser tab on opening (kept across reloads); again whenever the folder link changes
+const SEEN_KEY = "folderReader.read";
+const readThisSession = new Set<string>(
+  (() => {
+    try {
+      return JSON.parse(sessionStorage.getItem(SEEN_KEY) || "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
+);
+function markRead(key: string) {
+  readThisSession.add(key);
+  try {
+    sessionStorage.setItem(SEEN_KEY, JSON.stringify([...readThisSession]));
+  } catch {
+    /* private mode: only this page load remembers */
+  }
+}
 
 /**
  * Folder reader (client, 2026-10-05): every PDF in the shipment's linked Drive folder is
@@ -78,7 +95,7 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
     if (readThisSession.has(key)) {
       getFolderFiles(shipment.id).then(setFiles, (e) => setError(errText(e, "Couldn't open the Drive folder.")));
     } else {
-      readThisSession.add(key);
+      markRead(key);
       read();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

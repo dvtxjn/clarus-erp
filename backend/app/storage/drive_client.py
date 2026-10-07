@@ -114,7 +114,7 @@ class DriveClient:
         """Files and folders directly inside a folder (read only)."""
         out, token = [], None
         while True:
-            params = {"q": f"'{folder_id}' in parents and trashed = false", "fields": "nextPageToken, files(id,name,mimeType,size)",
+            params = {"q": f"'{folder_id}' in parents and trashed = false", "fields": "nextPageToken, files(id,name,mimeType,size,md5Checksum)",
                       "includeItemsFromAllDrives": "true", "corpora": "allDrives", "pageSize": "200"}
             if token:
                 params["pageToken"] = token

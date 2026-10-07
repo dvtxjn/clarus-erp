@@ -8,6 +8,7 @@ Drive is only read: nothing in the folder is moved, renamed, copied or deleted.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional
 
@@ -33,6 +34,10 @@ FOLDER_MIME = "application/vnd.google-apps.folder"
 # Several of these can belong to one shipment; anything else is one per shipment, so the
 # reader won't add a second one on its own (marking the file by hand still adds it).
 MANY_ALLOWED = set(INVOICE_DOC_TYPES) | set(RECEIPT_DOC_TYPES) | {DocumentType.OTHER}
+# What a file's first page said, per (file id, content checksum): files that stay unattached
+# (unrecognised, duplicates) aren't downloaded and read again on every re-scan.
+_CONTENT_GUESS: dict[tuple[str, str], Optional[DocumentType]] = {}
+DOWNLOADS_AT_ONCE = 6
 
 
 class MarkIn(BaseModel):
@@ -54,7 +59,7 @@ def _folder_pdfs(client, folder_id: str, prefix: str = "", depth: int = 0) -> li
         if f.get("mimeType") == FOLDER_MIME and depth < 2:
             out += _folder_pdfs(client, f["id"], f"{prefix}{f['name']}/", depth + 1)
         elif f.get("mimeType") == PDF_MIME or f.get("name", "").lower().endswith(".pdf"):
-            out.append({"id": f["id"], "name": f"{prefix}{f['name']}"})
+            out.append({"id": f["id"], "name": f"{prefix}{f['name']}", "md5": f.get("md5Checksum")})
     return out
 
 
@@ -109,6 +114,34 @@ def folder_files(shipment_id: int, db: Session = Depends(get_db), current_user: 
     return rows
 
 
+def _prefetch(client, files, marks, live, removed, types_held) -> dict[str, bytes]:
+    """Download, several at once, the files the scan will need to open: new ones it will
+    attach and ones only their first page can name (unless that was read before)."""
+    need = []
+    for f in files:
+        mark = marks.get(f["id"])
+        marked = mark.document_type if mark else None
+        if f["id"] in live or marked == DriveFileMark.IGNORE or _removed_after_mark(mark, removed.get(f["id"])):
+            continue
+        doc_type = DocumentType(marked) if marked else guess_from_name(f["name"].rsplit("/", 1)[-1])
+        if doc_type is None:
+            if f.get("md5") and (f["id"], f["md5"]) in _CONTENT_GUESS:
+                continue
+        elif not marked and doc_type in types_held and doc_type not in MANY_ALLOWED:
+            continue  # a duplicate by name: not attached, no need to open it
+        need.append(f["id"])
+    if not need:
+        return {}
+
+    def get(fid):
+        try:
+            return fid, client.download(fid)
+        except Exception:  # noqa: BLE001 — the scan retries it one by one and reports the error
+            return fid, None
+    with ThreadPoolExecutor(max_workers=DOWNLOADS_AT_ONCE) as pool:
+        return {fid: data for fid, data in pool.map(get, need) if data is not None}
+
+
 @router.post("/sync")
 def sync_folder(shipment_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Read the folder and attach what's not attached yet (marks first, then the reader's
@@ -119,6 +152,7 @@ def sync_folder(shipment_id: int, db: Session = Depends(get_db), current_user: U
         raise HTTPException(status_code=400, detail="Link the shipment's Drive folder first.")
     client = _client()
     files = _folder_pdfs(client, shipment.drive_folder_id)
+    data_for = _prefetch(client, files, *_state(db, shipment.id))
     rows, updated, notes = [], [], []
     for f in files:
         marks, live, removed, types_held = _state(db, shipment.id)  # fresh: each add changes them
@@ -140,11 +174,17 @@ def sync_folder(shipment_id: int, db: Session = Depends(get_db), current_user: U
             rows.append(_row(f, mark, None, gone, "removed"))
             continue
         doc_type = DocumentType(marked) if marked else guess_from_name(f["name"].rsplit("/", 1)[-1])
-        data = None
+        data = data_for.get(f["id"])
         try:
             if doc_type is None:
-                data = client.download(f["id"])
-                doc_type = guess_from_content(data)
+                key = (f["id"], f["md5"]) if f.get("md5") else None
+                if key in _CONTENT_GUESS:
+                    doc_type = _CONTENT_GUESS[key]
+                else:
+                    data = data if data is not None else client.download(f["id"])
+                    doc_type = guess_from_content(data)
+                    if key:
+                        _CONTENT_GUESS[key] = doc_type
             if doc_type is None:
                 rows.append(_row(f, mark, None, gone, "unrecognised"))
                 continue

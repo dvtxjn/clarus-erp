@@ -122,3 +122,25 @@ def test_one_per_shipment_types_are_not_doubled_by_the_reader(client, admin_head
 def test_needs_a_linked_folder_and_server_drive(client, admin_headers):
     sid = _ship(client, admin_headers, "FLD0000005")
     assert client.post(f"/shipments/{sid}/drive-folder/sync", headers=admin_headers).status_code == 400
+
+
+def test_rescan_does_not_download_unrecognised_files_again(client, admin_headers, fake_drive):
+    ids = _folder(fake_drive, {
+        "scan0099.pdf": make_pdf([(40, 40, "hello there")]).read(),
+        "PL.pdf": make_pdf([(40, 40, "PACKING LIST")]).read(),
+    })
+    plain = fake_drive.list_children
+    fake_drive.list_children = lambda fid: [{**f, "md5Checksum": "abc"} for f in plain(fid)]
+    downloads = []
+    real = fake_drive.download
+    fake_drive.download = lambda fid: downloads.append(fid) or real(fid)
+    sid = _linked(client, admin_headers, "FLD0000099")
+
+    first = client.post(f"/shipments/{sid}/drive-folder/sync", headers=admin_headers).json()["files"]
+    assert {f["name"]: f["status"] for f in first} == {"scan0099.pdf": "unrecognised", "PL.pdf": "added"}
+    assert sorted(downloads) == sorted(ids.values())  # each opened once
+
+    downloads.clear()
+    again = client.post(f"/shipments/{sid}/drive-folder/sync", headers=admin_headers).json()["files"]
+    assert {f["name"]: f["status"] for f in again} == {"scan0099.pdf": "unrecognised", "PL.pdf": "attached"}
+    assert downloads == []  # nothing opened again
