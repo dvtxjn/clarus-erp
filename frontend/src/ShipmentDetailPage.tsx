@@ -2,7 +2,7 @@ import { tabKeys } from "./tabKeys";
 import { copyText } from "./clipboard";
 import CustomsTimeline from "./CustomsTimeline";
 import { nextStep } from "./clearanceFlow";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
@@ -155,51 +155,25 @@ export function ShipmentDetail({
 
       <header className="detail-header">
         <div className="detail-title">
-          <span className="detail-job">{shipment.job ? `Job ${shipment.job}` : "No job number yet"}</span>
+          <span className="detail-job">
+            {shipment.job ? `Job ${shipment.job}` : "No job number yet"}
+            <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
+          </span>
           <span className="detail-client">
             {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
           </span>
         </div>
-        {/* left: the two keys everything is filed and searched by; right: where the clearance stands */}
-        <div className="key-ids">
-          <div className="key-id key-id-keys">
-            <div className={`key-id-cell${(shipment.mbl ?? "").length + (shipment.hbl ?? "").length > 26 ? " key-id-long" : ""}`}>
-              <span className="key-id-label">BL No (MBL{shipment.hbl ? " / HBL" : ""})</span>
-              <span className="key-id-value">
-                <CopyValue value={shipment.mbl} label="BL no" />
-                {shipment.hbl && (
-                  <span className="key-id-date">
-                    {" / "}
-                    <CopyValue value={shipment.hbl} label="HBL no" />
-                  </span>
-                )}
-              </span>
-            </div>
-            <div className={`key-id-cell${shipment.be_no ? "" : " key-id-missing"}`}>
-              <span className="key-id-label">BE No · BE Date</span>
-              <span className="key-id-value">
-                {shipment.be_no ? <CopyValue value={shipment.be_no} label="BE no" /> : "Not filed yet"}
-                {shipment.be_no && <span className="key-id-date"> · {fmtDate(shipment.be_dt) ?? "date missing"}</span>}
-              </span>
-            </div>
-          </div>
-          <div className="key-id key-id-flags">
-            <span className="key-id-label">Clearance</span>
-            <div className="flag-row">
-              {statusFlags(shipment).map(([label, value]) => (
-                <span className={`flag-chip ${value ? "flag-on" : "flag-pending"}`} key={label} title={value ? "Done" : "Pending"}>
-                  <span className="flag-icon">{value ? "✓" : "✗"}</span> {label}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-        <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
-        {/* peek: what to do next comes first, right under the title (ticks only — no amounts here) */}
-        {peek && <NextStepBar shipment={shipment} ticks />}
       </header>
 
-      {!peek && <NextStepBar shipment={shipment} />}
+      {/* tier 1: the keys, what's next, where the clearance stands, and the three payments — at a glance */}
+      <div className="tier1">
+        <KeyStrip s={shipment} />
+        <div className="tier1-flow">
+          <NextStepBar shipment={shipment} />
+          <ClearanceStepper s={shipment} onChange={setShipment} />
+        </div>
+        <PaymentTiles s={shipment} />
+      </div>
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -229,67 +203,53 @@ export function ShipmentDetail({
         )}
       </div>
 
+      <div className="tab-body" key={tab}>
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} />}
       {tab === "history" && <ShipmentHistory shipment={shipment} onChange={setShipment} />}
       {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
+      </div>
     </div>
   );
 }
 
-type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_on_cfs" | "under_examination";
+type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_on_cfs";
+
+/** The Overview goes two-column once its own box is this wide (full page / full-width peek), not by window size. */
+const OVERVIEW_WIDE = 1000;
+function useWideBox<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWide(e.contentRect.width >= OVERVIEW_WIDE));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, wide] as const;
+}
 
 function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
   const ports = usePorts();
-  const [saving, setSaving] = useState<ToggleField | null>(null);
-  const saveShipment = useSaveShipment();
-  async function toggle(field: ToggleField) {
-    setSaving(field);
-    try {
-      onChange((await saveShipment(s, { [field]: !s[field] } as Partial<Shipment>)).shipment);
-    } finally {
-      setSaving(null);
-    }
-  }
-  const toggles: [Exclude<ToggleField, "under_examination">, string][] = [
-    ["cfs_paid_by_us", "CFS paid by us"],
-    ["line_paid_by_us", "Shipping line paid by us"],
-    ["tds_on_cfs", "TDS cut on CFS payment"],
-  ];
-  const examination =
-    s.under_examination == null
-      ? null
-      : s.under_examination
-        ? s.examination_at
-          ? `Yes — ${s.examination_at}`
-          : "Yes (marked by hand)"
-        : "No";
-
+  const [igmOpen, setIgmOpen] = useState(false);
+  const [box, wide] = useWideBox<HTMLDivElement>();
   const inland = !!s.port && !SEA_PORTS.has(s.port);
   return (
-    // shipment & movement (+ remarks) across the top; then customs duty + status | CFS | shipping line
-    <div className="detail-grid">
-      {/* shipment + container & movement: one wide block across the top, fields in a grid */}
-      <section className="detail-section detail-wide">
-        <h3>Shipment &amp; movement</h3>
-        <div className="field-grid">
+    // desktop: movement | duty, CFS, line, notes; then containers and billing settings full width. Narrow: one column.
+    <div className={`overview${wide ? " is-wide" : ""}`} ref={box}>
+      <div className="ov-col">
+        <section className="detail-section">
+          <h3>Shipment &amp; movement</h3>
+          <div className="field-grid">
             <EditField label="Port (POD)" field="port" kind="port" s={s} onChange={onChange} display={formatPort(s.port, ports) || null} />
             <EditField label="ETA" field="eta" kind="date" s={s} onChange={onChange} display={fmtDate(s.eta)} />
             <EditField label="INW" field="inw" s={s} onChange={onChange} hint="Typed like the sheet, e.g. 19-Sep-2026" />
             <Field label="Day" value={s.days} />
             <EditField label="Containers" field="container" s={s} onChange={onChange} />
-            {s.port && (
-              <button
-                type="button"
-                className="link-button field-jump"
-                onClick={() => document.getElementById("shipment-containers")?.scrollIntoView({ behavior: "smooth", block: "start" })}
-              >
-                Container list ↓
-              </button>
-            )}
             <EditField label="Gross Wt" field="gross_wt" s={s} onChange={onChange} />
-            <EditField label="Container Status" field="container_status" s={s} onChange={onChange} />
+            <EditField label="Cont. status" field="container_status" s={s} onChange={onChange} />
             <EditField label="CFS" field="cfs" s={s} onChange={onChange} />
             <EditField label="POC" field="poc" s={s} onChange={onChange} />
             <EditField label="Delivery" field="delivery_status" s={s} onChange={onChange} />
@@ -302,72 +262,71 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               display={s.shipping_line || (s.line_from_bl?.line ? `${s.line_from_bl.line} (from BL)` : null)}
               hint="Typed, or worked out from the MBL's format"
             />
-        </div>
-        {s.line_from_bl?.note && <p className="bl-note">{s.line_from_bl.note}</p>}
-        {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30). Filled on command
-            from ICEGATE's Sea IGM (MBL + port; inland: at the gateway the ICD names) or typed in. */}
-        <IcegateBar s={s} onChange={onChange} />
-        <div className="field-grid">
-            {/* IGM no: read from ICEGATE (client, 2026-09-30) — inland: the gateway's sea IGM here, the ICD's own
-                IGM under FPOD ICD BL details; typed only as a fallback before the first ICEGATE read */}
-            {inland && s.icegate?.gateway_igm ? (
-              <Field
-                label="Gateway IGM"
-                value={[s.icegate.gateway_igm.no, s.icegate.gateway_igm.date].filter(Boolean).join(" · ") || null}
-                hint={`The sea IGM at the gateway port (${s.icegate.gateway_igm.port ?? "—"}). The ICD's own IGM is under FPOD ICD BL details.`}
-              />
-            ) : s.icegate?.fetched_at && s.igm ? (
-              <Field label="IGM" value={[s.igm, fmtDate(s.igm_date)].filter(Boolean).join(" · ")} />
-            ) : (
-              <>
-                <EditField label="IGM No" field="igm" s={s} onChange={onChange} />
-                <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
-              </>
-            )}
-            <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
-            <EditField label="Voyage" field="voyage" s={s} onChange={onChange} />
-            <EditField label="Cont (IGM)" field="cont" s={s} onChange={onChange} />
-            <EditField label="MBL Date" field="mbl_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.mbl_date)} />
-            <EditField label="HBL Date" field="hbl_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.hbl_date)} />
-            <EditField label="GW (IGM)" field="gw" s={s} onChange={onChange} />
-            <EditField label="Total Pkg" field="total_pkg" s={s} onChange={onChange} />
-            <EditField label="Pkg Code" field="pkg_code" s={s} onChange={onChange} />
-            {s.icegate?.vessel?.vessel_code && <Field label="Vessel" value={`${s.icegate.vessel.vessel_code}${s.icegate.vessel.imo_no ? ` · IMO ${s.icegate.vessel.imo_no}` : ""}`} />}
-        </div>
-        {/* inland: what the ICD BL status adds on top of the IGM details (repeats left out) */}
-        {inland && s.icegate?.icd && (
-          <>
-            <div className="amount-block-title detail-subhead">FPOD ICD BL details</div>
-            <div className="field-grid">
-              <Field label="ICD IGM" value={[s.icegate.icd.icd_igm_no, s.icegate.icd.icd_igm_date].filter(Boolean).join(" · ") || null} />
-              <Field label="SMTP" value={[s.icegate.icd.smtp_no, s.icegate.icd.smtp_date].filter(Boolean).join(" · ") || null} hint="Rail / road permit from the gateway to the ICD" />
-              <Field label="Gateway port" value={s.icegate.icd.gateway_port ? formatPort(s.icegate.icd.gateway_port, ports) || s.icegate.icd.gateway_port : null} />
-              {Object.entries(s.icegate.icd)
-                .filter(([k]) => !["icd_igm_no", "icd_igm_date", "smtp_no", "smtp_date", "gateway_port", "be_location", "importer"].includes(k))
-                .map(([k, v]) => (
-                  <Field key={k} label={k.replace(/_/g, " ")} value={v} />
-                ))}
-            </div>
-            {(s.icegate.differences?.length ?? 0) > 0 && (
-              <ul className="icegate-diffs" role="list">
-                {s.icegate.differences!.map((d) => (
-                  <li key={d.field}>
-                    <strong>{d.field}</strong> differs: IGM {d.igm} · ICD {d.icd}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </>
-        )}
-        <div className="detail-wide-foot">
-          <HssEditor shipment={s} onChange={onChange} />
-          <div className="detail-remarks">
-            <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
-            <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
           </div>
-        </div>
-      </section>
-      <div className="detail-col">
+          {s.line_from_bl?.note && <p className="bl-note">{s.line_from_bl.note}</p>}
+          {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30). Filled on command
+              from ICEGATE's Sea IGM (MBL + port; inland: at the gateway the ICD names) or typed in. Folded by default. */}
+          <IcegateBar s={s} onChange={onChange} open={igmOpen} onToggle={() => setIgmOpen((o) => !o)} />
+          {igmOpen && (
+            <div id="igm-details" className="fold-body">
+              <div className="field-grid">
+                {/* IGM no: read from ICEGATE (client, 2026-09-30) — inland: the gateway's sea IGM here, the ICD's own
+                    IGM under FPOD ICD BL details; typed only as a fallback before the first ICEGATE read */}
+                {inland && s.icegate?.gateway_igm ? (
+                  <Field
+                    label="Gateway IGM"
+                    value={[s.icegate.gateway_igm.no, s.icegate.gateway_igm.date].filter(Boolean).join(" · ") || null}
+                    hint={`The sea IGM at the gateway port (${s.icegate.gateway_igm.port ?? "—"}). The ICD's own IGM is under FPOD ICD BL details.`}
+                  />
+                ) : s.icegate?.fetched_at && s.igm ? (
+                  <Field label="IGM" value={[s.igm, fmtDate(s.igm_date)].filter(Boolean).join(" · ")} />
+                ) : (
+                  <>
+                    <EditField label="IGM No" field="igm" s={s} onChange={onChange} />
+                    <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
+                  </>
+                )}
+                <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
+                <EditField label="Voyage" field="voyage" s={s} onChange={onChange} />
+                <EditField label="Cont (IGM)" field="cont" s={s} onChange={onChange} />
+                <EditField label="MBL Date" field="mbl_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.mbl_date)} />
+                <EditField label="HBL Date" field="hbl_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.hbl_date)} />
+                <EditField label="GW (IGM)" field="gw" s={s} onChange={onChange} />
+                <EditField label="Total Pkg" field="total_pkg" s={s} onChange={onChange} />
+                <EditField label="Pkg Code" field="pkg_code" s={s} onChange={onChange} />
+                {s.icegate?.vessel?.vessel_code && <Field label="Vessel" value={`${s.icegate.vessel.vessel_code}${s.icegate.vessel.imo_no ? ` · IMO ${s.icegate.vessel.imo_no}` : ""}`} />}
+              </div>
+              {/* inland: what the ICD BL status adds on top of the IGM details (repeats left out) */}
+              {inland && s.icegate?.icd && (
+                <>
+                  <div className="amount-block-title detail-subhead">FPOD ICD BL details</div>
+                  <div className="field-grid">
+                    <Field label="ICD IGM" value={[s.icegate.icd.icd_igm_no, s.icegate.icd.icd_igm_date].filter(Boolean).join(" · ") || null} />
+                    <Field label="SMTP" value={[s.icegate.icd.smtp_no, s.icegate.icd.smtp_date].filter(Boolean).join(" · ") || null} hint="Rail / road permit from the gateway to the ICD" />
+                    <Field label="Gateway port" value={s.icegate.icd.gateway_port ? formatPort(s.icegate.icd.gateway_port, ports) || s.icegate.icd.gateway_port : null} />
+                    {Object.entries(s.icegate.icd)
+                      .filter(([k]) => !["icd_igm_no", "icd_igm_date", "smtp_no", "smtp_date", "gateway_port", "be_location", "importer"].includes(k))
+                      .map(([k, v]) => (
+                        <Field key={k} label={k.replace(/_/g, " ")} value={v} />
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {/* a difference between the IGM and the ICD is worth seeing even with the details folded */}
+          {inland && (s.icegate?.differences?.length ?? 0) > 0 && (
+            <ul className="icegate-diffs" role="list">
+              {s.icegate!.differences!.map((d) => (
+                <li key={d.field}>
+                  <strong>{d.field}</strong> differs: IGM {d.igm} · ICD {d.icd}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+      <div className="ov-col">
         <section className="detail-section">
           <h3>Customs duty</h3>
           <EditField label="License" field="license" s={s} onChange={onChange} />
@@ -376,117 +335,116 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           <BeAmounts shipment={s} onChange={onChange} />
         </section>
         <section className="detail-section">
-          <h3>Status</h3>
-          <EditField label="OOC Date" field="ooc_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.ooc_date)} />
-          <label className="toggle-row" title="Normally read from the OOC copy — switch it here if needed">
-            <span>
-              Under examination
-              {s.under_examination && <span className="field-note"> {examination}</span>}
-            </span>
-            <input
-              type="checkbox"
-              role="switch"
-              checked={!!s.under_examination}
-              disabled={saving === "under_examination"}
-              onChange={() => toggle("under_examination")}
-            />
-          </label>
-          <EditField label="Cleared Date" field="cleared_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.cleared_date)} />
-        </section>
-      </div>
-      <div className="detail-col">
-        <section className="detail-section">
           <h3>CFS</h3>
-          {toggles.filter(([f]) => f === "cfs_paid_by_us" || f === "tds_on_cfs").map(([field, label]) => (
-            <label className="toggle-row" key={field}>
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={!!s[field]}
-                disabled={saving === field}
-                onChange={() => toggle(field)}
-              />
-            </label>
-          ))}
           <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
-          {s.cfs_paid_by_us ? (
+          {s.cfs_paid_by_us && (
             <>
-              {s.tds_on_cfs && <TdsRate shipment={s} onChange={onChange} />}
               <Field
-                label={`TDS @ ${tdsPct(s)}% of basic`}
+                label={`TDS @ ${tdsPct(s)}%`}
                 value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
                 hint={`${tdsPct(s)}% of the CFS basic value (before GST)`}
+                amount
               />
-              <Field
-                label="Payment after TDS"
-                value={fmtMoney(s.cfs_payment_after_tds)}
-                hint={`Basic + GST − ${tdsPct(s)}% of basic`}
-                strong
-              />
-              <label className="toggle-row" title="How CFS goes on the proforma">
-                <span>CFS on the proforma</span>
-                <select
-                  value={s.cfs_billed_as}
-                  onChange={async (e) =>
-                    onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)
-                  }
-                >
-                  <option value="reimbursement">Reimbursement (at actuals)</option>
-                  <option value="taxable">Taxable — Billed by Clarus + 18% GST</option>
-                </select>
-              </label>
+              <Field label="After TDS" value={fmtMoney(s.cfs_payment_after_tds)} hint={`Basic + GST − ${tdsPct(s)}% of basic`} strong amount />
             </>
-          ) : (
-            <p className="field-note">CFS not paid by us — we only pass the invoice on to the client.</p>
           )}
         </section>
-      </div>
-      <div className="detail-col">
         <section className="detail-section">
-          <h3>Shipping line</h3>
-          {toggles.filter(([f]) => f === "line_paid_by_us").map(([field, label]) => (
-            <label className="toggle-row" key={field}>
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={!!s[field]}
-                disabled={saving === field}
-                onChange={() => toggle(field)}
-              />
-            </label>
-          ))}
+          <h3>Shipping line · destination charges</h3>
           <InvoiceGroup group="line" shipment={s} onChange={onChange} />
-          <p className="field-note">
-            {s.line_paid_by_us
-              ? "Shipping line paid by us — goes on the proforma as a Reimbursement."
-              : "Shipping line paid by the client directly — shown on the proforma as Cost Inclusion (not in the total)."}
-          </p>
-          <label
-            className="toggle-row"
-            title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included). Paid by us always goes to Reimbursement."
-          >
-            <span>Shipping line in cost inclusion</span>
-            <select
-              value={s.line_cost_inclusion ?? "auto"}
-              disabled={s.line_paid_by_us}
-              onChange={async (e) => {
-                const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
-                onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
-              }}
-            >
-              <option value="auto">Auto (client's setting)</option>
-              <option value="include">Include</option>
-              <option value="exclude">Leave out</option>
-            </select>
-          </label>
+        </section>
+        <section className="detail-section">
+          <h3>Notes</h3>
+          <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
+          <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
         </section>
       </div>
       {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
-          arrival at the FPOD; sea port: from the INW. At the bottom, its length varies (client, 2026-09-30) */}
-      {s.port && <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} />}
+          arrival at the FPOD; sea port: from the INW (client, 2026-09-30) */}
+      {s.port && (
+        <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} wide={wide} />
+      )}
+      <BillingSettings s={s} onChange={onChange} />
     </div>
+  );
+}
+
+/**
+ * How this job is billed, as one quiet row of chips (+ the two proforma choices). One plain line under it
+ * says what the settings add up to — these move money, so it isn't left to tooltips alone.
+ */
+function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => void }) {
+  const saveShipment = useSaveShipment();
+  const [saving, setSaving] = useState<ToggleField | null>(null);
+  async function toggle(field: ToggleField) {
+    setSaving(field);
+    try {
+      onChange((await saveShipment(s, { [field]: !s[field] } as Partial<Shipment>)).shipment);
+    } finally {
+      setSaving(null);
+    }
+  }
+  const chip = (field: ToggleField, label: string, title: string) => (
+    <button
+      type="button"
+      className={`chip-toggle${s[field] ? " is-on" : ""}`}
+      aria-pressed={!!s[field]}
+      disabled={saving === field}
+      onClick={() => toggle(field)}
+      title={title}
+    >
+      {label}
+    </button>
+  );
+  const summary = [
+    s.is_hss ? "High sea sale" : null,
+    s.cfs_paid_by_us
+      ? `CFS paid by us${s.tds_on_cfs ? `, ${tdsPct(s)}% TDS cut` : ""}, billed ${s.cfs_billed_as === "taxable" ? "as taxable + 18% GST" : "at actuals"}`
+      : "CFS paid by the client — we pass the invoice on",
+    s.line_paid_by_us
+      ? "line paid by us (reimbursement)"
+      : `line paid by the client (${s.line_cost_inclusion === "exclude" ? "left off the proforma" : s.line_cost_inclusion === "include" ? "shown as cost inclusion" : "cost inclusion per client setting"})`,
+  ].filter(Boolean);
+  return (
+    <section className="detail-section billing-settings" aria-label="Billing settings">
+      <div className="billing-row">
+        <h3>Billing settings</h3>
+        <HssEditor shipment={s} onChange={onChange} />
+        {chip("cfs_paid_by_us", "CFS paid by us", "We pay the CFS and bill it on")}
+        {s.cfs_paid_by_us && chip("tds_on_cfs", "TDS on CFS", "TDS is cut when we pay the CFS")}
+        {s.cfs_paid_by_us && s.tds_on_cfs && <TdsRate shipment={s} onChange={onChange} />}
+        {chip("line_paid_by_us", "Line paid by us", "We pay the shipping line and bill it as a reimbursement")}
+        {s.cfs_paid_by_us && (
+          <select
+            className="chip-select"
+            aria-label="CFS on the proforma"
+            title="How CFS goes on the proforma"
+            value={s.cfs_billed_as}
+            onChange={async (e) => onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)}
+          >
+            <option value="reimbursement">CFS: at actuals</option>
+            <option value="taxable">CFS: taxable + 18% GST</option>
+          </select>
+        )}
+        {!s.line_paid_by_us && (
+          <select
+            className="chip-select"
+            aria-label="Shipping line in cost inclusion"
+            title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included)"
+            value={s.line_cost_inclusion ?? "auto"}
+            onChange={async (e) => {
+              const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
+              onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
+            }}
+          >
+            <option value="auto">Line cost: client's setting</option>
+            <option value="include">Line cost: include</option>
+            <option value="exclude">Line cost: leave out</option>
+          </select>
+        )}
+      </div>
+      <p className="billing-summary">{summary.join(" · ")}.</p>
+    </section>
   );
 }
 
@@ -604,10 +562,16 @@ function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
 
   return (
     <div className="hss-editor">
-      <label className="toggle-row" title="Any consignee written 'SELLER - BUYER' is detected as HSS automatically">
-        <span>HSS (high sea sale)</span>
-        <input type="checkbox" role="switch" checked={s.is_hss} disabled={busy} onChange={() => save({ is_hss: !s.is_hss })} />
-      </label>
+      <button
+        type="button"
+        className={`chip-toggle${s.is_hss ? " is-on" : ""}`}
+        aria-pressed={s.is_hss}
+        disabled={busy}
+        onClick={() => save({ is_hss: !s.is_hss })}
+        title="High sea sale. Any consignee written 'SELLER - BUYER' is detected as HSS automatically"
+      >
+        HSS
+      </button>
       {s.is_hss && !editing && (
         <div className="field-row">
           <span className="field-label">Seller → Buyer</span>
@@ -830,13 +794,14 @@ function InvoiceGroup({
 
   return (
     <div className="amount-block">
-      <div className="amount-block-head">
-        <span className="amount-block-title">
-          {cfg.title}
-          {docs.length > 0 &&
-            ` · ${tax.length ? `${tax.length} tax invoice${tax.length > 1 ? "s" : ""}` : `${docs.length} proforma${docs.length > 1 ? "s" : ""}`} counted`}
-        </span>
-      </div>
+      {/* the card's heading already names the group; this line only says what is counted */}
+      {docs.length > 0 && (
+        <div className="amount-block-head">
+          <span className="field-note">
+            {tax.length ? `${tax.length} tax invoice${tax.length > 1 ? "s" : ""}` : `${docs.length} proforma${docs.length > 1 ? "s" : ""}`} counted
+          </span>
+        </div>
+      )}
       {docs.length === 0 && <p className="field-note">{loaded ? cfg.empty : "Loading invoices…"}</p>}
       {/* several invoices scroll inside the box instead of stretching it */}
       <div className="invoice-list">
@@ -1111,43 +1076,173 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
 }
 
 /** What the clearance is waiting on now: one line under the header (see clearanceFlow.ts). */
-function NextStepBar({ shipment, ticks }: { shipment: Shipment; ticks?: boolean }) {
+function NextStepBar({ shipment }: { shipment: Shipment }) {
   const n = nextStep(shipment);
   if (!n) return null;
   return (
     <div className={`next-step${n.blocked ? " is-blocked" : ""}`} role="status">
       <span className="next-step-label">{n.blocked ? "Blocked" : "Next"}</span>
-      <strong>{n.title}</strong>
-      <span className="next-step-detail">{n.detail}</span>
-      {n.also.length > 0 && <span className="next-step-also">Also open: {n.also.join(", ")}</span>}
-      {ticks && (
-        <span className="next-ticks">
-          {(
-            [
-              ["Duty", shipment.duty_paid],
-              ["CFS", shipment.cfs_inv_received],
-              ["Line", shipment.line_paid],
-            ] as [string, boolean][]
-          ).map(([label, on]) => (
-            <span key={label} className={on ? "ok" : "no"}>
-              {label}
-            </span>
-          ))}
-        </span>
-      )}
+      <strong className="next-step-title">{n.title}</strong>
+      <span className="next-step-detail">
+        {n.detail}
+        {n.also.length > 0 && ` Also open: ${n.also.join(", ")}.`}
+      </span>
     </div>
   );
 }
 
-/** The clearance checks, shown as chips at the top of the shipment page. */
-function statusFlags(s: Shipment): [string, boolean][] {
-  return [
-    ["Duty Paid", s.duty_paid],
-    ["OOC", s.ooc],
-    ["CFS Invoice", s.cfs_inv_received],
-    ["Line Paid", s.line_paid],
-    ["DO", s.do],
+/** "2026-10-04" (or an ICEGATE timestamp starting with one) -> "04 Oct"; anything else as it came. */
+function shortDate(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  return m ? `${m[3]} ${MONTHS[Number(m[2]) - 1]}` : v.split(" ")[0];
+}
+
+/** One card, six cells: the keys everything is filed and searched by, and where the shipment is. */
+function KeyStrip({ s }: { s: Shipment }) {
+  const ports = usePorts();
+  const portName = s.port ? ports.find((p) => p.code === s.port)?.name ?? s.port : null;
+  const age = /^\d+$/.test(s.days) ? `Day ${s.days}` : s.days || "—";
+  const cells: { label: string; value: React.ReactNode; sub?: React.ReactNode; empty?: boolean; wide?: boolean }[] = [
+    {
+      label: s.hbl ? "BL (MBL / HBL)" : "BL",
+      value: <CopyValue value={s.mbl} label="BL no" />,
+      sub: s.hbl ? <CopyValue value={s.hbl} label="HBL no" /> : s.shipping_line || s.line_from_bl?.line || null,
+      wide: true,
+    },
+    {
+      label: "BE",
+      value: s.be_no ? <CopyValue value={s.be_no} label="BE no" /> : "Not filed yet",
+      sub: s.be_no ? fmtDate(s.be_dt) ?? "date not entered" : null,
+      empty: !s.be_no,
+    },
+    { label: "Port", value: portName ?? "—", sub: portName && portName !== s.port ? s.port : null, empty: !s.port },
+    { label: "Containers", value: s.container || "—", sub: s.container_status, empty: !s.container },
+    {
+      label: "ETA → Inward",
+      value: (
+        <>
+          {shortDate(s.eta) ?? "—"} <span className="key-arrow">→</span> {s.inw ? shortDate(s.inw) : "—"}
+        </>
+      ),
+      sub: s.eta_is_deadline ? "ETA is a deadline" : null,
+    },
+    { label: "Age", value: age, sub: /^\d+$/.test(s.days) ? "since inward" : null, empty: !/^\d+$/.test(s.days) },
   ];
+  return (
+    <div className="key-strip" role="group" aria-label="Shipment keys">
+      {cells.map((c) => (
+        <div className={`key-cell${c.wide ? " key-cell-wide" : ""}`} key={c.label}>
+          <span className="key-label">{c.label}</span>
+          <span className={`key-value${c.empty ? " is-empty" : ""}`}>{c.value}</span>
+          {c.sub && <span className="key-sub">{c.sub}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * IGM → BE filed → Assessed → Duty → OOC → CFS → Line → DO. Done = ✓ + date, the first open step = "Now",
+ * the rest hollow. Red only for a real exception (an unanswered customs query). The OOC / Cleared dates and
+ * the examination switch sit under it (they used to be the Status card).
+ */
+function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => void }) {
+  const saveShipment = useSaveShipment();
+  const [busy, setBusy] = useState(false);
+  const q = s.icegate?.be_status;
+  const openQuery = !!q?.query && !q?.query_reply;
+  const steps: { label: string; done: boolean; date?: string | null; note?: string; alert?: boolean }[] = [
+    { label: "IGM", done: !!s.igm, date: shortDate(s.igm_date) },
+    { label: "BE filed", done: !!s.be_no, date: shortDate(s.be_dt) },
+    { label: "Assessed", done: s.duty_amount != null || !!q?.assessed_at, date: shortDate(q?.assessed_at), alert: openQuery, note: openQuery ? "Query" : undefined },
+    { label: "Duty", done: s.duty_paid, date: shortDate(q?.paid_at) },
+    { label: "OOC", done: s.ooc, date: shortDate(s.ooc_date), note: !s.ooc && s.under_examination ? "Exam" : undefined },
+    { label: "CFS", done: s.cfs_inv_received },
+    { label: "Line", done: s.line_paid },
+    { label: "DO", done: s.do },
+  ];
+  const current = steps.findIndex((x) => !x.done);
+  async function toggleExam() {
+    setBusy(true);
+    try {
+      onChange((await saveShipment(s, { under_examination: !s.under_examination })).shipment);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="stepper-card" aria-label="Clearance">
+      <ol className="stepper">
+        {steps.map((x, i) => {
+          const state = x.alert ? "alert" : x.done ? "done" : i === current ? "now" : "todo";
+          return (
+            <li key={x.label} className={`step step-${state}`} aria-current={i === current ? "step" : undefined}>
+              <span className="step-dot" aria-hidden="true">{state === "done" ? "✓" : state === "alert" ? "!" : ""}</span>
+              <span className="step-label">{x.label}</span>
+              <span className="step-sub">
+                {x.note ?? (x.done ? x.date ?? "Done" : i === current ? "Now" : "Pending")}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="stepper-foot">
+        <EditField label="OOC date" field="ooc_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.ooc_date)} />
+        <EditField label="Cleared date" field="cleared_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.cleared_date)} />
+        <button
+          type="button"
+          className={`chip-toggle${s.under_examination ? " is-on" : ""}`}
+          aria-pressed={!!s.under_examination}
+          disabled={busy}
+          onClick={toggleExam}
+          title={s.examination_at ? `Marked for examination: ${s.examination_at}` : "Normally read from the OOC copy — switch it here if needed"}
+        >
+          Under examination
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Duty / CFS / Line in words: what's known, what's paid, what's still not attached. */
+function PaymentTiles({ s }: { s: Shipment }) {
+  const fd = s.final_duty;
+  const dutyAmt = fd && fd.source !== "be" && (s.ooc || Number(fd.interest) > 0) ? fd.total : s.duty_amount;
+  const tiles: { label: string; done: boolean; value: string; sub: string }[] = [
+    {
+      label: "Duty",
+      done: s.duty_paid,
+      value: dutyAmt == null ? "Not assessed" : fmtMoney(dutyAmt)!,
+      sub: s.duty_paid ? "Paid" : dutyAmt == null ? "Waiting for the assessed BE" : "Not paid yet",
+    },
+    {
+      label: "CFS",
+      done: s.cfs_inv_received,
+      value: s.cfs_amount_total ? fmtMoney(s.cfs_amount_total)! : "Not attached",
+      sub: `${s.cfs_inv_received ? "Invoice received" : "Invoice pending"} · ${s.cfs_paid_by_us ? "paid by us" : "paid by client"}`,
+    },
+    {
+      label: "Line",
+      done: s.line_paid,
+      value: s.line_amount_total ? fmtMoney(s.line_amount_total)! : "Not attached",
+      sub: `${s.line_paid ? "Paid" : "Not paid yet"} · ${s.line_paid_by_us ? "by us" : "by client"}`,
+    },
+  ];
+  return (
+    <div className="pay-tiles">
+      {tiles.map((t) => (
+        <div className="pay-tile" key={t.label}>
+          <span className="pay-label">
+            <span className={`dot ${t.done ? "dot-ok" : "dot-todo"}`} aria-hidden="true" />
+            {t.label}
+          </span>
+          <span className={`pay-value${t.value.startsWith("₹") ? "" : " is-words"}`}>{t.value}</span>
+          <span className="pay-sub">{t.sub}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type EditKind = "text" | "date" | "port";
@@ -1248,9 +1343,9 @@ function EditField({
   );
 }
 
-function Field({ label, value, hint, strong }: { label: string; value: string | null; hint?: string; strong?: boolean }) {
+function Field({ label, value, hint, strong, amount }: { label: string; value: string | null; hint?: string; strong?: boolean; amount?: boolean }) {
   return (
-    <div className="field-row" title={hint}>
+    <div className={`field-row${amount ? " field-amount" : ""}${strong ? " field-total" : ""}`} title={hint}>
       <span className="field-label">{label}</span>
       <span className={`field-value${strong ? " field-strong" : ""}${value == null ? " field-empty" : ""}`}>
         {value ?? "—"}
@@ -1262,7 +1357,7 @@ function Field({ label, value, hint, strong }: { label: string; value: string | 
 
 /** "IGM details" heading + the one button that reads ICEGATE for this shipment (sea IGM, and for inland
  *  shipments the ICD BL status too). Staff: the MBL must be the full one ICEGATE knows (HMM: HDMU…). */
-function IcegateBar({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => void }) {
+function IcegateBar({ s, onChange, open, onToggle }: { s: Shipment; onChange: (s: Shipment) => void; open: boolean; onToggle: () => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   async function run() {
@@ -1306,14 +1401,17 @@ function IcegateBar({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => v
   return (
     <>
       <div className="icegate-bar">
-        <span className="amount-block-title">IGM details</span>
-        <span className="field-note">
-          {s.icegate?.final ? `final — read from ICEGATE after clearance${at ? ` (${at})` : ""}; not read again` : at ? `read from ICEGATE ${at}` : s.igm ? "IGM no from the tracker; details not read from ICEGATE yet" : "not read from ICEGATE yet"}
-        </span>
-        {!s.icegate?.final && (
-        <button type="button" className="btn-secondary" onClick={run} disabled={busy || !s.mbl}>
-          {busy ? "Reading ICEGATE…" : "Fetch from ICEGATE"}
+        <button type="button" className="fold-toggle" aria-expanded={open} aria-controls="igm-details" onClick={onToggle}>
+          <span className="fold-caret" aria-hidden="true">▸</span>
+          IGM &amp; ICD details
+          <span className="fold-meta">
+            {s.icegate?.final ? `· final, read ${at ?? "after clearance"}` : at ? `· read from ICEGATE ${at}` : s.igm ? "· not read from ICEGATE yet" : "· not read yet"}
+          </span>
         </button>
+        {!s.icegate?.final && (
+          <button type="button" className="btn-secondary btn-sm" onClick={run} disabled={busy || !s.mbl}>
+            {busy ? "Reading ICEGATE…" : "Fetch"}
+          </button>
         )}
       </div>
       {msg && (

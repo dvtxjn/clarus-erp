@@ -14,6 +14,12 @@ import type { Shipment } from "./types";
 const STANDARD_FREE_DAYS = 14;
 const fmt = (v: string | null) =>
   v ? new Date(`${v}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+/** "2026-10-04" -> "04 Oct" (the summary line; the table keeps full dates) */
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const short = (v: string | null | undefined) => {
+  const m = v && /^\d{4}-(\d{2})-(\d{2})/.exec(v);
+  return m ? `${m[2]} ${MON[Number(m[1]) - 1]}` : "—";
+};
 const errText = (e: unknown) =>
   axios.isAxiosError(e) && typeof e.response?.data?.detail === "string" ? e.response.data.detail : "Something went wrong — try again.";
 type Patch = Parameters<typeof editContainer>[2];
@@ -31,11 +37,14 @@ export default function FpodContainers({
   inland,
   portLabel,
   onRefreshed,
+  wide = false,
 }: {
   shipment: Shipment;
   inland: boolean;
   portLabel: string;
   onRefreshed: (s: Shipment) => void;
+  /** full-page layout: the table shows (first 5 rows); narrow: folded behind the summary unless free days run out */
+  wide?: boolean;
 }) {
   const shipmentId = shipment.id;
   const [rows, setRows] = useState<ShipmentContainer[] | null>(null);
@@ -45,6 +54,8 @@ export default function FpodContainers({
   const [newNo, setNewNo] = useState("");
   const [newDate, setNewDate] = useState("");
   const [allDays, setAllDays] = useState("");
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const confirm = useConfirm();
 
   useEffect(() => {
@@ -146,17 +157,33 @@ export default function FpodContainers({
   const tone = (c: ShipmentContainer) => (c.days_left == null ? "" : c.days_left < 0 ? " fpod-over" : c.days_left <= 3 ? " fpod-soon" : "");
   const arrived = (rows ?? []).filter((c) => c.arrival_date).length;
   const standard = rows?.find((c) => !c.free_days_typed)?.free_days ?? STANDARD_FREE_DAYS;
+  const urgent = (rows ?? []).filter((c) => c.days_left != null && c.days_left <= 3);
+  // opens by itself when a container is over (or within 3 days of) its free days — that shouldn't sit folded
+  const open = userOpen ?? (wide || urgent.length > 0 || adding);
+  const PREVIEW = 5;
+  const shown = rows && !showAll ? rows.slice(0, PREVIEW) : rows ?? [];
+  const hiddenUrgent = rows ? urgent.filter((c) => !shown.includes(c)).length : 0;
+  const summary = (() => {
+    if (!rows?.length) return null;
+    const n = rows.length;
+    const dates = rows.map((c) => c.arrival_date).filter(Boolean).sort() as string[];
+    const free = rows.map((c) => c.last_free_day).filter(Boolean).sort() as string[];
+    const days = rows.map((c) => c.day).filter((d): d is number => d != null);
+    return [
+      `${n} container${n === 1 ? "" : "s"}`,
+      arrived === n ? `all arrived ${short(dates[dates.length - 1])}` : arrived ? `${arrived} of ${n} arrived` : "none arrived yet",
+      free.length ? `free till ${short(free[0])}${rows.some((c) => c.do_valid_until && c.last_free_day === free[0]) ? " (DO)" : ""}` : null,
+      days.length ? `Day ${Math.max(...days)}` : null,
+      urgent.length ? `${urgent.length} ${urgent.some((c) => c.days_left! < 0) ? "over or near" : "near"} the free-day end` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  })();
 
   return (
     <section className="detail-section detail-wide fpod" id="shipment-containers">
       <div className="fpod-head">
         <h3>{inland ? "Containers at FPOD" : "Containers"} · {portLabel}</h3>
-        <span className="field-note">
-          {rows ? `${rows.length} container${rows.length === 1 ? "" : "s"} · ${inland ? `${arrived} arrived · ` : ""}` : ""}
-          {inland
-            ? `free days count from each container’s arrival (standard ${standard}); a DO’s validity replaces it`
-            : `free days count from the inward date (standard ${standard}); a DO’s validity replaces it`}
-        </span>
         <span className="fpod-actions">
           <button type="button" className="btn-secondary" onClick={copyImage} disabled={!rows?.length}>
             Copy as image
@@ -169,6 +196,15 @@ export default function FpodContainers({
           </button>
         </span>
       </div>
+      {summary && (
+        <div className="fpod-summary">
+          <button type="button" className="fold-toggle" aria-expanded={open} aria-controls="fpod-body" onClick={() => setUserOpen(!open)}>
+            <span className="fold-caret" aria-hidden="true">▸</span>
+            {open ? "Hide containers" : "Show containers"}
+          </button>
+          <span className={`fpod-summary-text${urgent.length ? " is-urgent" : ""}`}>{summary}</span>
+        </div>
+      )}
       {msg && (
         <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
           {msg.text}
@@ -191,7 +227,13 @@ export default function FpodContainers({
           <button type="submit">Add</button>
         </form>
       )}
-      {!!rows?.length && (
+      {open && !!rows?.length && (
+        <div id="fpod-body" className="fold-body">
+        <p className="field-note">
+          {inland
+            ? `Free days count from each container’s arrival (standard ${standard}); a DO’s validity replaces it.`
+            : `Free days count from the inward date (standard ${standard}); a DO’s validity replaces it.`}
+        </p>
         <form className="fpod-add fpod-all" onSubmit={applyAll}>
           <label htmlFor="fpod-all-days">Days free for all containers</label>
           <input
@@ -204,17 +246,18 @@ export default function FpodContainers({
             value={allDays}
             onChange={(e) => setAllDays(e.target.value)}
           />
-          <button type="submit" disabled={busy}>
+          <button type="submit" className="btn-secondary btn-sm" disabled={busy}>
             {allDays.trim() ? "Apply to all" : `Reset all to ${standard}`}
           </button>
           <span className="field-note">or change one container in its row below</span>
         </form>
+        </div>
       )}
       {rows === null ? (
         <p className="field-note">Loading containers…</p>
       ) : rows.length === 0 ? (
         <p className="field-note">No containers yet: Fetch from ICEGATE (reads the IGM with the MBL), or add them by hand.</p>
-      ) : (
+      ) : !open ? null : (
         <div className="fpod-scroll">
         <table className="tracker-grid fpod-table">
           <thead>
@@ -231,7 +274,7 @@ export default function FpodContainers({
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => (
+            {shown.map((c) => (
               <tr key={`${c.id}-${c.arrival_date}-${c.free_days}-${c.tracking_status}-${c.do_valid_until}`}>
                 <td className="fpod-no">{c.container_no}</td>
                 <td>{c.status ?? "—"}</td>
@@ -310,6 +353,13 @@ export default function FpodContainers({
             ))}
           </tbody>
         </table>
+        {rows.length > PREVIEW && (
+          <button type="button" className="link-button fpod-more" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
+            {showAll
+              ? "Show first 5"
+              : `+ ${rows.length - PREVIEW} more${hiddenUrgent ? ` (${hiddenUrgent} near the free-day end)` : ""}`}
+          </button>
+        )}
         </div>
       )}
     </section>
