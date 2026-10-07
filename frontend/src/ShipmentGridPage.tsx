@@ -538,7 +538,7 @@ const gridTheme = themeQuartz.withParams({
   headerHeight: 30,
   spacing: 4,
   cellHorizontalPadding: 6,
-  fontSize: 12,
+  fontSize: 12.5,
   // palette from :root in index.css (follows the chosen accent)
   accentColor: "var(--color-accent)",
   backgroundColor: "var(--color-surface)", // follows the theme (light / dim / dark)
@@ -1175,6 +1175,13 @@ export default function ShipmentGridPage() {
     }
   }, [tab]);
 
+  // 0-rows escape hatch: drop chips, search and column filters (keeps column layout)
+  function clearFilters() {
+    setChips(new Set());
+    setQuickFilter("");
+    headerRef.current?.api.setFilterModel(null);
+  }
+
   function resetLayout() {
     rememberColView("grid");
     manualWidths.current = new Set(); // back to auto-fit everywhere
@@ -1701,6 +1708,7 @@ export default function ShipmentGridPage() {
         <div className="tracker-empty">Loading…</div>
       ) : (
         <SettledStack key={`${tab}.${view}`}>
+          <div className="grid-sticky-top">
           {tab === "ongoing" && (
             <div className="filter-chips" role="group" aria-label="Filters">
               {portsPresent.map((p) => (
@@ -1769,6 +1777,7 @@ export default function ShipmentGridPage() {
               onColumnPinned={saveColumnState}
               onColumnVisible={() => scheduleFit(120)}
             />
+          </div>
           </div>
 
           {groups.map(([client, rows]) => (
@@ -1843,7 +1852,14 @@ export default function ShipmentGridPage() {
             </section>
           ))}
 
-          {shownGroups.length === 0 && <div className="tracker-empty">No shipments match this view.</div>}
+          {shownGroups.length === 0 && (
+            <div className="tracker-empty">
+              No shipments match this view.{" "}
+              <button type="button" className="link-btn" onClick={clearFilters}>
+                Clear filters
+              </button>
+            </div>
+          )}
         </SettledStack>
       )}
       {peekId && (

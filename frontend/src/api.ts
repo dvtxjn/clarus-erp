@@ -1093,6 +1093,7 @@ export interface MailFilters {
   port?: string;
   date_from?: string;
   date_to?: string;
+  limit?: number;
 }
 export async function listIcegateMails(params: MailFilters = {}): Promise<IcegateMail[]> {
   const { data } = await client.get("/icegate-mails", { params });

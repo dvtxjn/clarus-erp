@@ -48,20 +48,28 @@ export default function CustomsMailPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // tab badges: how many mails "Needs attention" / "Not matched" hold under the same filters
+  const [counts, setCounts] = useState<{ attention?: number; unmatched?: number }>({});
   const load = useCallback(() => {
-    listIcegateMails({
-      attention: view === "attention",
-      unmatched: view === "unmatched",
+    const f = {
       scope,
       source: source || undefined,
       kind: kind || undefined,
       port: port || undefined,
       date_from: from || undefined,
       date_to: to || undefined,
-    })
+    } as const;
+    listIcegateMails({ ...f, attention: view === "attention", unmatched: view === "unmatched" })
       .then(setRows)
       .catch(() => setRows([]));
-  }, [view, scope, source, kind, port, from, to]);
+    listIcegateMails({ ...f, attention: true, limit: 2000 })
+      .then((r) => setCounts((c) => ({ ...c, attention: r.length })))
+      .catch(() => undefined);
+    if (isAdmin)
+      listIcegateMails({ ...f, unmatched: true, limit: 2000 })
+        .then((r) => setCounts((c) => ({ ...c, unmatched: r.length })))
+        .catch(() => undefined);
+  }, [view, scope, source, kind, port, from, to, isAdmin]);
 
   useEffect(() => {
     icegateMailKinds().then(setKinds).catch(() => setKinds([]));
@@ -190,6 +198,7 @@ export default function CustomsMailPage() {
           ).map(([v, label]) => (
             <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => setView(v)}>
               {label}
+              {(v === "attention" || v === "unmatched") && !!counts[v] && <span className="chip-count"> {counts[v]}</span>}
             </button>
           ))}
         </div>

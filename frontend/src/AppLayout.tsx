@@ -138,47 +138,55 @@ export default function AppLayout() {
         {/* page tools (see sidebarSlot.tsx) */}
         <div className="app-sidebar-slot" ref={setSlot} />
         <div className="app-sidebar-foot">
-          <div className="theme-switch" role="radiogroup" aria-label="Theme">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="radio"
-                aria-checked={theme === t.id}
-                className={theme === t.id ? "on" : ""}
-                onClick={() => {
-                  setTheme(t.id);
-                  pickTheme(t.id);
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <div className="accent-picker" title="Accent colour">
-            Accent
-            {ACCENTS.map((a) => (
-              <button
-                key={a.id}
-                type="button"
-                className={a.id === accent ? "on" : ""}
-                aria-pressed={a.id === accent}
-                style={{ background: a.color }}
-                aria-label={a.label}
-                title={a.label}
-                onClick={() => {
-                  setAccent(a.id);
-                  pickAccent(a.id);
-                }}
-              />
-            ))}
-          </div>
-          <div className="app-user">
-            <span className="app-avatar" aria-hidden="true">{initials}</span>
-            <span className="app-user-text">
-              <span className="app-user-name">{user?.full_name}</span>
-              <span className="app-user-role">{user?.role.replace("_", " ")}</span>
-            </span>
+          <div className="app-foot-row">
+            <div className="app-user">
+              <span className="app-avatar" aria-hidden="true">{initials}</span>
+              <span className="app-user-text">
+                <span className="app-user-name">{user?.full_name}</span>
+                <span className="app-user-role">{user?.role.replace("_", " ")}</span>
+              </span>
+            </div>
+            <details className="appearance-menu">
+              <summary aria-label="Appearance" title="Appearance">···</summary>
+              <div className="appearance-pop">
+                <span className="appearance-pop-title">Appearance</span>
+                <div className="theme-switch" role="radiogroup" aria-label="Theme">
+                  {THEMES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={theme === t.id}
+                      className={theme === t.id ? "on" : ""}
+                      onClick={() => {
+                        setTheme(t.id);
+                        pickTheme(t.id);
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="accent-picker" title="Accent colour">
+                  Accent
+                  {ACCENTS.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      className={a.id === accent ? "on" : ""}
+                      aria-pressed={a.id === accent}
+                      style={{ background: a.color }}
+                      aria-label={a.label}
+                      title={a.label}
+                      onClick={() => {
+                        setAccent(a.id);
+                        pickAccent(a.id);
+                      }}
+                    />
+                  ))}
+                  </div>
+              </div>
+            </details>
           </div>
           <button className="secondary app-logout" onClick={logout}>
             Log out

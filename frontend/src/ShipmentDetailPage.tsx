@@ -195,10 +195,11 @@ export function ShipmentDetail({
           </div>
         </div>
         <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
+        {/* peek: what to do next comes first, right under the title (ticks only — no amounts here) */}
+        {peek && <NextStepBar shipment={shipment} ticks />}
       </header>
 
-
-      <NextStepBar shipment={shipment} />
+      {!peek && <NextStepBar shipment={shipment} />}
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -1110,7 +1111,7 @@ function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () =>
 }
 
 /** What the clearance is waiting on now: one line under the header (see clearanceFlow.ts). */
-function NextStepBar({ shipment }: { shipment: Shipment }) {
+function NextStepBar({ shipment, ticks }: { shipment: Shipment; ticks?: boolean }) {
   const n = nextStep(shipment);
   if (!n) return null;
   return (
@@ -1119,6 +1120,21 @@ function NextStepBar({ shipment }: { shipment: Shipment }) {
       <strong>{n.title}</strong>
       <span className="next-step-detail">{n.detail}</span>
       {n.also.length > 0 && <span className="next-step-also">Also open: {n.also.join(", ")}</span>}
+      {ticks && (
+        <span className="next-ticks">
+          {(
+            [
+              ["Duty", shipment.duty_paid],
+              ["CFS", shipment.cfs_inv_received],
+              ["Line", shipment.line_paid],
+            ] as [string, boolean][]
+          ).map(([label, on]) => (
+            <span key={label} className={on ? "ok" : "no"}>
+              {label}
+            </span>
+          ))}
+        </span>
+      )}
     </div>
   );
 }
