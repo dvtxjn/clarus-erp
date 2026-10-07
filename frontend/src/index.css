@@ -2098,11 +2098,14 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 /* sidebar foot: Appearance (theme + accent) behind ··· */
 .app-foot-row { display: flex; align-items: center; gap: 6px; }
 .app-foot-row .app-user { flex: 1; }
-.appearance-menu { position: relative; }
+.appearance-menu { position: static; }
+.app-sidebar-foot { position: relative; }
+/* the sidebar is its own stacking layer (sticky): lift it over the tracker while the menu is open */
+.app-sidebar:has(.appearance-menu[open]) { z-index: var(--z-popover); }
 .appearance-menu > summary { list-style: none; cursor: pointer; padding: 2px 8px; border-radius: var(--radius); color: var(--color-text-muted); font-size: 14px; line-height: 1.4; }
 .appearance-menu > summary::-webkit-details-marker { display: none; }
 .appearance-menu > summary:hover, .appearance-menu[open] > summary { background: var(--color-hover); color: var(--color-text); }
-.appearance-pop { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: var(--z-popover); width: 200px; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
+.appearance-pop { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: var(--z-popover); display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-md); }
 .appearance-pop-title { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
 .sidebar-collapsed .appearance-menu { display: none; }
 
