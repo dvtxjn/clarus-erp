@@ -20,6 +20,9 @@ Rules
   - Status follows the evidence rules (status_rules); "billed?" Yes bills the shipment,
     an explicit No un-bills it (status restored from the evidence); blank leaves billing alone.
   - Every change is audit-logged; unknown columns are reported.
+  - An .xlsx of the whole tracker is read too: the TRACKER tab plus the monthly "FnF" tabs
+    (cleared shipments). FnF rows only update shipments already in the app — older jobs
+    that never were in the app are not created (client, 2026-10-07). Other tabs are ignored.
 """
 from __future__ import annotations
 
@@ -116,9 +119,61 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
         headers = _normalize_headers(next(reader))
     except StopIteration:
         return [], [], ["The file is empty."]
-    unknown = [h for h in headers if h and h not in COLUMNS and h not in SPECIAL]
-    rows, skipped = [], []
-    for n, raw in enumerate(reader, start=2):
+    rows, unknown, skipped = [], [], []
+    _parse_table(headers, enumerate(reader, start=2), rows, unknown, skipped)
+    return rows, unknown, skipped
+
+
+NUMBER_FORMAT = re.compile(r'^0(?:\.(0+))?\s*"([^"]*)"$')
+
+
+def _cell(c: Any) -> str:
+    """A cell as the sheet shows it (= what its CSV download has): 29-Sep-2026, 267.076 MTS."""
+    v = getattr(c, "value", c)
+    if v is None:
+        return ""
+    if isinstance(v, datetime):
+        return v.strftime("%d-%b-%Y")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        m = NUMBER_FORMAT.match(getattr(c, "number_format", "") or "")
+        if m:
+            return f"{v:.{len(m.group(1) or '')}f} {m.group(2)}".strip()
+        if float(v).is_integer():
+            return str(int(v))
+    return str(v)
+
+
+def parse_xlsx(data: bytes) -> tuple[list[dict], list[str], list[str]]:
+    """The whole tracker workbook: the TRACKER tab, then every FnF tab (rows marked _fnf)."""
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception:
+        return [], [], ["Couldn't read the .xlsx file."]
+    tabs = [ws for ws in wb.worksheets if "tracker" in ws.title.lower()]
+    tabs += [ws for ws in wb.worksheets if "fnf" in ws.title.lower()]
+    if not tabs:
+        return [], [], ["No TRACKER or FnF tab in the workbook."]
+    rows, unknown, skipped = [], [], []
+    for ws in tabs:
+        it = ws.iter_rows()
+        try:
+            headers = _normalize_headers([_cell(c) for c in next(it)])
+        except StopIteration:
+            continue
+        fnf = "fnf" in ws.title.lower()
+        numbered = ((n, [_cell(c) for c in raw]) for n, raw in enumerate(it, start=2))
+        _parse_table(headers, numbered, rows, unknown, skipped, tab=ws.title.strip(), fnf=fnf)
+    wb.close()
+    return rows, unknown, skipped
+
+
+def _parse_table(headers: list[str], numbered, rows: list[dict], unknown: list[str], skipped: list[str],
+                 tab: Optional[str] = None, fnf: bool = False) -> None:
+    unknown += [h for h in headers if h and h not in COLUMNS and h not in SPECIAL and h not in unknown]
+    where = f"{tab} row" if tab else "Row"
+    for n, raw in numbered:
         if not any(c.strip() for c in raw):
             continue
         r = dict(zip(headers, raw + [""] * (len(headers) - len(raw))))
@@ -129,7 +184,8 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
         if "hbl" in r and _clean(r["hbl"]):
             hbl = _clean(r["hbl"])
         if not mbl and not hbl:
-            skipped.append(f"Row {n}: no MBL / HBL")
+            if not fnf:  # FnF tabs end with blank / total lines
+                skipped.append(f"{where} {n}: no MBL / HBL")
             continue
         fields = {field: parse(r[col]) for col, (field, parse) in COLUMNS.items() if col in r}
         fields["mbl"], fields["hbl"] = mbl or "", hbl
@@ -142,9 +198,11 @@ def parse_csv(data: bytes) -> tuple[list[dict], list[str], list[str]]:
         billed = (_clean(r.get("billed?")) or "").lower()
         if billed in ("yes", "y", "true", "no", "n", "false"):  # blank = no information: leave billing alone
             fields["is_billed"] = billed in ("yes", "y", "true")
-        fields["_row"] = n
+        fields["_row"] = len(rows) + 1 if tab else n  # unique across tabs
+        fields["_where"] = f"{where} {n}"
+        if fnf:
+            fields["_fnf"] = True
         rows.append(fields)
-    return rows, unknown, skipped
 
 
 def _norm_value(v: Any) -> Any:
@@ -188,7 +246,7 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
         if s.job:
             by_job.setdefault(_key(s.job), []).append(s)
 
-    new, updated, unchanged, seen, deleted = [], [], 0, set(), []
+    new, updated, unchanged, seen, deleted, older = [], [], 0, set(), [], 0
     for r in rows:
         s, how = None, None
         for how_, table, keys in (("MBL", by_mbl, mbl_keys(r["mbl"])), ("HBL", by_hbl, {_key(r.get("hbl"))} - {""}),
@@ -203,13 +261,16 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
                 if len(cands) == 1:
                     s, how = cands[0], how_
                     break
+        if s is None and r.get("_fnf"):
+            older += 1  # cleared before the app — not created
+            continue
         if s is None:
             new.append({"row": r["_row"], "job": r.get("job"), "mbl": r["mbl"], "hbl": r.get("hbl"),
                         "consignee": r.get("consignee")})
             continue
         seen.add(s.id)
         if s.is_deleted:
-            deleted.append(f"Row {r['_row']}: {s.mbl or s.job} was deleted in the app — restore it to update it")
+            deleted.append(f"{r.get('_where', 'Row')}: {s.mbl or s.job} was deleted in the app — restore it to update it")
             continue
         has_be = _has_doc(s, DocumentType.ASSESSED_BILL_OF_ENTRY, DocumentType.OOC_BILL_OF_ENTRY)
         has_ooc = _has_doc(s, DocumentType.OOC_BILL_OF_ENTRY)
@@ -239,7 +300,7 @@ def plan(db: Session, rows: list[dict], lock: bool = False) -> dict:
     missing = [{"shipment_id": s.id, "job": s.job, "mbl": s.mbl, "consignee": s.consignee}
                for s in gone if not (s.is_billed or s.cleared_date)]
     return {"rows": len(rows), "new": new, "updated": updated, "unchanged": unchanged, "missing": missing,
-            "cleared": len(gone) - len(missing), "deleted": deleted}
+            "cleared": len(gone) - len(missing), "older": older, "deleted": deleted}
 
 
 def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:

@@ -8,7 +8,7 @@ function errorText(e: unknown): string {
 }
 
 /**
- * Upload the Google Sheets tracker CSV: preview (nothing saved) → Apply.
+ * Upload the Google Sheets tracker (.xlsx with its FnF tabs, or CSV): preview (nothing saved) → Apply.
  * Sheet wins over app edits; Bill of Entry data wins over the sheet; shipments
  * missing from the sheet are flagged, never deleted.
  */
@@ -58,17 +58,17 @@ export default function TrackerImportPanel({ onApplied, onClose }: { onApplied: 
     <div className="import-panel">
       <div className="import-head">
         <div>
-          <h3>Import tracker CSV</h3>
+          <h3>Import tracker sheet</h3>
           <p className="field-note">
-            Google Sheets → File → Download → CSV. You'll see what changes before anything is saved. The sheet wins over
+            Google Sheets → File → Download → Microsoft Excel (.xlsx) — reads the TRACKER and FnF tabs (FnF rows only update shipments already here). A CSV of the TRACKER tab works too. You'll see what changes before anything is saved. The sheet wins over
             edits made here, except data read from a Bill of Entry; shipments missing from the sheet are flagged, never
             deleted. Documents, proformas and invoices are never touched.
           </p>
         </div>
         <div className="daily-actions">
-          <input ref={fileRef} type="file" accept=".csv" hidden onChange={(e) => pick(e.target.files?.[0])} />
+          <input ref={fileRef} type="file" accept=".xlsx,.csv" hidden onChange={(e) => pick(e.target.files?.[0])} />
           <button onClick={() => fileRef.current?.click()} disabled={busy}>
-            {busy && !preview ? "Reading…" : "Choose CSV"}
+            {busy && !preview ? "Reading…" : "Choose file"}
           </button>
           <button className="btn-secondary" onClick={onClose}>
             Close
@@ -86,6 +86,7 @@ export default function TrackerImportPanel({ onApplied, onClose }: { onApplied: 
             <span><b>{p.unchanged}</b> unchanged</span>
             <span className={p.missing.length ? "import-warn" : undefined}><b>{p.missing.length}</b> not in the sheet (flagged)</span>
             {!!p.cleared && <span><b>{p.cleared}</b> cleared (in FNF sheets)</span>}
+            {!!p.older && <span><b>{p.older}</b> older FnF rows (before the ERP — not added)</span>}
           </div>
           {p.unknown_columns.length > 0 && (
             <div className="field-note">Columns not used (renamed or new?): {p.unknown_columns.join(", ")}</div>

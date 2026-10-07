@@ -94,3 +94,39 @@ def test_blank_igm_detail_columns_keep_app_data(client, admin_headers):
     _post(client, h, "apply", data)
     s = client.get(f"/shipments/{sid}", headers=h).json()
     assert (s["voyage"], s["gw"]) == ("638W", "141715")
+
+
+def test_xlsx_tracker_and_fnf_tabs(client, admin_headers):
+    """The whole workbook: TRACKER tab + monthly FnF tabs. FnF rows update shipments in the app
+    (cleared date, ticks) but never create older jobs; other tabs are ignored (client, 2026-10-07)."""
+    import io
+    from datetime import datetime
+
+    import openpyxl
+
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "XLSXFNF001", "job": "994"}, headers=h).json()["id"]
+    cols = ["Job", "mbl", "Consignee", "gross wt", "Cleared Date", "duty\npaid?", "cfs \ninv?", "line\npaid?", "ooc?", "do?"]
+    wb = openpyxl.Workbook()
+    t = wb.active
+    t.title = "TRACKER"
+    t.append(cols)
+    t.append([995, "XLSXNEW001", "Divine", 12.5, None, "No", "No", "No", "No", "No"])
+    t["D2"].number_format = '0.000 "MTS"'
+    for title in ("SEPTEMBER FnF 2026", "PANIPAT DIVINE"):
+        ws = wb.create_sheet(title)
+        ws.append(cols)
+        ws.append([994, "XLSXFNF001", "Divine", None, datetime(2026, 9, 30), "Yes", "Yes", "Yes", "Yes", "Yes"])
+        ws.append([60, "XLSXOLD001", "Homezone", None, datetime(2026, 7, 2), "Yes", "Yes", "Yes", "Yes", "Yes"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    files = {"file": ("tracker.xlsx", buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+
+    p = client.post("/tracker-import/preview", files=files, headers=h).json()
+    assert [n["mbl"] for n in p["new"]] == ["XLSXNEW001"] and p["older"] == 1 and p["skipped"] == []
+    client.post("/tracker-import/apply", files=files, headers=h)
+    s = client.get(f"/shipments/{sid}", headers=h).json()
+    assert (s["cleared_date"], s["do"], s["status"]) == ("2026-09-30", True, "cleared")
+    new = next(x for x in client.get("/shipments", headers=h).json() if x["mbl"] == "XLSXNEW001")
+    assert new["gross_wt"] == "12.500 MTS"
+    assert not any(x["mbl"] == "XLSXOLD001" for x in client.get("/shipments", headers=h).json())

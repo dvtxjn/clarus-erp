@@ -1,4 +1,4 @@
-"""Upload the Google Sheets tracker CSV: preview what changes, then apply (see app/tracker_import.py)."""
+"""Upload the Google Sheets tracker (.xlsx with FnF tabs, or CSV): preview what changes, then apply (see app/tracker_import.py)."""
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -6,7 +6,7 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin
 from app.models.user import User
-from app.tracker_import import apply, parse_csv, plan
+from app.tracker_import import apply, parse_csv, parse_xlsx, plan
 
 router = APIRouter(prefix="/tracker-import", tags=["tracker import"])
 
@@ -17,9 +17,13 @@ async def _rows(file: UploadFile):
     data = await file.read()
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail="File is larger than 10 MB")
-    if not (file.filename or "").lower().endswith(".csv"):
-        raise HTTPException(status_code=400, detail="Upload the tracker as a .csv (File → Download → CSV in Google Sheets)")
-    rows, unknown, skipped = parse_csv(data)
+    name = (file.filename or "").lower()
+    if name.endswith(".xlsx"):
+        rows, unknown, skipped = parse_xlsx(data)
+    elif name.endswith(".csv"):
+        rows, unknown, skipped = parse_csv(data)
+    else:
+        raise HTTPException(status_code=400, detail="Upload the tracker as .xlsx (all tabs) or .csv (Google Sheets → File → Download)")
     if not rows:
         raise HTTPException(status_code=400, detail="No shipment rows found (need an MBL column).")
     return rows, unknown, skipped

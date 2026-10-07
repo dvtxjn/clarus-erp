@@ -1576,7 +1576,7 @@ export default function ShipmentGridPage() {
             <div className="tools-menu-list" role="menu" onClick={() => toolsRef.current?.removeAttribute("open")}>
               {isAdmin && (
                 <button type="button" role="menuitem" onClick={() => setShowImport((v) => !v)}>
-                  Import sheet CSV
+                  Import tracker sheet
                   <span className="field-note">Bring in the Google Sheet tracker</span>
                 </button>
               )}
