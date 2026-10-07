@@ -14,6 +14,7 @@ import ProformaPanel from "./ProformaPanel";
 import FpodContainers from "./FpodContainers";
 import ShipmentHistory from "./ShipmentHistory";
 import { formatPort, usePorts } from "./ports";
+import DateInput from "./DateInput";
 
 type Tab = "overview" | "customs" | "documents" | "history" | "proforma";
 
@@ -22,11 +23,11 @@ const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** "2026-08-27" -> "27-Aug-2026" */
+/** "2026-08-27" -> "27 Aug 2026" */
 function fmtDate(v: string | null): string | null {
   if (!v) return null;
   const [y, m, d] = v.split("-");
-  return `${d}-${MONTHS[Number(m) - 1]}-${y}`;
+  return `${d} ${MONTHS[Number(m) - 1]} ${y}`;
 }
 
 /** "108560.00" -> "₹1,08,560.00" (Indian grouping) */
@@ -191,10 +192,10 @@ export function ShipmentDetail({
       {/* tier 1: the keys, what's next, where the clearance stands, and the three payments — at a glance */}
       <div className="tier1">
         <KeyStrip s={shipment} />
-        <div className="tier1-flow">
+        <section className="tier1-flow" aria-label="Clearance">
           <NextStepBar shipment={shipment} />
           <ClearanceStepper s={shipment} onChange={setShipment} />
-        </div>
+        </section>
         <PaymentTiles s={shipment} />
       </div>
 
@@ -254,31 +255,39 @@ function DetailSkeleton({ peek }: { peek: boolean }) {
 
 type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_on_cfs";
 
-/** The Overview goes two-column once its own box is this wide (full page / full-width peek), not by window size. */
-const OVERVIEW_WIDE = 1000;
-function useWideBox<T extends HTMLElement>() {
+/**
+ * The Overview's own width (not the window's: the half peek stays one column). Same breakpoints as the
+ * CSS container queries on .detail-page: 1100 = the 12-column layout, 1600 = three columns.
+ */
+const OVERVIEW_WIDE = 1100;
+const OVERVIEW_XWIDE = 1600;
+function useBoxWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
-  const [wide, setWide] = useState(false);
+  const [width, setWidth] = useState(0);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWide(e.contentRect.width >= OVERVIEW_WIDE));
+    setWidth(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  return [ref, wide] as const;
+  return [ref, width] as const;
 }
 
 function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
   const ports = usePorts();
-  const [igmOpen, setIgmOpen] = useState(false);
-  const [box, wide] = useWideBox<HTMLDivElement>();
+  const [box, width] = useBoxWidth<HTMLDivElement>();
+  const wide = width >= OVERVIEW_WIDE;
+  // IGM details: open by default only where there's room for them (three columns)
+  const [igmUser, setIgmOpen] = useState<boolean | null>(null);
+  const igmOpen = igmUser ?? width >= OVERVIEW_XWIDE;
   const inland = !!s.port && !SEA_PORTS.has(s.port);
   return (
-    // desktop: movement | duty, CFS, line, notes; then containers and billing settings full width. Narrow: one column.
-    <div className={`overview${wide ? " is-wide" : ""}`} ref={box}>
-      <div className="ov-col">
-        <section className="detail-section">
+    // one 12-column grid (index.css): panel = one column; ≥1100 shipment | duty, notes | billing;
+    // ≥1600 shipment | duty | notes + billing; containers always full width
+    <div className="overview" ref={box}>
+        <section className="detail-section ov-ship">
           <h3>Shipment &amp; movement</h3>
           <div className="field-grid">
             <EditField label="Port (POD)" field="port" kind="port" s={s} onChange={onChange} display={formatPort(s.port, ports) || null} />
@@ -304,7 +313,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           {s.line_from_bl?.note && <p className="bl-note">{s.line_from_bl.note}</p>}
           {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30). Filled on command
               from ICEGATE's Sea IGM (MBL + port; inland: at the gateway the ICD names) or typed in. Folded by default. */}
-          <IcegateBar s={s} onChange={onChange} open={igmOpen} onToggle={() => setIgmOpen((o) => !o)} />
+          <IcegateBar s={s} onChange={onChange} open={igmOpen} onToggle={() => setIgmOpen(!igmOpen)} />
           {igmOpen && (
             <div id="igm-details" className="fold-body">
               <div className="field-grid">
@@ -363,8 +372,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             </ul>
           )}
         </section>
-      </div>
-      <div className="ov-col">
+      <div className="ov-duty">
         <section className="detail-section">
           <h3>Customs duty</h3>
           <EditField label="License" field="license" s={s} onChange={onChange} />
@@ -391,12 +399,12 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           <h3>Shipping line · destination charges</h3>
           <InvoiceGroup group="line" shipment={s} onChange={onChange} />
         </section>
-        <section className="detail-section">
-          <h3>Notes</h3>
-          <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
-          <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
-        </section>
       </div>
+      <section className="detail-section ov-notes">
+        <h3>Notes</h3>
+        <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
+        <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
+      </section>
       {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
           arrival at the FPOD; sea port: from the INW (client, 2026-09-30) */}
       {s.port && (
@@ -422,17 +430,8 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
       setSaving(null);
     }
   }
-  const chip = (field: ToggleField, label: string, title: string) => (
-    <button
-      type="button"
-      className={`chip-toggle${s[field] ? " is-on" : ""}`}
-      aria-pressed={!!s[field]}
-      disabled={saving === field}
-      onClick={() => toggle(field)}
-      title={title}
-    >
-      {label}
-    </button>
+  const sw = (field: ToggleField, label: string, help: string) => (
+    <SwitchRow label={label} help={help} on={!!s[field]} busy={saving === field} onToggle={() => toggle(field)} />
   );
   const summary = [
     s.is_hss ? "High sea sale" : null,
@@ -444,41 +443,49 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
       : `line paid by the client (${s.line_cost_inclusion === "exclude" ? "left off the proforma" : s.line_cost_inclusion === "include" ? "shown as cost inclusion" : "cost inclusion per client setting"})`,
   ].filter(Boolean);
   return (
-    <section className="detail-section billing-settings" aria-label="Billing settings">
-      <div className="billing-row">
-        <h3>Billing settings</h3>
+    <section className="detail-section billing-settings ov-billing" aria-label="Billing settings">
+      <h3>Billing settings</h3>
+      <div className="bill-grid">
         <HssEditor shipment={s} onChange={onChange} />
-        {chip("cfs_paid_by_us", "CFS paid by us", "We pay the CFS and bill it on")}
-        {s.cfs_paid_by_us && chip("tds_on_cfs", "TDS on CFS", "TDS is cut when we pay the CFS")}
+        {sw("cfs_paid_by_us", "CFS paid by us", "We pay the CFS and bill it on")}
+        {s.cfs_paid_by_us && sw("tds_on_cfs", "TDS on CFS", "TDS is cut when we pay the CFS")}
         {s.cfs_paid_by_us && s.tds_on_cfs && <TdsRate shipment={s} onChange={onChange} />}
-        {chip("line_paid_by_us", "Line paid by us", "We pay the shipping line and bill it as a reimbursement")}
+        {sw("line_paid_by_us", "Line paid by us", "We pay the shipping line and bill it as a reimbursement")}
         {s.cfs_paid_by_us && (
-          <select
-            className="chip-select"
-            aria-label="CFS on the proforma"
-            title="How CFS goes on the proforma"
-            value={s.cfs_billed_as}
-            onChange={async (e) => onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)}
-          >
-            <option value="reimbursement">CFS: at actuals</option>
-            <option value="taxable">CFS: taxable + 18% GST</option>
-          </select>
+          <label className="switch-row">
+            <span className="switch-label">
+              CFS on proforma
+              <InfoTip text="How CFS goes on the proforma" />
+            </span>
+            <select
+              className="chip-select"
+              value={s.cfs_billed_as}
+              onChange={async (e) => onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)}
+            >
+              <option value="reimbursement">At actuals</option>
+              <option value="taxable">Taxable + 18% GST</option>
+            </select>
+          </label>
         )}
         {!s.line_paid_by_us && (
-          <select
-            className="chip-select"
-            aria-label="Shipping line in cost inclusion"
-            title="Auto follows the client's setting (e.g. Harekrishna Rubber: not included)"
-            value={s.line_cost_inclusion ?? "auto"}
-            onChange={async (e) => {
-              const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
-              onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
-            }}
-          >
-            <option value="auto">Line cost: client's setting</option>
-            <option value="include">Line cost: include</option>
-            <option value="exclude">Line cost: leave out</option>
-          </select>
+          <label className="switch-row">
+            <span className="switch-label">
+              Line cost
+              <InfoTip text="Shipping line in cost inclusion. Client's setting follows the client (e.g. Harekrishna Rubber: not included)" />
+            </span>
+            <select
+              className="chip-select"
+              value={s.line_cost_inclusion ?? "auto"}
+              onChange={async (e) => {
+                const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
+                onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
+              }}
+            >
+              <option value="auto">Client's setting</option>
+              <option value="include">Include</option>
+              <option value="exclude">Leave out</option>
+            </select>
+          </label>
         )}
       </div>
       <p className="billing-summary">{summary.join(" · ")}.</p>
@@ -486,7 +493,30 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
   );
 }
 
-/** A key number (BL / BE): shown in full (wraps rather than cut), click copies it. */
+/** An on/off billing setting: label, (i) for what it means, a switch. */
+function SwitchRow({ label, help, on, busy, onToggle }: { label: string; help?: string; on: boolean; busy?: boolean; onToggle: () => void }) {
+  return (
+    <div className="switch-row">
+      <span className="switch-label">
+        {label}
+        {help && <InfoTip text={help} />}
+      </span>
+      <button type="button" role="switch" aria-checked={on} aria-label={label} className="switch" disabled={busy} onClick={onToggle}>
+        <span className="switch-knob" aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
+/** (i): the longer explanation, on hover or keyboard focus. */
+function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="info-tip" tabIndex={0} role="img" aria-label={text} title={text}>
+      i
+    </span>
+  );
+}
+
 const tdsPct = (s: Shipment) => (s.cfs_tds_rate == null ? "2" : String(Number(s.cfs_tds_rate)));
 
 /**
@@ -600,16 +630,13 @@ function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
 
   return (
     <div className="hss-editor">
-      <button
-        type="button"
-        className={`chip-toggle${s.is_hss ? " is-on" : ""}`}
-        aria-pressed={s.is_hss}
-        disabled={busy}
-        onClick={() => save({ is_hss: !s.is_hss })}
-        title="High sea sale. Any consignee written 'SELLER - BUYER' is detected as HSS automatically"
-      >
-        HSS
-      </button>
+      <SwitchRow
+        label="High sea sale"
+        help="Any consignee written 'SELLER - BUYER' is detected as HSS automatically"
+        on={!!s.is_hss}
+        busy={busy}
+        onToggle={() => save({ is_hss: !s.is_hss })}
+      />
       {s.is_hss && !editing && (
         <div className="field-row">
           <span className="field-label">Seller → Buyer</span>
@@ -1210,7 +1237,7 @@ function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment
     }
   }
   return (
-    <section className="stepper-card" aria-label="Clearance">
+    <div className="stepper-card">
       <ol className="stepper">
         {steps.map((x, i) => {
           const state = x.alert ? "alert" : x.done ? "done" : i === current ? "now" : "todo";
@@ -1239,7 +1266,7 @@ function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment
           Under examination
         </button>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -1357,12 +1384,14 @@ function EditField({
               </option>
             ))}
           </select>
+        ) : kind === "date" ? (
+          <DateInput autoFocus ariaLabel={label} value={v} disabled={busy} onCommit={(iso) => save(iso)} onCancel={() => setEditing(false)} />
         ) : multiline ? (
           <textarea autoFocus rows={2} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={() => save()} onKeyDown={keys} />
         ) : (
           <input
             autoFocus
-            type={kind === "date" ? "date" : "text"}
+            type="text"
             onFocus={(e) => e.currentTarget.select()}
             value={v}
             disabled={busy}

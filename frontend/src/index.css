@@ -2149,32 +2149,57 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .overview .field-grid .field-row:nth-last-child(2):nth-child(odd) { border-bottom: none; }
 @container (max-width: 560px) { .overview .field-grid { grid-template-columns: 1fr; } }
 
-/* Overview body: one column; two when the Overview box itself is wide (not the window: the half peek stays single) */
-.overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
-.overview.is-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 1200px; }
-.ov-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.overview.is-wide .ov-col { gap: 16px; }
-.overview > .fpod, .overview > .billing-settings { grid-column: 1 / -1; }
+/*
+ * Overview body. Sized by the Overview's own box (the .detail-page container), not the window: the half peek stays
+ * one column. Panel order: shipment, duty, billing, containers, notes. ≥1100: shipment | duty, notes | billing,
+ * containers. ≥1600: shipment | duty | notes over billing, containers.
+ */
+.overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; }
+.overview > * { min-width: 0; }
+.ov-duty { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.ov-ship { order: 1; } .ov-duty { order: 2; } .ov-billing { order: 3; } .overview > .fpod { order: 4; } .ov-notes { order: 5; }
+@container (min-width: 1100px) {
+  .overview {
+    gap: 16px; grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-template-areas:
+      "ship ship ship ship ship ship ship duty duty duty duty duty"
+      "notes notes notes notes bill bill bill bill bill bill bill bill"
+      "cont cont cont cont cont cont cont cont cont cont cont cont";
+  }
+  .ov-duty { gap: 16px; }
+  .ov-ship { grid-area: ship; } .ov-duty { grid-area: duty; } .ov-notes { grid-area: notes; }
+  .ov-billing { grid-area: bill; } .overview > .fpod { grid-area: cont; }
+}
+@container (min-width: 1600px) {
+  .overview {
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      "ship ship ship ship ship duty duty duty duty notes notes notes"
+      "ship ship ship ship ship duty duty duty duty bill bill bill"
+      "cont cont cont cont cont cont cont cont cont cont cont cont";
+  }
+  .ov-billing .bill-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* Tier 1: key strip, next step + stepper, money tiles */
 .tier1 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 4px 0 16px; }
-.tier1-flow { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-@container (min-width: 1000px) {
-  .tier1 { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; max-width: 1200px; }
+/* NEXT + stepper: one card */
+.tier1-flow { display: flex; flex-direction: column; min-width: 0; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+@container (min-width: 1100px) {
+  .tier1 { grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
   .tier1 > .key-strip { grid-column: 1 / -1; }
   .tier1 > .tier1-flow { grid-column: span 8; }
-  .tier1 > .pay-tiles { grid-column: span 4; grid-template-columns: 1fr; align-content: start; }
-  .tab-body > .overview { max-width: 1200px; }
+  .tier1 > .pay-tiles { grid-column: span 4; grid-template-columns: 1fr; grid-auto-rows: 1fr; }
 }
 
 .key-strip {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr .8fr 1.4fr .7fr;
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
   background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg);
 }
 .key-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 12px 16px; border-left: 1px solid var(--color-border-soft); }
 .key-cell:first-child { border-left: none; }
 .key-label { font-size: 11px; color: var(--color-text-muted); }
-.key-value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.key-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .key-value.is-empty { color: var(--color-text-muted); font-weight: 500; }
 .key-value .copy-value { font: inherit; }
 .key-sub { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -2182,14 +2207,14 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 
 .tier1 .next-step {
   display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 2px 12px; margin: 0;
-  padding: 12px 16px; background: var(--color-surface); border: 1px solid var(--color-border);
-  border-left: 2px solid var(--color-accent); border-radius: var(--radius-lg);
+  padding: 12px 16px 12px 14px; background: none; border: none;
+  border-left: 2px solid var(--color-accent); border-radius: 0;
 }
 .tier1 .next-step.is-blocked { border-left-color: var(--warn-fg); }
 .tier1 .next-step-title { font-size: 15px; font-weight: 600; }
 .tier1 .next-step-detail { grid-column: 2; font-size: 12.5px; }
 
-.stepper-card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 16px 16px 12px; }
+.stepper-card { padding: 16px 16px 12px; border-top: 1px solid var(--color-border-soft); }
 .stepper { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(8, minmax(64px, 1fr)); }
 .step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
 .step::before { content: ""; position: absolute; top: 9px; left: -50%; right: 50%; height: 1px; background: var(--color-border); }
@@ -2233,11 +2258,45 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .chip-toggle.is-on { background: var(--color-accent-soft); color: var(--color-accent-text); border-color: transparent; }
 .chip-toggle.is-on::before { content: "✓ "; }
 .chip-select { padding-right: 24px; color: var(--color-text); }
-.billing-settings { padding: 12px 16px !important; }
-.billing-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.billing-row h3 { margin: 0 8px 0 0 !important; font-size: 12.5px !important; color: var(--color-text-muted); font-weight: 500 !important; }
-.billing-row .hss-editor { display: contents; }
+/* billing settings: compact switch rows, the why in (i) */
+.bill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 24px; }
+.bill-grid .hss-editor { display: contents; }
+.bill-grid .hss-editor > :not(.switch-row) { grid-column: 1 / -1; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; border-bottom: 1px solid var(--color-border-soft); min-width: 0; }
+.switch-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text); min-width: 0; }
+.switch-row .chip-select { height: 28px; max-width: 60%; }
+.switch {
+  position: relative; flex: none; width: 32px; height: 18px; padding: 0; border-radius: 999px; border: none; box-shadow: none;
+  background: var(--color-border); cursor: pointer; transition: background-color var(--dur-fast);
+}
+.switch::after { content: ""; position: absolute; inset: -4px; } /* 26px hit area */
+.switch-knob {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--color-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .2); transition: transform var(--dur-fast) var(--ease-out);
+}
+.switch[aria-checked="true"] { background: var(--color-accent); }
+.switch[aria-checked="true"] .switch-knob { transform: translateX(14px); }
+.switch:disabled { opacity: .6; cursor: progress; }
+.switch:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.info-tip {
+  display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; flex: none;
+  border: 1px solid var(--color-text-muted); color: var(--color-text-muted); font-size: 9.5px; font-weight: 700; font-style: italic; cursor: help;
+}
+.info-tip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .switch, .switch-knob { transition: none; } }
 .billing-summary { margin: 8px 0 0; font-size: 12px; color: var(--color-text-muted); }
+
+/* typed date + calendar button */
+.date-input { position: relative; display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.date-input input[type="text"] { width: 130px; min-width: 0; font-variant-numeric: tabular-nums; }
+.date-input input[aria-invalid="true"] { border-color: var(--color-danger); }
+.date-input-cal {
+  display: grid; place-items: center; width: 28px; height: 28px; padding: 0; flex: none;
+  background: none; border: 1px solid transparent; box-shadow: none; border-radius: var(--radius-sm); color: var(--color-text-muted); cursor: pointer;
+}
+.date-input-cal:hover { background: var(--color-hover); color: var(--color-text); }
+.date-input-picker { position: absolute; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.date-input-error { position: absolute; top: 100%; left: 0; z-index: 2; margin-top: 2px; font-size: 11.5px; color: var(--color-danger); white-space: nowrap; }
 
 /* folds: IGM & ICD details, containers */
 .fold-toggle {
