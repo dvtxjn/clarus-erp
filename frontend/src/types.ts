@@ -421,8 +421,10 @@ export interface InvoiceView {
   };
   details: { invoice_date: string; be_no: string | null; be_date: string | null; port: string | null; job: string; version: number; name: string | null; status: string };
   reference: { assessable_value: string | null; mbl: string | null; hbl: string | null; hss: string; containers: number | null; weight_kgs: string | null; exam_applicable: string };
-  sections: { category: ChargeCategory; title: string; lines: InvoiceLine[]; subtotal: string; amount_subtotal: string; gst_subtotal: string; counts_in_total: boolean }[];
-  grand_total: string;
+  // "gst_difference": the GST Difference line, its own section (left with the buyer, not in the total)
+  sections: { category: ChargeCategory | "gst_difference"; title: string; note: string | null; lines: InvoiceLine[]; subtotal: string; amount_subtotal: string; gst_subtotal: string; counts_in_total: boolean }[];
+  grand_total: string; // payable to Clarus: Billed by Clarus + Reimbursement
+  match_total: string | null; // HSS: + Royalty + GST Difference; must be the same on the seller's and buyer's copies
   grand_total_label: string;
   round_off: string; // grand total is rounded to the rupee; this is the +/− paise // "<seller> pays <buyer> pays CLARUS LOGISTICS LLP"
   is_hss: boolean;
@@ -461,6 +463,7 @@ export interface Proforma {
   created_at: string;
   line_items: ProformaLineItem[];
   grand_total: number;
+  match_total: number | null; // HSS: grand total + Royalty + GST Difference; seller and buyer copies must agree
   party: string | null; // "Earthman" / "Mahrishi" — the bill-to's short name
   revisions: number; // sent copies kept in history (edited after sending)
 }

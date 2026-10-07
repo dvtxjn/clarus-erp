@@ -1177,12 +1177,12 @@ function InvoiceSheet({
               {editable && <th />}
             </tr>
           </thead>
-          {inv.sections.filter((sec) => sec.lines.length > 0 || sec.category !== "royalty").map((sec) => (
+          {inv.sections.filter((sec) => sec.lines.length > 0 || sec.counts_in_total || sec.category === "cost_inclusion").map((sec) => (
             <tbody key={sec.category}>
               <tr className="inv-section">
                 <td colSpan={cols}>
                   {sec.title}
-                  {!sec.counts_in_total && <span className="inv-section-note"> — for reference, not in the total</span>}
+                  {sec.note && <span className="inv-section-note"> — {sec.note}</span>}
                 </td>
               </tr>
               {sec.lines.map((li) => (
@@ -1202,6 +1202,7 @@ function InvoiceSheet({
                   <td className="num">{inr(li.total)}</td>
                   {editable && (
                     <td className="inv-row-actions">
+                      {sec.category !== "gst_difference" && (
                       <select
                         value={sec.category}
                         aria-label="Move to section"
@@ -1213,6 +1214,7 @@ function InvoiceSheet({
                           </option>
                         ))}
                       </select>
+                      )}
                       <button className="link-danger" onClick={() => onRemove(li.id)} title="Remove line">
                         ✕
                       </button>
@@ -1247,6 +1249,13 @@ function InvoiceSheet({
               <td className="num">₹{inr(inv.grand_total)}</td>
               {editable && <td />}
             </tr>
+            {inv.match_total != null && (
+              <tr className="inv-match">
+                <td colSpan={6}>Total incl. Royalty &amp; GST Difference — must be the same on the seller's and buyer's copies</td>
+                <td className="num">₹{inr(inv.match_total)}</td>
+                {editable && <td />}
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -1560,6 +1569,12 @@ function PhoneLines({
         <span>{invoice.grand_total_label}</span>
         <strong>₹{inr(invoice.grand_total)}</strong>
       </div>
+      {invoice.match_total != null && (
+        <div className="m-match">
+          <span>Incl. Royalty &amp; GST Difference (must match the other copy)</span>
+          <strong>₹{inr(invoice.match_total)}</strong>
+        </div>
+      )}
       {open && <LineSheet line={open} onClose={() => setOpen(null)} onSave={onSave} onRemove={onRemove} />}
     </div>
   );
@@ -1650,13 +1665,17 @@ function LineSheet({
 /** HSS: the seller's and buyer's invoices must carry one bill rate — shouted when they don't. */
 function RateMismatch({ seller, buyer }: { seller: Proforma | null; buyer: Proforma | null }) {
   if (!seller || !buyer) return null;
-  const a = seller.bill_rate == null ? null : Number(seller.bill_rate);
-  const b = buyer.bill_rate == null ? null : Number(buyer.bill_rate);
-  if (a === b) return null;
-  const show = (v: number | null) => (v == null ? "automatic" : `₹${inr(v)}/kg`);
+  const num = (v: number | null) => (v == null ? null : Number(v));
+  const rateOff = num(seller.bill_rate) !== num(buyer.bill_rate);
+  // totals incl. Royalty + GST Difference — the two copies must agree to the rupee
+  const totalOff = !rateOff && num(seller.match_total) !== num(buyer.match_total);
+  if (!rateOff && !totalOff) return null;
+  const a = rateOff ? num(seller.bill_rate) : num(seller.match_total);
+  const b = rateOff ? num(buyer.bill_rate) : num(buyer.match_total);
+  const show = (v: number | null) => (v == null ? (rateOff ? "automatic" : "—") : rateOff ? `₹${inr(v)}/kg` : `₹${inr(v)}`);
   return (
     <div role="alert" className="rate-mismatch">
-      <strong>BILL RATES DON'T MATCH</strong>
+      <strong>{rateOff ? "BILL RATES DON'T MATCH" : "INVOICE TOTALS DON'T MATCH"}</strong>
       <div className="rate-mismatch-figures">
         <span>
           <small translate="no">{seller.party ?? "Seller"}</small>
@@ -1668,7 +1687,11 @@ function RateMismatch({ seller, buyer }: { seller: Proforma | null; buyer: Profo
           {show(b)}
         </span>
       </div>
-      <p>Set the bill rate again on either invoice — it is copied to the other.</p>
+      <p>
+        {rateOff
+          ? "Set the bill rate again on either invoice — it is copied to the other."
+          : "Totals incl. Royalty & GST Difference differ — check the lines on both invoices."}
+      </p>
     </div>
   );
 }

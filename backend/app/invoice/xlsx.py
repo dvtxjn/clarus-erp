@@ -227,7 +227,7 @@ def render_xlsx(inv: dict) -> bytes:
             ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=COLS)
             ws.cell(r, 1, f"{sec['title']}: no charges").font = Font(name="Arial", size=9, italic=True, color=GREY)
             r += 1
-        label = f"Subtotal - {sec['title']}" + ("" if sec["counts_in_total"] else " (not included in the total)")
+        label = f"Subtotal - {sec['title']}" + (f" ({sec['note']})" if sec.get("note") else "")
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
         c = ws.cell(r, 1, label)
         c.font = Font(name="Arial", size=9.5, bold=True, color=DARK)
@@ -261,6 +261,15 @@ def render_xlsx(inv: dict) -> bytes:
             ws.row_dimensions[r].height = 22
             r += 2
     assert grand_row is not None
+    if inv.get("match_total"):  # HSS: both copies must show the same figure here
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        m = ws.cell(r, 1, "TOTAL INCL. ROYALTY & GST DIFFERENCE (same on the seller's and buyer's copies)")
+        m.font, m.alignment = Font(name="Arial", size=10, bold=True, color=DARK), Alignment(horizontal="right", wrap_text=True)
+        v = ws.cell(r, 6, _d(inv["match_total"]))
+        v.font, v.number_format = Font(name="Arial", size=11, bold=True, color=DARK), RUPEE
+        for col in range(1, COLS + 1):
+            ws.cell(r, col).fill = PatternFill("solid", fgColor=SUBTOTAL)
+        r += 2
 
     bar("NOTES")
     for i, note in enumerate(inv["notes"]):

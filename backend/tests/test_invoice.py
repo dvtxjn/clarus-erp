@@ -48,7 +48,9 @@ def test_fill_from_shipment_and_totals(client, admin_headers):
     # HSS with BE figures in: a bill rate is suggested, which may add a GST Difference line
     assert r["proforma"]["bill_rate"] is not None
     gstd = float(lines["GST Difference"]["total"]) if "GST Difference" in lines else 0.0
-    assert float(r["proforma"]["grand_total"]) == round(16520 + 42480 + 61500 + 312 + 47200 + float(roy["total"]) + gstd)
+    # Royalty and the GST Difference don't come to Clarus: out of the grand total, in the match total
+    assert float(r["proforma"]["grand_total"]) == 16520 + 42480 + 61500 + 312 + 47200
+    assert float(r["proforma"]["match_total"]) == math.ceil(16520 + 42480 + 61500 + 312 + 47200 + float(roy["total"]) + gstd)
     # filling again adds nothing
     again = client.post(f"/proformas/{pid}/fill-from-shipment", headers=h).json()
     assert again["added"] == []
@@ -60,7 +62,7 @@ def test_fill_from_shipment_and_totals(client, admin_headers):
     assert inv["disclaimer"] is None
     assert inv["reference"]["containers"] == 2 and inv["reference"]["exam_applicable"] == "YES"
     titles = [sec["title"] for sec in inv["sections"]]
-    assert titles == ["Billed by Clarus", "Reimbursement (at actuals)", "Royalty", "Cost Inclusion"]
+    assert titles == ["Billed by Clarus", "Reimbursement (at actuals)", "Royalty", "GST Difference", "Cost Inclusion"]
 
 
 def test_edit_line_and_downloads(client, admin_headers):
@@ -124,7 +126,8 @@ def test_sample_hss_invoice_matches_client_sheet(client, admin_headers):
     p = client.patch(f"/proformas/{pid}", json={"bill_rate": "15"}, headers=h).json()
     gstd = next(li for li in p["line_items"] if li["description"] == "GST Difference")
     assert float(gstd["total"]) == 13341.0                       # 18% x 15 x 95800 - 245319
-    assert float(p["grand_total"]) == 676843.0                   # the sheet's grand total
+    assert float(p["match_total"]) == 676843.0                   # the sheet's grand total
+    assert float(p["grand_total"]) == 676843.0 - 84783.0 - 13341.0  # payable to Clarus
 
     inv = client.get(f"/proformas/{pid}/invoice", headers=h).json()
     v = inv["value"]
@@ -288,7 +291,8 @@ def test_hss_pricing_rule_seller_and_buyer_copies(client, admin_headers):
             assert (float(roy["amount"]), float(other["amount"])) == (71850.0, 123950.0)
         inv = client.get(f"/proformas/{pid}/invoice", headers=h).json()
         sec = {x["category"]: x for x in inv["sections"]}
-        assert sec["royalty"]["title"] == "Royalty" and sec["royalty"]["counts_in_total"]
+        assert sec["royalty"]["title"] == "Royalty" and not sec["royalty"]["counts_in_total"]
+        assert inv["match_total"] is not None
         assert client.get(f"/proformas/{pid}/invoice.pdf", headers=h).status_code == 200
     assert totals["seller"] == totals["buyer"] == 231044.0
 

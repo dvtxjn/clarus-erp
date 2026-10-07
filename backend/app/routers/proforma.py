@@ -16,7 +16,7 @@ from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
 from fastapi.encoders import jsonable_encoder
 
-from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
+from app.invoice.build import GST_DIFFERENCE_CODE, clarus_total, match_total, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.invoice.pdf import render_pdf
 from app.invoice.xlsx import render_xlsx
@@ -601,10 +601,8 @@ def _to_out(proforma: Proforma) -> ProformaOut:
     out.party = who[4:] if who else None  # "For Mahrishi" -> "Mahrishi"
     out.revisions = len(proforma.snapshots)
     out.line_items = sorted(out.line_items, key=lambda li: li.id)
-    # payable to Clarus: everything except the shipping line cost inclusion
-    # (rounded to the rupee — see build.round_off)
-    out.grand_total = round_off(sum((li.total for li in proforma.line_items
-                                     if li.category != ChargeCategory.COST_INCLUSION), Decimal("0")))[0]
+    out.grand_total = clarus_total(proforma)  # payable to Clarus (see build.in_clarus_total)
+    out.match_total = match_total(proforma)
     return out
 
 

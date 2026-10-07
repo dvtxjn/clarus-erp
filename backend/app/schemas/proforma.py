@@ -144,7 +144,8 @@ class ProformaOut(BaseModel):
     generated_filename: Optional[str] = None
     created_at: datetime
     line_items: list[ProformaLineItemOut] = []
-    grand_total: Decimal = Decimal("0")  # payable to Clarus: Billed by Clarus + Reimbursement (not cost inclusion)
+    grand_total: Decimal = Decimal("0")  # payable to Clarus: Billed by Clarus + Reimbursement (no GST Difference)
+    match_total: Optional[Decimal] = None  # HSS: + Royalty + GST Difference; seller and buyer copies must agree
     party: Optional[str] = None  # HSS: whose copy, by first name ("Earthman" / "Mahrishi")
     revisions: int = 0  # sent copies kept in history (edited again after sending)
 

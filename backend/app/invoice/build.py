@@ -217,6 +217,36 @@ def _is_gst_difference(li: ProformaLineItem) -> bool:
     return li.charge is not None and li.charge.code == GST_DIFFERENCE_CODE
 
 
+# HSS: Royalty passes between seller and buyer, and the GST Difference is left with the
+# buyer — neither comes to Clarus, so neither is in the grand total. Both copies must
+# still agree once they're added back: that's the match total (client, 2026-10-07).
+GST_DIFFERENCE_SECTION = "gst_difference"
+SECTION_NOTES = {
+    ChargeCategory.ROYALTY.value: "between seller and buyer — not in the total",
+    GST_DIFFERENCE_SECTION: "left with the buyer — not in the total",
+    ChargeCategory.COST_INCLUSION.value: "for reference, not in the total",
+}
+
+
+def in_clarus_total(li: ProformaLineItem) -> bool:
+    """Payable to Clarus: Billed by Clarus + Reimbursement (not the GST Difference)."""
+    return li.category in (ChargeCategory.SERVICE, ChargeCategory.REIMBURSEMENT) and not _is_gst_difference(li)
+
+
+def clarus_total(proforma: Proforma) -> Decimal:
+    """Grand total payable to Clarus, rounded up to the rupee."""
+    return round_off(sum((Decimal(li.total) for li in proforma.line_items if in_clarus_total(li)), ZERO))[0]
+
+
+def match_total(proforma: Proforma) -> Optional[Decimal]:
+    """HSS: Clarus charges + Royalty + GST Difference — must be the same on the seller's and
+    buyer's copies. Only this sum is rounded, so paise splits between the copies don't show."""
+    if not proforma.shipment.is_hss:
+        return None
+    return round_off(sum((Decimal(li.total) for li in proforma.line_items
+                          if li.category != ChargeCategory.COST_INCLUSION), ZERO))[0]
+
+
 def round_off(amount: Decimal) -> tuple[Decimal, Decimal]:
     """(grand total rounded UP to the next rupee, round-off). Lines keep their exact paise;
     only the final figure is rounded, so paise differences in GST (e.g. between the
@@ -387,15 +417,23 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     lines = sorted(proforma.line_items, key=lambda li: (li.sort_order, li.id))
     sections = []
     totals = {}
+    groups = []
     for cat in ChargeCategory:
         if cat == ChargeCategory.COST_INCLUSION and not s.is_hss:
             continue  # cost inclusion (and the value of goods) only on HSS proformas (client, 2026-10-01)
-        rows = [li for li in lines if li.category == cat]
+        if cat == ChargeCategory.COST_INCLUSION:  # GST Difference gets its own section, after Royalty
+            groups.append((GST_DIFFERENCE_SECTION, "GST Difference", [li for li in lines if _is_gst_difference(li)]))
+        groups.append((cat.value, SECTION_TITLES[cat],
+                       [li for li in lines if li.category == cat and not _is_gst_difference(li)]))
+    if not s.is_hss and any(_is_gst_difference(li) for li in lines):
+        groups.append((GST_DIFFERENCE_SECTION, "GST Difference", [li for li in lines if _is_gst_difference(li)]))
+    for key, title, rows in groups:
         subtotal = sum((Decimal(li.total) for li in rows), ZERO)
-        totals[cat] = subtotal
+        totals[key] = subtotal
         sections.append({
-            "category": cat.value,
-            "title": SECTION_TITLES[cat],
+            "category": key,
+            "title": title,
+            "note": SECTION_NOTES.get(key),
             "lines": [{
                 "id": li.id, "description": li.description, "sac_code": li.sac_code,
                 "rate": _money(li.rate), "quantity": format(Decimal(li.quantity).normalize(), "f"),
@@ -406,9 +444,9 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
             "subtotal": _money(subtotal),
             "amount_subtotal": _money(sum((Decimal(li.amount) for li in rows), ZERO)),  # before tax
             "gst_subtotal": _money(sum((Decimal(li.gst_amount) for li in rows), ZERO)),
-            "counts_in_total": cat != ChargeCategory.COST_INCLUSION,
+            "counts_in_total": key not in SECTION_NOTES,
         })
-    grand = sum((v for cat, v in totals.items() if cat != ChargeCategory.COST_INCLUSION), ZERO)
+    grand = sum((v for key, v in totals.items() if key not in SECTION_NOTES), ZERO)
     wt = weight_kgs(s)
     db = object_session(proforma)
     org = bill_to_organization(proforma, db)
@@ -471,6 +509,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
                   "bill_rate_manual": bool(proforma.bill_rate_manual)} if s.is_hss else None,
         "grand_total": _money(round_off(grand)[0]),
         "round_off": _money(round_off(grand)[1]),  # + / − paise to the rupee
+        "match_total": _money(match_total(proforma)),  # HSS: incl. Royalty + GST Difference; same on both copies
         "grand_total_label": grand_total_label,
         "notes": proforma_notes(),
         "bank": company_bank(),

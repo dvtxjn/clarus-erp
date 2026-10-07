@@ -181,7 +181,7 @@ def _charges(inv) -> list:
         style = [("BACKGROUND", (0, 0), (-1, 0), HEAD_C), ("LINEBELOW", (0, 0), (-1, -1), 0.3, GRID)]
         for sec in secs:
             r = len(rows)
-            rows.append([_p(sec["title"] + ("" if sec["counts_in_total"] else " — for reference, not in the total"),
+            rows.append([_p(sec["title"] + (f" — {sec['note']}" if sec.get("note") else ""),
                             8, True, colors.white), "", "", ""])
             style += [("SPAN", (0, r), (-1, r)), ("BACKGROUND", (0, r), (-1, r), BAR_C)]
             for li in sec["lines"]:
@@ -219,6 +219,12 @@ def _charges(inv) -> list:
     rest = [s for s in shown if not s["counts_in_total"]]
     if rest:
         out += [Spacer(1, 4), section_table(rest)]
+    if inv.get("match_total"):  # HSS: both copies must show the same figure here
+        m = Table([[_p("TOTAL INCL. ROYALTY &amp; GST DIFFERENCE (same on the seller's and buyer's copies)", 8.5, True, align=TA_RIGHT),
+                    _p(inr(inv["match_total"]), 9.5, True, align=TA_RIGHT, width=WIDTH * 0.22)]],
+                  colWidths=[WIDTH * 0.78, WIDTH * 0.22])
+        m.setStyle(_style(("BACKGROUND", (0, 0), (-1, -1), SUB_C), ("BOX", (0, 0), (-1, -1), 0.8, GRID)))
+        out += [Spacer(1, 4), m]
     return out
 
 
