@@ -1131,7 +1131,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 
 /* --- Dashboard (design refresh): numbers + pipeline + upcoming left, daily updates + ports right --- */
 .dash-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
-.dash-head h1 { margin: 0; font-size: 17px; font-weight: 600; }
+.dash-head h1 { margin: 0; font-size: 22px; font-weight: 600; }
 .dash-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 420px); gap: 16px; align-items: start; }
 .dash-main, .dash-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .dash-side .daily-updates { grid-template-columns: 1fr; gap: 14px; margin: 0; }
@@ -2109,3 +2109,6 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .next-ticks .ok { color: var(--color-text); }
 .next-ticks .ok::before { content: "✓ "; color: var(--ok-fg, #15803d); }
 .next-ticks .no::before { content: "✗ "; }
+
+/* Final invoices: breathing room between Outstanding and Status */
+.inv-register th:last-child, .inv-register td:last-child { padding-left: 24px; }

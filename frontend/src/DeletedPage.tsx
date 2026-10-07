@@ -95,7 +95,7 @@ export default function DeletedPage() {
           <label className="final-field-inline">
             To <input type="date" aria-label="Deleted to" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
-          <input aria-label="Search deleted" placeholder="Item, job, BL…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input aria-label="Search deleted" placeholder="Item, job, BL, BE…" value={q} onChange={(e) => setQ(e.target.value)} />
           {filtered && (
             <button
               type="button"

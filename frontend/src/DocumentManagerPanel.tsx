@@ -48,7 +48,14 @@ const SHORT_LABELS: Partial<Record<DocumentType, string>> = {
   ooc_bill_of_entry: "OOC BE",
   gatepass_bill_of_entry: "OOC Gatepass",
   fta_certificate_of_origin: "FTA COO",
-  certificate_of_origin: "Certificate of Origin",
+  certificate_of_origin: "COO",
+  bl_copy: "BL",
+  hbl_copy: "HBL",
+  commercial_invoice: "ComInv",
+  packing_list: "PL",
+  form_6_9: "F6,9",
+  hss_agreement: "HSS",
+  hss_stamp_duty: "HSS & Stamp (old)",
 };
 
 const UPLOAD_TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter(

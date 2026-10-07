@@ -198,7 +198,7 @@ export default function CustomsMailPage() {
           ).map(([v, label]) => (
             <button key={v} type="button" className={view === v ? "on" : ""} aria-pressed={view === v} onClick={() => setView(v)}>
               {label}
-              {(v === "attention" || v === "unmatched") && !!counts[v] && <span className="chip-count"> {counts[v]}</span>}
+              {(v === "attention" || v === "unmatched") && counts[v] !== undefined && <span className="chip-count"> {counts[v]}</span>}
             </button>
           ))}
         </div>

@@ -64,7 +64,7 @@ def list_deleted(db: Session = Depends(get_db)):
             out.append({
                 "kind": kind, "id": obj.id, "label": _label(kind, obj),
                 "shipment_id": ship.id if ship else None,
-                "shipment": f"{ship.job or ''} · {ship.mbl or ''} · {ship.consignee or ''}".strip(" ·") if ship else None,
+                "shipment": " · ".join(x for x in (ship.job, ship.mbl and f"BL {ship.mbl}", ship.be_no and f"BE {ship.be_no}", ship.consignee) if x) if ship else None,
                 "shipment_deleted": bool(ship and ship.is_deleted and kind != "shipment"),
                 "deleted_at": obj.deleted_at, "deleted_by": users.get(obj.deleted_by_id),
             })
