@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import date, datetime
-from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, ROUND_FLOOR, ROUND_HALF_UP, Decimal
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session, object_session
@@ -247,6 +247,18 @@ def bill_rate_allowed(rate: Decimal, value_per_kg: Optional[Decimal], gst_input:
     return rate > value_per_kg and output - gst_input > 0
 
 
+def lowest_bill_rate(value_per_kg: Optional[Decimal], gst_input: Decimal, weight: Optional[Decimal]) -> Optional[Decimal]:
+    """The lowest rate (to the paisa) a hand-typed rate may be: the smallest GST difference
+    above zero without going below the value per kg (client, 2026-10-07)."""
+    if value_per_kg is None or not weight:
+        return None
+    floor = max(value_per_kg, gst_input / (GST_OUTPUT_RATE * weight))
+    rate = floor.quantize(Decimal("0.01"), rounding=ROUND_FLOOR)
+    while not bill_rate_allowed(rate, value_per_kg, gst_input, weight):
+        rate += Decimal("0.01")
+    return rate
+
+
 def suggest_bill_rate(value_per_kg: Optional[Decimal], gst_input: Decimal, weight: Optional[Decimal]) -> Optional[Decimal]:
     """HSS bill rate (client, 2026-09-28): a little over the value per kg — at least
     10 paise above it and enough for a positive GST difference (18% x rate x weight >
@@ -284,6 +296,7 @@ def value_summary(proforma: Proforma) -> dict[str, Optional[Decimal]]:
         "gst_input": gst_input,
         "value_per_kg": (value / wt).quantize(Decimal("0.01")) if wt else None,
         "suggested_bill_rate": suggest_bill_rate(value / wt if wt else None, gst_input, wt),
+        "lowest_bill_rate": lowest_bill_rate(value / wt if wt else None, gst_input, wt),
         "manual_rate_ok": (bill_rate_allowed(rate, value / wt if wt else None, gst_input, wt)
                            if rate is not None else None),
         "bill_rate": rate,

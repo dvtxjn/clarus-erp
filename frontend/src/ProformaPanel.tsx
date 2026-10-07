@@ -1077,6 +1077,18 @@ function InvoiceSheet({
             </tr>
           </tbody>
         </table>
+        {editable && inv.value.lowest_bill_rate && inv.value.bill_rate !== inv.value.lowest_bill_rate && (
+          <div className="bill-rate-suggest">
+            <button
+              type="button"
+              className="link-button"
+              title="Lowest rate above the value/kg that still leaves a GST difference above zero"
+              onClick={() => onSaveProforma({ bill_rate: Number(inv.value?.lowest_bill_rate) }).catch(() => {})}
+            >
+              Minimise GST difference (₹{inr(inv.value.lowest_bill_rate)}/kg)
+            </button>
+          </div>
+        )}
         {inv.value.bill_rate && (
           <div className="bill-rate-suggest">
             {inv.value.bill_rate_manual ? (

@@ -432,6 +432,7 @@ export interface InvoiceView {
     gst_input: string;
     value_per_kg: string | null;
     suggested_bill_rate: string | null; // value/kg + ≥10 paise, GST difference > 0, next 25 paise step
+    lowest_bill_rate: string | null; // lowest typed rate allowed: smallest GST difference above 0
     bill_rate: string | null;
     gst_output: string | null;
     gst_difference: string | null;
