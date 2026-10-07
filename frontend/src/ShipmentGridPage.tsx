@@ -547,8 +547,8 @@ const gridTheme = themeQuartz.withParams({
   chromeBackgroundColor: "var(--color-subtle)",
   borderColor: "var(--color-border)",
   headerBackgroundColor: "var(--color-subtle)",
-  rowHoverColor: "var(--color-inv-sub)",
-  selectedRowBackgroundColor: "var(--color-accent-soft)",
+  rowHoverColor: "color-mix(in srgb, var(--color-text) 4%, transparent)",
+  selectedRowBackgroundColor: "color-mix(in srgb, var(--color-accent) 6%, transparent)",
 });
 
 // --- live presence: which cell each other person/tab is on (Google-Sheets style) ---
@@ -602,6 +602,7 @@ export default function ShipmentGridPage() {
   // filter chips above the table (client, 2026-09-30): ports (any of) + quick checks (all of)
   const [chips, setChips] = useState<Set<string>>(new Set());
   const [showColFilters, setShowColFilters] = useState(false);
+  const [chipsOpen, setChipsOpen] = useState(false);
   const toggleChip = (c: string) =>
     setChips((prev) => {
       const next = new Set(prev);
@@ -1539,7 +1540,7 @@ export default function ShipmentGridPage() {
     <div className={`tracker-page tracker-page-wide${peekId && !peekFull ? " has-peek" : ""}`}>
       <header className="tracker-header">
         <div>
-          <h1>Shipment Tracker</h1>
+          <h1 className="page-title">Shipment Tracker</h1>
           <p className="tracker-subtitle">
             {tab === "cleared"
               ? "Fully cleared shipments (Cleared Date + Duty, CFS Inv, Line, OOC, DO), by month, earliest clearance first."
@@ -1710,7 +1711,18 @@ export default function ShipmentGridPage() {
         <SettledStack key={`${tab}.${view}`}>
           <div className="grid-sticky-top">
           {tab === "ongoing" && (
-            <div className="filter-chips" role="group" aria-label="Filters">
+            <div className="chip-fold">
+            {/* a narrow tracker (the peek open beside it) folds the chips under one button */}
+            <button
+              type="button"
+              className={`btn-secondary chip-fold-btn${chips.size ? " is-on" : ""}`}
+              aria-expanded={chipsOpen}
+              aria-controls="tracker-chips"
+              onClick={() => setChipsOpen((o) => !o)}
+            >
+              Filters{chips.size ? ` · ${chips.size}` : ""} ▾
+            </button>
+            <div id="tracker-chips" className={`filter-chips${chipsOpen ? " is-open" : ""}`} role="group" aria-label="Filters">
               {portsPresent.map((p) => (
                 <button key={p} type="button" className={chips.has(`port:${p}`) ? "chip on" : "chip"} onClick={() => toggleChip(`port:${p}`)}>
                   {formatPort(p, ports) || p}
@@ -1730,6 +1742,7 @@ export default function ShipmentGridPage() {
                 </button>
               )}
             </div>
+            </div>
           )}
           <div
             className="client-grid-header"
@@ -1745,6 +1758,7 @@ export default function ShipmentGridPage() {
               rowData={[]}
               columnDefs={columnDefs}
               defaultColDef={headerColDef}
+              popupParent={document.body} // the header grid is one row tall: its filter menus were cut to one line
               domLayout="autoHeight"
               tooltipShowDelay={350}
               suppressNoRowsOverlay
@@ -1862,12 +1876,28 @@ export default function ShipmentGridPage() {
           )}
         </SettledStack>
       )}
-      {peekId && (
-        <aside className={`peek-panel${peekFull ? " is-full" : ""}`} aria-label="Shipment">
-          <ShipmentDetail key={peekId} shipmentId={peekId} onClose={() => setPeek(null)} full={peekFull} onFull={setPeekFull} />
-        </aside>
-      )}
+      <PeekPanel id={peekId} full={peekFull} onClose={() => setPeek(null)} onFull={setPeekFull} />
     </div>
+  );
+}
+
+/**
+ * The shipment panel over the tracker. It slides in; on close it slides out (140 ms) before it unmounts.
+ * Switching rows keeps the same panel: the old job stays, dimmed, until the next one has loaded.
+ */
+function PeekPanel({ id, full, onClose, onFull }: { id: number | null; full: boolean; onClose: () => void; onFull: (f: boolean) => void }) {
+  const [shown, setShown] = useState(id);
+  useEffect(() => {
+    if (id) return setShown(id);
+    const t = window.setTimeout(() => setShown(null), 140);
+    return () => window.clearTimeout(t);
+  }, [id]);
+  const current = id ?? shown;
+  if (!current) return null;
+  return (
+    <aside className={`peek-panel${full ? " is-full" : ""}${id ? "" : " is-closing"}`} aria-label="Shipment" inert={!id || undefined}>
+      <ShipmentDetail shipmentId={current} onClose={onClose} full={full} onFull={onFull} />
+    </aside>
   );
 }
 
@@ -2201,21 +2231,23 @@ function EtaCell({ row, ctx }: { row: Shipment; ctx: GridContext }) {
   const tone = left == null ? "" : left < 0 ? " dl-past" : left <= 2 ? " dl-soon" : "";
   return (
     <span className="eta-cell">
-      {!done && (
-        <button
-          type="button"
-          className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}`}
-          title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
-          aria-label={row.eta_is_deadline ? "Deadline on (ETA − 4 days)" : "Mark a deadline"}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            ctx.saveText(row, "eta_is_deadline", !row.eta_is_deadline, "Deadline").catch(() => {});
-          }}
-        >
-          d
-        </button>
-      )}
+      {/* cleared rows keep the button's space (hidden), so every ETA lines up */}
+      <button
+        type="button"
+        className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}${done ? " is-void" : ""}`}
+        tabIndex={done ? -1 : undefined}
+        aria-hidden={done || undefined}
+        disabled={done}
+        title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
+        aria-label={row.eta_is_deadline ? "Deadline on (ETA − 4 days)" : "Mark a deadline"}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          ctx.saveText(row, "eta_is_deadline", !row.eta_is_deadline, "Deadline").catch(() => {});
+        }}
+      >
+        d
+      </button>
       <span>{shortDate(row.eta)}</span>
       {dl && (
         <span className={`dl-date${tone}`} title={left != null && left < 0 ? "Deadline passed" : `Deadline in ${left} day(s)`}>

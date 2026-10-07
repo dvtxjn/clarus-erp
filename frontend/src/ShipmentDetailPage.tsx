@@ -106,11 +106,30 @@ export function ShipmentDetail({
   const reload = useCallback(() => getShipment(shipmentId).then(setShipment), [shipmentId]);
 
   useEffect(() => {
+    // switching jobs in the peek: the old job stays (dimmed) until the new one has arrived — no blank flash
+    let live = true;
     setLoading(true);
     // documents come with the first load, so the Overview draws complete (no late push-down)
     const docs = listDocuments(shipmentId).then((all) => void docsCache.set(shipmentId, all)).catch(() => {});
-    Promise.all([reload(), docs]).finally(() => setLoading(false));
-  }, [reload, shipmentId]);
+    const one = getShipment(shipmentId).then(
+      (s) => live && setShipment(s),
+      () => live && setShipment(null),
+    );
+    Promise.all([one, docs]).finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [shipmentId]);
+
+  // tabs: one underline that slides to the active tab (transform only), so the labels never shift
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const list = tabsRef.current;
+    const on = list?.querySelector<HTMLElement>(".tab.active");
+    if (!list || !on) return;
+    list.style.setProperty("--ind-x", `${on.offsetLeft}px`);
+    list.style.setProperty("--ind-w", String(on.offsetWidth));
+  });
 
   // the tab title names the shipment (full page only; the peek panel leaves the tracker's title alone)
   const job = shipment?.job;
@@ -118,7 +137,7 @@ export function ShipmentDetail({
     if (!peek && job) document.title = `Job ${job} · Clarus ERP`;
   }, [peek, job]);
 
-  if (loading) return <div className="tracker-empty">Loading…</div>;
+  if (!shipment && loading) return <DetailSkeleton peek={peek && !full} />;
   if (!shipment)
     return (
       <div className="tracker-empty">
@@ -128,7 +147,11 @@ export function ShipmentDetail({
     );
 
   return (
-    <div className={peek && !full ? "detail-page detail-peek" : "detail-page"}>
+    <div
+      key={shipment.id}
+      className={`detail-page${peek && !full ? " detail-peek" : ""}${loading ? " is-stale" : ""}`}
+      aria-busy={loading || undefined}
+    >
       {peek ? (
         <div className="peek-bar">
           {onFull ? (
@@ -183,7 +206,7 @@ export function ShipmentDetail({
         </div>
       )}
 
-      <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections">
+      <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections" ref={tabsRef}>
         <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
           Overview
         </button>
@@ -210,6 +233,21 @@ export function ShipmentDetail({
       {tab === "history" && <ShipmentHistory shipment={shipment} onChange={setShipment} />}
       {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
       </div>
+    </div>
+  );
+}
+
+/** First open: grey blocks in the page's own shape (key strip, next step, stepper, cards) instead of "Loading…". */
+function DetailSkeleton({ peek }: { peek: boolean }) {
+  return (
+    <div className={`detail-page detail-skeleton${peek ? " detail-peek" : ""}`} aria-busy="true" aria-label="Loading the shipment">
+      <div className="sk sk-title" />
+      <div className="sk sk-strip" />
+      <div className="sk sk-next" />
+      <div className="sk sk-stepper" />
+      <div className="sk sk-tabs" />
+      <div className="sk sk-card" />
+      <div className="sk sk-card" />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import IdleLogout from "./IdleLogout";
 import UpdateCheck from "./UpdateCheck";
 import ClarusLogo from "./ClarusLogo";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
@@ -56,6 +57,34 @@ export default function AppLayout() {
   const [theme, pickTheme] = useState<ThemeId>(savedTheme);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const appearanceBtn = useRef<HTMLButtonElement>(null);
+  const appearancePop = useRef<HTMLDivElement>(null);
+  const [appearanceAt, setAppearanceAt] = useState<{ left: number; bottom: number } | null>(null);
+  // the menu sits on the page (portal), 6px above the ··· button; Esc, a click elsewhere or a page change closes it
+  useLayoutEffect(() => {
+    if (!appearanceOpen) return;
+    const r = appearanceBtn.current?.getBoundingClientRect();
+    if (r) setAppearanceAt({ left: Math.max(8, r.right - 220), bottom: window.innerHeight - r.top + 6 });
+  }, [appearanceOpen]);
+  useEffect(() => {
+    if (!appearanceOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setAppearanceOpen(false);
+      appearanceBtn.current?.focus();
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!appearancePop.current?.contains(t) && !appearanceBtn.current?.contains(t)) setAppearanceOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [appearanceOpen]);
+  useEffect(() => setAppearanceOpen(false), [pathname]);
   const sandbox = useSandbox();
   // sidebar can shrink to icons (more room for the tracker); remembered per browser
   const [collapsed, setCollapsed] = useState(() => {
@@ -139,9 +168,8 @@ export default function AppLayout() {
         {/* page tools (see sidebarSlot.tsx) */}
         <div className="app-sidebar-slot" ref={setSlot} />
         <div className="app-sidebar-foot">
-          {/* Appearance opens inside the sidebar, above the user row — never over the page */}
-          {appearanceOpen && (
-            <div className="appearance-pop" id="appearance-pop">
+          {appearanceOpen && appearanceAt && createPortal(
+            <div className="appearance-pop" id="appearance-pop" ref={appearancePop} role="dialog" aria-label="Appearance" style={appearanceAt}>
               <span className="appearance-pop-title">Appearance</span>
               <div className="theme-switch" role="radiogroup" aria-label="Theme">
                 {THEMES.map((t) => (
@@ -178,7 +206,8 @@ export default function AppLayout() {
                   />
                 ))}
               </div>
-            </div>
+            </div>,
+            document.body,
           )}
           <div className="app-foot-row">
             <div className="app-user">
@@ -190,6 +219,7 @@ export default function AppLayout() {
             </div>
             <button
               type="button"
+              ref={appearanceBtn}
               className="appearance-toggle"
               aria-label="Appearance"
               title="Appearance"

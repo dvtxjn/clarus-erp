@@ -70,7 +70,7 @@ export default function InvoicesPage() {
   return (
     <div className="dashboard-page invoices-page">
       <div className="dash-head">
-        <h1>Invoicing</h1>
+        <h1 className="page-title">Invoicing</h1>
         <span className="tracker-subtitle">Every shipment's proformas and final invoices in one place</span>
       </div>
       <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Invoicing sections">

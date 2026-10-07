@@ -79,7 +79,7 @@ export default function DashboardPage() {
   return (
     <div className="dashboard-page">
       <div className="dash-head">
-        <h1>Dashboard</h1>
+        <h1 className="page-title">Dashboard</h1>
         <span className="tracker-subtitle">
           {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
         </span>

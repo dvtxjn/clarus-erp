@@ -1253,7 +1253,6 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 @media (max-width: 900px) { .peek-panel { width: 100vw; } }
 
 /* tracker rows: coloured left edge by stage */
-.client-grid-stack .ag-row .ag-cell:first-child { box-shadow: inset 3px 0 0 var(--row-edge, transparent); }
 .row-st-to_be_filed { --row-edge: #C9C9C4; }
 .row-st-igm_filed, .row-st-be_filed { --row-edge: #9DB4DA; }
 .row-st-be_assessed, .row-st-duty_paid { --row-edge: #D9B36A; }
@@ -2100,7 +2099,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .app-foot-row .app-user { flex: 1; }
 .appearance-toggle { background: none; border: none; box-shadow: none; padding: 2px 8px; border-radius: var(--radius); color: var(--color-text-muted); font-size: 14px; line-height: 1.4; }
 .appearance-toggle:hover, .appearance-toggle[aria-expanded="true"] { background: var(--color-hover); color: var(--color-text); }
-.appearance-pop { display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.appearance-pop { position: fixed; z-index: 1000; width: 220px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
 .appearance-pop-title { font-size: 11px; font-weight: 600; color: var(--color-text-muted); }
 .sidebar-collapsed .appearance-toggle, .sidebar-collapsed .appearance-pop { display: none; }
 
@@ -2127,10 +2126,6 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 
 /* grid: the focused cell gets an inset ring that sits exactly on the cell edge (no 1px border shifting it) */
 .ag-cell.ag-cell-focus, .ag-cell.ag-cell-focus:not(.ag-cell-range-selected):focus-within { border-color: transparent !important; outline: none; }
-.ag-cell.ag-cell-focus::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: 2px;
-  box-shadow: inset 0 0 0 2px var(--color-accent);
-}
 
 /* cards: one surface, one border, one radius; cards hug their content */
 .detail-page { container-type: inline-size; }
@@ -2277,4 +2272,79 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
   .key-cell:nth-child(odd) { border-left: none; }
   .key-cell:nth-child(n+3) { border-top: 1px solid var(--color-border-soft); }
   .pay-tiles { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   UI pass v2, part 4 (feel)
+   ============================================================ */
+/* grid focus: an inset ring plus a faint tint; the border goes transparent (not 0) so text never shifts */
+.ag-cell.ag-cell-focus, .ag-cell.ag-cell-range-single-cell {
+  border-color: transparent !important; outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+/* the status bar is drawn by the row, outside every cell box, so the focus ring never overlaps it */
+.client-grid-stack .ag-row::after {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; pointer-events: none; z-index: 1;
+  background: var(--row-edge, transparent);
+}
+/* the first cell's left border is the bar's width, so its inset ring starts just right of the bar */
+.client-grid-stack .ag-row .ag-cell[aria-colindex="1"] { border-left-width: 3px !important; border-left-color: transparent !important; background-clip: padding-box; }
+/* hover and selected never stack: selected wins */
+.ag-row-selected.ag-row-hover { --ag-internal-row-overlay-image: none; }
+/* cleared rows keep the deadline button's space so every ETA lines up */
+.dl-toggle.is-void { visibility: hidden; }
+
+/* peek: opens 180 ms, closes 140 ms; switching jobs dims the old one until the next has loaded */
+.peek-panel { animation: peek-in .18s cubic-bezier(.2, 0, 0, 1); }
+.peek-panel.is-closing { animation: peek-out .14s cubic-bezier(.4, 0, 1, 1) forwards; pointer-events: none; }
+@keyframes peek-out { to { transform: translateX(24px); opacity: 0; } }
+.is-stale { opacity: .6; pointer-events: none; transition: opacity .12s ease-out; }
+@media (prefers-reduced-motion: reduce) { .peek-panel, .peek-panel.is-closing { animation: none; } .is-stale { transition: none; } }
+
+/* skeleton: the shape of the shipment page while it loads */
+.detail-skeleton { display: flex; flex-direction: column; gap: 16px; }
+.sk { background: var(--color-border-soft, var(--color-border)); border-radius: var(--radius-lg); }
+.sk-title { height: 24px; width: 40%; border-radius: var(--radius); }
+.sk-strip { height: 64px; }
+.sk-next { height: 56px; }
+.sk-stepper { height: 40px; }
+.sk-tabs { height: 32px; width: 60%; border-radius: var(--radius); }
+.sk-card { height: 180px; }
+@media (prefers-reduced-motion: no-preference) {
+  .sk { animation: sk-pulse 1.2s ease-in-out infinite alternate; }
+  @keyframes sk-pulse { from { opacity: 1; } to { opacity: .55; } }
+}
+
+/* tabs: same weight everywhere; one 2px underline slides to the open tab */
+.detail-tabs { position: relative; }
+.detail-tabs .tab, .detail-tabs .tab.active { font-weight: 500; border-bottom-color: transparent; }
+.detail-tabs .tab:visited { color: inherit; }
+.detail-tabs::after {
+  content: ""; position: absolute; left: 0; bottom: -1px; height: 2px; width: 1px; background: var(--color-accent);
+  transform: translateX(var(--ind-x, 0)) scaleX(var(--ind-w, 0)); transform-origin: left;
+  transition: transform .15s cubic-bezier(.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) { .detail-tabs::after { transition: none; } }
+.tab-body { min-height: 320px; }
+
+/* column filters: date boxes are wider than their 76px columns — compact text, and the focused box grows over its neighbour */
+.ag-header-cell.ag-floating-filter { overflow: visible; }
+.ag-floating-filter input[type="date"] { font-size: 11px; padding-inline: 3px; min-width: 0; }
+.ag-floating-filter input[type="date"]:focus { position: relative; z-index: 3; min-width: 124px; background: var(--color-surface); }
+.page-title { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.011em; }
+/* Final invoices: the text column right after a money column gets room (Outstanding → Status) */
+.tracker-grid.inv-register th.num + th:not(.num), .tracker-grid.inv-register td.num + td:not(.num) { padding-left: 28px; }
+
+/* tracker chips fold into "Filters ▾" when the tracker is narrow (e.g. the peek open beside it) */
+.tracker-page { container: tracker / inline-size; }
+.chip-fold { position: relative; }
+.chip-fold-btn { display: none; margin: 0 0 8px; }
+@container tracker (max-width: 900px) {
+  .chip-fold-btn { display: inline-flex; }
+  .chip-fold > .filter-chips { display: none; }
+  .chip-fold > .filter-chips.is-open {
+    display: flex; position: absolute; top: 100%; left: 0; z-index: 20; width: min(420px, 100%); margin: 0;
+    padding: 8px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  }
 }

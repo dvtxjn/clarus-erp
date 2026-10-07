@@ -57,6 +57,7 @@ const SHORT_LABELS: Partial<Record<DocumentType, string>> = {
   hss_agreement: "HSS",
   hss_stamp_duty: "HSS & Stamp (old)",
 };
+const short = (t: DocumentType) => SHORT_LABELS[t] ?? DOCUMENT_TYPE_LABELS[t];
 
 const UPLOAD_TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter(
   (t) => !LEGACY_DOCUMENT_TYPES.includes(t),
@@ -341,14 +342,14 @@ export default function DocumentManagerPanel({
                   <tr key={row.document_type} className={row.required && !row.optional && missing ? "doc-row-missing" : ""}>
                     <td>
                       <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span>{" "}
-                      <span title={DOCUMENT_TYPE_LABELS[row.document_type]}>{SHORT_LABELS[row.document_type] ?? DOCUMENT_TYPE_LABELS[row.document_type]}</span>
+                      <span title={DOCUMENT_TYPE_LABELS[row.document_type]}>{short(row.document_type)}</span>
                     </td>
                     <td>
                       <span className={`status-pill ${row.uploaded ? "status-cleared" : row.required && !row.optional ? "status-missing" : ""}`}>
                         {row.uploaded ? "Uploaded" : !row.required ? "Not needed" : row.optional ? "Optional" : "Not attached"}
                       </span>
                       {coveredByCombined && (
-                        <span className="tracker-subtitle"> in {DOCUMENT_TYPE_LABELS[row.document!.document_type]}</span>
+                        <span className="tracker-subtitle"> in {short(row.document!.document_type)}</span>
                       )}
                     </td>
                     <td>
@@ -726,7 +727,7 @@ function AssignDriveFiles({
         </table>
         {stillMissing.length > 0 && (
           <p className="field-note">
-            Still needed after these: {stillMissing.map((t) => DOCUMENT_TYPE_LABELS[t]).join(", ")}
+            Still needed after these: {stillMissing.map(short).join(", ")}
           </p>
         )}
         <div className="confirm-actions">

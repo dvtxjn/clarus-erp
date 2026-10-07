@@ -39,7 +39,7 @@ def _all(db: Session, model):
 
 def _label(kind: str, obj) -> str:
     if kind == "shipment":
-        return f"Shipment {obj.job or ''} {obj.mbl or ''}".replace("  ", " ").strip()
+        return " · ".join(x for x in (f"Shipment {obj.job or ''}".strip(), obj.mbl and f"BL {obj.mbl}", obj.be_no and f"BE {obj.be_no}") if x)
     if kind == "document":
         return obj.generated_filename or obj.original_filename or obj.document_type.value
     if kind == "proforma":
