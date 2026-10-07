@@ -898,7 +898,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .rate-input:hover:not(:disabled) { border-color: var(--color-border); background: var(--color-accent-soft); }
 .rate-input:focus { background: var(--color-surface); }
 .rate-input.num { text-align: right; font-variant-numeric: tabular-nums; }
-.rate-code { color: var(--color-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: normal; overflow-wrap: anywhere; max-width: 88px; }
+.rate-code { color: var(--color-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: nowrap; }
 .rate-retired td { opacity: 0.55; }
 @media (max-width: 720px) { .rates-page { padding: 16px; } }
 
@@ -922,12 +922,14 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .hss-copy th { text-align: left; font-weight: 600; color: var(--color-text-muted); padding: 4px; }
 .hss-copy th.num { text-align: right; }
 .hss-copy td { padding: 2px 4px; border-bottom: 1px solid var(--color-border-soft); }
-.hss-copy select { font-size: 12px; max-width: 170px; }
+.hss-copy select { font-size: 12px; max-width: 150px; }
 @media (max-width: 900px) { .hss-rule-copies { grid-template-columns: 1fr; } }
 .prefill-note { font-size: 13px; padding: 8px 12px; border-radius: var(--radius); background: var(--color-accent-soft); border: 1px solid var(--color-accent-border); display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
 .bill-rate-suggest { font-size: 12px; margin-top: 6px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .licence-closed { opacity: 0.6; }
 .hss-copy .rate-input { font-size: 12px; }
+.hss-copy .rate-input.num { min-width: 76px; } /* ₹/kg like 0.85 must stay readable */
+.hss-copy { overflow-x: auto; max-width: 100%; }
 .inv-roundoff td { text-align: right; font-size: 12px; color: var(--color-text-muted); }
 
 /* --- Final invoices --- */
@@ -1866,8 +1868,8 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .customs-table tr.is-history td { color: var(--color-text-muted); }
 .customs-table td { vertical-align: top; }
 .customs-table tr.is-open td { background: var(--bad-bg); }
-.customs-says { width: 320px; max-width: 320px; }
-.customs-says-box { width: 300px; max-width: 100%; overflow-wrap: anywhere; }
+.customs-says { width: 280px; max-width: 280px; }
+.customs-says-box { width: 260px; max-width: 100%; overflow-wrap: anywhere; }
 .customs-says-box > summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; list-style-position: inside; }
 .customs-says-box[open] > summary { color: var(--color-text-muted); }
 .customs-says-full { margin-top: 4px; padding: 6px 8px; max-height: 220px; overflow: auto; white-space: pre-wrap;
@@ -1876,7 +1878,9 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .customs-table td:nth-child(2) { max-width: 170px; white-space: normal; }
 .customs-table td:nth-child(2) .customs-flag { display: block; }
 .customs-actions button { height: 28px; padding: 0 10px; font-size: var(--text-xs); }
-.customs-actions button + button { margin-left: 6px; }
+.customs-actions button { display: block; }
+.customs-actions button + button { margin-top: 4px; }
+.customs-table td:nth-child(6) { max-width: 160px; white-space: normal; }
 .customs-flag { display: inline-block; margin: 2px 0 0; width: fit-content; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--bad-bg); color: var(--bad-fg); border: 1px solid var(--bad-border); white-space: nowrap; }
 .customs-done { display: block; font-size: var(--text-xs); color: var(--ok-fg); }
 .customs-unmatched { color: var(--warn-fg); }

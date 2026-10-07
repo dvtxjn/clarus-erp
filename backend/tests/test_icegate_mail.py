@@ -152,6 +152,7 @@ def test_feed_filters_hide_history_by_default(client, admin_headers):
     assert jobs() == {"5961"}                               # live only by default
     assert jobs("?scope=history") == {"5962", "5963"}        # archived shipment + old unmatched mail
     assert jobs("?scope=all") == {"5961", "5962", "5963"}
+    assert "5963" in jobs("?unmatched=true")                 # the Not matched tab ignores the scope
     assert jobs("?scope=all&kind=be_nak") == {"5963"}
     assert jobs("?scope=all&port=INNSA1") == {"5962", "5963"}
     assert jobs("?scope=all&date_from=2026-09-25&date_to=2026-09-25") == {"5961"}

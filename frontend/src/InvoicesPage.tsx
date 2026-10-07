@@ -31,12 +31,15 @@ const rowClick = (open: () => void) => (e: MouseEvent) => {
   open();
 };
 
-/** "Any month" + the last 24 months, newest first (a native month box renders as dashes when empty). */
-function MonthSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** "Any month" + the last 24 months (or the chosen FY's months), newest first
+ * (a native month box renders as dashes when empty). */
+function MonthSelect({ value, fy, onChange }: { value: string; fy?: string; onChange: (v: string) => void }) {
   const now = new Date();
   const months: string[] = [];
+  const start = fy ? 2000 + parseInt(fy, 10) : NaN; // "26-27" -> Apr 2026 … Mar 2027
   for (let i = 0; i < 24; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const d = Number.isNaN(start) ? new Date(now.getFullYear(), now.getMonth() - i, 1) : new Date(start + 1, 2 - i, 1);
+    if (!Number.isNaN(start) && (i >= 12 || d > now)) continue;
     months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
   }
   if (value && !months.includes(value)) months.push(value);
@@ -155,7 +158,7 @@ function FinalRegister() {
   return (
     <>
       <div className="inv-filters">
-        <select value={f.fy ?? ""} onChange={(e) => set("fy", e.target.value)} aria-label="Financial year">
+        <select value={f.fy ?? ""} onChange={(e) => setF((x) => ({ ...x, fy: e.target.value || undefined, month: undefined }))} aria-label="Financial year">
           <option value="">All years</option>
           {years.map((y) => (
             <option key={y} value={y}>
@@ -163,7 +166,7 @@ function FinalRegister() {
             </option>
           ))}
         </select>
-        <MonthSelect value={f.month ?? ""} onChange={(v) => set("month", v)} />
+        <MonthSelect value={f.month ?? ""} fy={f.fy} onChange={(v) => set("month", v)} />
         <select value={f.kind ?? ""} onChange={(e) => set("kind", e.target.value)} aria-label="Type">
           <option value="">Tax + reimbursement</option>
           <option value="tax">Tax invoices</option>
@@ -183,7 +186,7 @@ function FinalRegister() {
             onClick={() => run("pdf", () => downloadInvoicesPdf(chosen.map((r) => r.id)))}
             title="One PDF, one invoice per page — to print or send"
           >
-            {busy === "pdf" ? "Preparing…" : `Print / PDF (${picked.size ? `${picked.size} chosen` : `all ${all.length}`})`}
+            {busy === "pdf" ? "Preparing…" : all.length ? `Print / PDF (${picked.size ? `${picked.size} chosen` : `all ${all.length}`})` : "Print / PDF"}
           </button>
           <button className="btn-secondary" disabled={!!busy} onClick={() => run("xlsx", () => downloadInvoiceRegister(f))}>
             {busy === "xlsx" ? "Preparing…" : "Register (Excel)"}
@@ -345,7 +348,7 @@ function ProformaRegister() {
   return (
     <>
       <div className="inv-filters">
-        <select value={f.fy ?? ""} onChange={(e) => set("fy", e.target.value)} aria-label="Financial year">
+        <select value={f.fy ?? ""} onChange={(e) => setF((x) => ({ ...x, fy: e.target.value || undefined, month: undefined }))} aria-label="Financial year">
           <option value="">All years</option>
           {years.map((y) => (
             <option key={y} value={y}>
@@ -353,7 +356,7 @@ function ProformaRegister() {
             </option>
           ))}
         </select>
-        <MonthSelect value={f.month ?? ""} onChange={(v) => set("month", v)} />
+        <MonthSelect value={f.month ?? ""} fy={f.fy} onChange={(v) => set("month", v)} />
         <select value={f.status ?? ""} onChange={(e) => set("status", e.target.value)} aria-label="Status">
           <option value="">Any status</option>
           <option value="draft">Draft</option>
@@ -381,7 +384,7 @@ function ProformaRegister() {
               }
             }}
           >
-            {busy ? "Preparing…" : `Print / PDF (${picked.size ? `${picked.size} chosen` : `all ${all.length}`})`}
+            {busy ? "Preparing…" : all.length ? `Print / PDF (${picked.size ? `${picked.size} chosen` : `all ${all.length}`})` : "Print / PDF"}
           </button>
         </span>
       </div>

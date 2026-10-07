@@ -95,8 +95,8 @@ def mail_kinds(_user: User = Depends(get_current_user)):
 def list_mails(attention: bool = Query(False, description="Open attention items only"),
                unmatched: bool = Query(False), limit: int = Query(300, le=2000),
                scope: str = Query("live", pattern="^(live|history|all)$",
-                                  description="live = on a live tracker shipment, or recent and not matched yet; "
-                                              "history = old mails / shipments no longer in the tracker"),
+                                  description="live = on a live tracker shipment (plus recent OTPs); history = the rest "
+                                              "(not-matched mails are on the Not matched tab)"),
                kind: Optional[str] = Query(None, description="comma-separated kinds, e.g. be_query,out_of_charge"),
                source: Optional[str] = Query(None, pattern="^(icegate|odex)$"),
                port: Optional[str] = None, date_from: Optional[date] = None, date_to: Optional[date] = None,
@@ -121,13 +121,14 @@ def list_mails(attention: bool = Query(False, description="Open attention items 
         q = q.filter(IcegateMail.kind.like("odex%"))
     elif source == "icegate":
         q = q.filter(~IcegateMail.kind.like("odex%"))
-    if scope != "all":
+    if scope != "all" and not unmatched:  # the Not matched tab shows every unmatched mail
         live_ids = [i for (i,) in db.query(Shipment.id).filter(Shipment.is_archived.is_(False))]  # deleted: never live
-        recent = datetime.now(timezone.utc) - timedelta(days=days)
         # (shipment_id IS NOT NULL first: NOT on "NULL IN (…)" would drop unmatched mails from History)
+        # OTPs never match a shipment but are only useful fresh, so recent ones stay live
+        recent = datetime.now(timezone.utc) - timedelta(days=days)
         live = or_(and_(IcegateMail.shipment_id.isnot(None), IcegateMail.shipment_id.in_(live_ids)),
-                   and_(IcegateMail.shipment_id.is_(None), IcegateMail.received_at.isnot(None),
-                        IcegateMail.received_at >= when(recent)))
+                   and_(IcegateMail.shipment_id.is_(None), IcegateMail.kind == "otp",
+                        IcegateMail.received_at.isnot(None), IcegateMail.received_at >= when(recent)))
         q = q.filter(live if scope == "live" else ~live)
     if kind:
         q = q.filter(IcegateMail.kind.in_([k.strip() for k in kind.split(",") if k.strip()]))

@@ -198,7 +198,7 @@ class Shipment(SoftDeleteMixin, Base):
     @property
     def days(self) -> str:
         """The sheet's Day formula, referencing the inward date:
-        blank/not a date -> 'Pending'; otherwise diff = today - INW, counted
+        blank/not a date -> 'Pending'; otherwise diff = today (or the cleared date) - INW, counted
         inclusively (+1) when INW is today or past, left as-is (negative) when
         it's in the future; '1 day' vs 'N days'."""
         for fmt in ("%Y-%m-%d", "%d-%b-%Y", "%d-%m-%Y", "%d/%m/%Y", "%d.%m.%Y"):
@@ -209,7 +209,8 @@ class Shipment(SoftDeleteMixin, Base):
                 continue
         else:
             return "Pending"
-        diff = (date.today() - inw).days
+        # a cleared shipment's count stops on its cleared date
+        diff = ((self.cleared_date or date.today()) - inw).days
         adj = diff + 1 if diff >= 0 else diff
         return f"{adj} {'day' if abs(adj) == 1 else 'days'}"
 

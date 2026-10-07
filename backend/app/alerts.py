@@ -198,8 +198,11 @@ def lookup_alert(s, today: date) -> Optional[dict]:
         known = liners.identify(s.mbl)
         hint = known["note"] if known and known["note"] else (
             "BL format not recognised" if not known else "IGM may not be filed yet")
-        looked = f", last looked {rec['fetched_at'].replace('T', ' ')}" if rec.get("fetched_at") else ", not looked up yet"
-        text = f"IGM not found on ICEGATE ({when}{looked}) — check the BL no. ({hint})"
+        if rec.get("fetched_at"):
+            text = (f"IGM not found on ICEGATE ({when}, last looked {rec['fetched_at'].replace('T', ' ')})"
+                    f" — check the BL no. ({hint})")
+        else:  # never looked up: don't say "not found"
+            text = f"IGM not checked on ICEGATE yet ({when}) — look it up ({hint})"
     return {**_base(s), "kind": "icegate", "severity": _severity(left), "days_left": left,
             "due": s.eta.isoformat(), "text": text, "lookup": True}
 

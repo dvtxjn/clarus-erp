@@ -119,4 +119,4 @@ def test_lookup_flags_no_bl_failure_and_not_found():
     assert "lookup failing" in a["text"] and a["severity"] == "urgent"
     a = alerts.lookup_alert(lk(eta=date(2026, 9, 28), icegate={"fetched_at": "2026-09-30T08:00"}), TODAY)
     assert "IGM not found" in a["text"] and a["severity"] == "overdue"
-    assert "not looked up yet" in alerts.lookup_alert(lk(eta=TODAY), TODAY)["text"]
+    assert "not checked on ICEGATE yet" in alerts.lookup_alert(lk(eta=TODAY), TODAY)["text"]

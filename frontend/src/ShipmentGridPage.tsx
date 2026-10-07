@@ -16,6 +16,7 @@ import {
   type ColumnState,
   type GridApi,
   type ICellRendererParams,
+  type IRowNode,
   type RowClassParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
@@ -189,11 +190,25 @@ function formatDate(p: ValueFormatterParams): string {
 }
 
 /** Blank dates always sink to the bottom, whichever way the column is sorted. */
-function dateComparator(a: string | null, b: string | null, _na: unknown, _nb: unknown, desc: boolean): number {
-  if (!a && !b) return 0;
+function dateComparator(
+  a: string | null,
+  b: string | null,
+  na: IRowNode<Shipment> | undefined,
+  nb: IRowNode<Shipment> | undefined,
+  desc: boolean,
+): number {
+  if (!a && !b) return tieBreak(na, nb);
   if (!a) return desc ? -1 : 1;
   if (!b) return desc ? 1 : -1;
-  return a < b ? -1 : a > b ? 1 : 0;
+  return a < b ? -1 : a > b ? 1 : tieBreak(na, nb);
+}
+
+/** Same date: order by job no, then by when the shipment was added, so rows don't swap places. */
+function tieBreak(na: IRowNode<Shipment> | undefined, nb: IRowNode<Shipment> | undefined): number {
+  const ja = parseInt(na?.data?.job ?? "", 10);
+  const jb = parseInt(nb?.data?.job ?? "", 10);
+  if (!isNaN(ja) && !isNaN(jb) && ja !== jb) return ja - jb;
+  return (na?.data?.id ?? 0) - (nb?.data?.id ?? 0);
 }
 
 const text = (field: keyof Shipment, headerName: string, width = 130): ColDef<Shipment> => ({
@@ -379,7 +394,8 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
         <span className="mbl-cell">
           <span className="mbl-text">
             {p.value}
-            {p.data?.missing_from_sheet_at && (
+            {/* cleared shipments move to the monthly FNF sheets, so they're never "not in sheet" */}
+            {p.data?.missing_from_sheet_at && !p.data.cleared_date && !p.data.is_billed && (
               <span className="exception-badge" title="Not in the last tracker CSV import — check it (never deleted automatically)">
                 {" "}not in sheet
               </span>
@@ -595,6 +611,8 @@ export default function ShipmentGridPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>(() => loadTab(searchParams.get("tab")));
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
+  // the rows each section shows after the search and filters, for its totals
+  const [visibleRows, setVisibleRows] = useState<Record<string, Shipment[]>>({});
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   // formula bar (client, 2026-09-30): the selected cell's full value, to copy — or type over, like Excel
   const [fx, setFx] = useState<{ client: string; rowId: number; colId: string } | null>(null);
@@ -900,6 +918,7 @@ export default function ShipmentGridPage() {
     setShipments(null); // the other tab's rows load now
     setTab(t);
     setVisibleCounts({});
+    setVisibleRows({});
   }
 
   // Ongoing vs Cleared is decided only by the Cleared Date (billing doesn't hide a shipment)
@@ -1688,6 +1707,7 @@ export default function ShipmentGridPage() {
               {portsPresent.map((p) => (
                 <button key={p} type="button" className={chips.has(`port:${p}`) ? "chip on" : "chip"} onClick={() => toggleChip(`port:${p}`)}>
                   {formatPort(p, ports) || p}
+                  <span className="chip-count">{allOngoing.filter((s) => s.port === p).length}</span>
                 </button>
               ))}
               <span className="chip-sep" />
@@ -1769,10 +1789,10 @@ export default function ShipmentGridPage() {
                   {visibleCounts[client] !== undefined && visibleCounts[client] !== rows.length
                     ? ` of ${rows.length}`
                     : ""}{" "}
-                  shipments
-                  {tab === "cleared" && ` · ${rows.filter((r) => r.is_billed).length} billed`}
+                  {rows.length === 1 ? "shipment" : "shipments"}
+                  {tab === "cleared" && ` · ${(visibleRows[client] ?? rows).filter((r) => r.is_billed).length} billed`}
                 </span>
-                <SectionGlance rows={rows} />
+                <SectionGlance rows={visibleRows[client] ?? rows} />
               </h2>
               <AgGridReact<Shipment>
                 ref={refFor(client)}
@@ -1802,6 +1822,9 @@ export default function ShipmentGridPage() {
                 onModelUpdated={(e) => {
                   const n = e.api.getDisplayedRowCount();
                   setVisibleCounts((prev) => (prev[client] === n ? prev : { ...prev, [client]: n }));
+                  const shown: Shipment[] = [];
+                  e.api.forEachNodeAfterFilter((node) => node.data && shown.push(node.data));
+                  setVisibleRows((prev) => ({ ...prev, [client]: shown }));
                 }}
                 onCellValueChanged={onCellValueChanged}
                 onCellFocused={(e) => {
@@ -2186,25 +2209,28 @@ export function etaDeadline(eta: string | null): string | null {
 
 /** ETA cell: the small "d" in front turns the deadline on/off; the deadline shows beside the ETA. */
 function EtaCell({ row, ctx }: { row: Shipment; ctx: GridContext }) {
-  const dl = row.eta_is_deadline ? etaDeadline(row.eta) : null;
+  const done = !!row.cleared_date || row.is_billed; // the CFS deadline no longer matters
+  const dl = row.eta_is_deadline && !done ? etaDeadline(row.eta) : null;
   const today = new Date(new Date().toDateString()).getTime();
   const left = dl ? Math.round((new Date(`${dl}T00:00:00`).getTime() - today) / 86_400_000) : null;
   const tone = left == null ? "" : left < 0 ? " dl-past" : left <= 2 ? " dl-soon" : "";
   return (
     <span className="eta-cell">
-      <button
-        type="button"
-        className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}`}
-        title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
-        aria-label={row.eta_is_deadline ? "Deadline on (ETA − 4 days)" : "Mark a deadline"}
-        onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          ctx.saveText(row, "eta_is_deadline", !row.eta_is_deadline, "Deadline").catch(() => {});
-        }}
-      >
-        d
-      </button>
+      {!done && (
+        <button
+          type="button"
+          className={`dl-toggle${row.eta_is_deadline ? " dl-on" : ""}`}
+          title={row.eta_is_deadline ? "Deadline on — click to turn off" : "Mark a deadline: move to the CFS 4 days before the ETA"}
+          aria-label={row.eta_is_deadline ? "Deadline on (ETA − 4 days)" : "Mark a deadline"}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            ctx.saveText(row, "eta_is_deadline", !row.eta_is_deadline, "Deadline").catch(() => {});
+          }}
+        >
+          d
+        </button>
+      )}
       <span>{shortDate(row.eta)}</span>
       {dl && (
         <span className={`dl-date${tone}`} title={left != null && left < 0 ? "Deadline passed" : `Deadline in ${left} day(s)`}>

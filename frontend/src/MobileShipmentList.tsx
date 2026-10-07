@@ -11,7 +11,7 @@ const fmt = (v: string | null) =>
 
 /**
  * Shipments on a phone: search + one card per shipment (the tracker grid needs a desk).
- * Every card shows Job, client, BL and BE; admins get a straight "Proforma" button (client, 2026-09-30).
+ * Every card shows Job, client, BL and BE; admins get a straight "Proforma" button once the BE is filed (client, 2026-09-30).
  */
 export default function MobileShipmentList() {
   const [params, setParams] = useSearchParams();
@@ -107,7 +107,7 @@ export default function MobileShipmentList() {
                   {s.days !== "Pending" && ` · ${s.days}`}
                 </span>
               </Link>
-              {isAdmin && (
+              {isAdmin && s.be_no && (
                 <Link to={`/shipments/${s.id}?tab=proforma`} className="m-card-action">
                   Proforma
                 </Link>
