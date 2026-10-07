@@ -946,3 +946,53 @@ Realistic target with 1–3: ~99.95% (≈ 4 h/year worst case).
   log in unless `ICEGATE_PORTAL_SANDBOX=1`. Panel UI is in git history (`frontend/src/IcegateLoginPanel.tsx`, before this commit).
 - To redo in a sandbox (never against production while the client is working): ONE login, wait for the OTP, never
   retry before 15 minutes, back off an hour on "limit exceeded"; prove it with a dry-run counter before any real login.
+
+---
+
+## ✅ 2026-10-03 → 10-07 — Drive through the server, invoicing polish, data checks, review fixes
+
+**Drive** (rule: the ERP only reads and saves — never deletes, never makes or duplicates folders)
+- Everything saves into the shipment's linked folder inside CLARUS ERP; HMM uploads reuse the BL's BHMA folder.
+  Files for a shipment with no folder wait in the System drive until one is linked.
+- Drive goes through the server's own connection: in-ERP folder/file chooser (`DriveChooser.tsx`), no Google sign-in or picker.
+- Folder reader: auto-attach and read the folder's PDFs, per-file marks (type / ignore / auto), several downloads at once.
+- Big files (backups) upload in resumable 8 MB pieces with retries.
+
+**Tracker import** reads the whole .xlsx (TRACKER + FnF tabs). Cleared/billed shipments in FnF sheets aren't flagged;
+blank IGM-detail cells keep app data. Import Excel button on the Shipments toolbar.
+
+**Invoicing / HSS** (admin-only)
+- Proforma not generated until the Assessed BE is attached; flagged not complete (red) without today's challan.
+- Proforma edits in place with sent-copy history; big bill-rate mismatch banner; HSS tabs show party names.
+- HSS bill rate: "Minimise GST difference" sets the lowest allowed rate (rounded to the next 5 paise); typed rates need GST difference > 0.
+- GST Difference in its own section; Royalty and GST Difference out of the grand total.
+- Excel exports: text starting with "=" stays text (`core/xlsx_safe.py`).
+
+**Data checks on every add/edit** (`core/shipment_checks.py`; the tracker import skips them)
+- Bill only after clearance; no duplicate BL, no duplicate job among unbilled shipments; nonsense values refused; status can't run ahead of the details.
+- Containers: check digit, no duplicates on edit or across open shipments, count follows the list.
+- Organizations: soft delete (Recently deleted), GSTIN/PAN/IEC checks, near-duplicate names refused. Manual challan needs a real BE.
+- **Inward before ETA → the ETA becomes the inward date** (edits, both imports, ICEGATE IGM lookup).
+
+**Screens**
+- Tracker grid: Excel-style copy/paste, columns fit once (no twitching), typed dates save on Enter.
+- Cleared rows stop counting days at the cleared date and show no "not in sheet" badge or deadline; equal ETAs sort by job; section counts follow filters.
+- Customs mail: "In the tracker now" shows only mails matched to a shipment (plus fresh OTPs); the Not matched tab shows all.
+- IGM never looked up says "not checked on ICEGATE yet".
+- Add Shipment: type-to-search client/consignee over every name ever used (`GET /shipments/names`, one spelling each).
+- Invoice registers: month list follows the chosen FY. Phone: Proforma button only after the BE is filed.
+- Free days: standard 14 everywhere. Container validity read from the DO. HMM MBLs stored with the HDMU prefix.
+
+**Client decisions (2026-10-07)**
+- Billing cleared shipments is up to the staff, not a data error. OOC ticked with no date / duty unpaid = PCV state (customs released, duty pending), to handle later.
+- Per-shipment oddities (e.g. container Pending on a cleared job) are left to the staff. Job 191 (day 34, no BE) most likely has a wrong ETA.
+- Pooja and Samidha don't need accounts (client switches them off on the Users screen).
+- A QA bot (run by the client separately) uses an **admin** login and sends daily reports; it may look but must not change anything.
+  Offered: a per-login read-only switch enforced by the server — awaiting the client's yes.
+
+**Parked**
+- HS code on "+ Add Shipment" (client: not yet). Instant Gmail alerts: the client must allow
+  `gmail-api-push@system.gserviceaccount.com` in the domain-restricted sharing policy for topic `icegate-mail`; until then mail is polled.
+- Client DSR, admin CSV export, phone filters, go-live checklist, proforma FK migration, CSP header, ICEGATE login sandbox,
+  "save to another folder" at upload, download-to-PC, adding the 62 pre-ERP FnF jobs as history (open question).
+- Known test failure: `test_challan_listed_at.py::test_yesterdays_list_is_not_today` depends on the time of day.
