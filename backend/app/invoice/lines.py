@@ -53,7 +53,8 @@ def recalc(li: ProformaLineItem, gst_amount: Optional[Decimal] = None,
 def sync_bill_rate(proforma: Proforma) -> Optional[str]:
     """HSS bill rate follows the rules (client, 2026-09-30): always pre-filled with the
     suggested rate and re-worked, up or down, whenever the costs change. A rate typed by
-    hand is kept — unless the costs rise past it; then it goes up to the suggested rate.
+    hand is kept while it's above the value per kg with a GST difference above zero; once the
+    costs rise past it, it goes up to the suggested rate.
     Drafts only. Returns a note when a hand-typed rate had to move."""
     from app.core.enums import ProformaStatus
 
@@ -61,7 +62,7 @@ def sync_bill_rate(proforma: Proforma) -> Optional[str]:
     if proforma.status != ProformaStatus.DRAFT or s is None or not s.is_hss:
         return None
     v = value_summary(proforma)
-    suggested, minimum = v["suggested_bill_rate"], v["minimum_bill_rate"]
+    suggested = v["suggested_bill_rate"]
     if suggested is None:
         return None
     current = Decimal(proforma.bill_rate) if proforma.bill_rate is not None else None
@@ -69,7 +70,7 @@ def sync_bill_rate(proforma: Proforma) -> Optional[str]:
         if current != suggested:
             proforma.bill_rate = suggested
         return None
-    if current is None or (minimum is not None and current < minimum):
+    if current is None or not v["manual_rate_ok"]:
         proforma.bill_rate = suggested
         return f"Bill rate raised to ₹{suggested}/kg — the costs went above the rate typed by hand"
     return None

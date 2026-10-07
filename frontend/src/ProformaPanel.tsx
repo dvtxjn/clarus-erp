@@ -1081,7 +1081,7 @@ function InvoiceSheet({
           <div className="bill-rate-suggest">
             {inv.value.bill_rate_manual ? (
               <>
-                Bill rate typed by hand — kept unless the costs pass it.{" "}
+                Bill rate typed by hand — any rate above the value/kg with a GST difference above zero; kept unless the costs pass it.{" "}
                 {editable && (
                   <button type="button" className="link-button" onClick={() => onSaveProforma({ bill_rate: null }).catch(() => {})}>
                     Back to automatic (₹{inr(inv.value.suggested_bill_rate)}/kg)
@@ -1089,7 +1089,7 @@ function InvoiceSheet({
                 )}
               </>
             ) : (
-              <>Bill rate by the rules: value/kg + at least 10 paise, GST difference positive, next 25 paise — follows the costs.</>
+              <>Bill rate by the rules: value/kg + at least 10 paise, GST difference positive, next 25 paise — follows the costs. A rate typed by hand only needs to be above the value/kg with a GST difference above zero.</>
             )}
           </div>
         )}

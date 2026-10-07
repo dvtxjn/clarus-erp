@@ -225,16 +225,26 @@ def round_off(amount: Decimal) -> tuple[Decimal, Decimal]:
     return rounded, rounded - Decimal(amount)
 
 
-BILL_RATE_MARGIN = Decimal("0.10")  # at least 10 paise above value / kg
+BILL_RATE_MARGIN = Decimal("0.10")  # automatic rate: at least 10 paise above value / kg
 BILL_RATE_STEP = Decimal("0.25")    # and a standard-looking rate: next 25 paise step
 
 
 def bill_rate_minimum(value_per_kg: Optional[Decimal], gst_input: Decimal, weight: Optional[Decimal]) -> Optional[Decimal]:
-    """The lowest rate the rules allow: 10 paise over the value per kg, and enough that the
+    """The automatic rate's floor: 10 paise over the value per kg, and enough that the
     GST difference isn't negative."""
     if value_per_kg is None or not weight:
         return None
     return max(value_per_kg + BILL_RATE_MARGIN, gst_input / (GST_OUTPUT_RATE * weight) + Decimal("0.01"))
+
+
+def bill_rate_allowed(rate: Decimal, value_per_kg: Optional[Decimal], gst_input: Decimal,
+                      weight: Optional[Decimal]) -> bool:
+    """A rate typed by hand (client, 2026-10-07): no 10 paise margin — anything above the
+    value per kg that leaves a GST difference above zero."""
+    if value_per_kg is None or not weight:
+        return True
+    output = (GST_OUTPUT_RATE * rate * weight).quantize(Decimal("0.01"))
+    return rate > value_per_kg and output - gst_input > 0
 
 
 def suggest_bill_rate(value_per_kg: Optional[Decimal], gst_input: Decimal, weight: Optional[Decimal]) -> Optional[Decimal]:
@@ -274,7 +284,8 @@ def value_summary(proforma: Proforma) -> dict[str, Optional[Decimal]]:
         "gst_input": gst_input,
         "value_per_kg": (value / wt).quantize(Decimal("0.01")) if wt else None,
         "suggested_bill_rate": suggest_bill_rate(value / wt if wt else None, gst_input, wt),
-        "minimum_bill_rate": bill_rate_minimum(value / wt if wt else None, gst_input, wt),
+        "manual_rate_ok": (bill_rate_allowed(rate, value / wt if wt else None, gst_input, wt)
+                           if rate is not None else None),
         "bill_rate": rate,
         "gst_output": output,
         "gst_difference": max(ZERO, output - gst_input) if output is not None else None,

@@ -14,7 +14,7 @@ from app.core.locking import locked_proforma, locked_shipment
 from app.core.enums import ChargeCalculationBasis, ChargeCategory, ProformaStatus
 from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
-from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, documents_not_attached, build_invoice, invoice_filename, weight_kgs
+from app.invoice.build import GST_DIFFERENCE_CODE, round_off, be_importer_name, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.invoice.pdf import render_pdf
 from app.invoice.xlsx import render_xlsx
@@ -473,8 +473,19 @@ def update_proforma_status(
     if changes.get("bill_to_org_id") is not None and not db.get(OrganizationEntry, changes["bill_to_org_id"]):
         raise HTTPException(status_code=404, detail="Organization not found")
     if "bill_rate" in changes:
-        # typed rate: kept (never below the rule minimum); cleared: back to the automatic rate
+        # typed rate: anything above the value per kg with a GST difference above zero;
+        # cleared: back to the automatic rate
         proforma.bill_rate_manual = changes["bill_rate"] is not None
+        if changes["bill_rate"] is not None and proforma.shipment is not None and proforma.shipment.is_hss:
+            v = value_summary(proforma)
+            old_rate, proforma.bill_rate = proforma.bill_rate, changes["bill_rate"]
+            ok = value_summary(proforma)["manual_rate_ok"]
+            proforma.bill_rate = old_rate
+            if ok is False:
+                db.rollback()
+                raise HTTPException(status_code=400, detail=(
+                    f"Bill rate must be above the value per kg (₹{v['value_per_kg']}) and leave a "
+                    f"GST difference above zero (GST input ₹{v['gst_input']})."))
     for field, value in changes.items():
         if field in ("name", "bill_to") and isinstance(value, str):
             value = value.strip() or None

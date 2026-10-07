@@ -1,5 +1,6 @@
 import io
 import math
+from decimal import Decimal
 
 from openpyxl import load_workbook
 
@@ -163,6 +164,26 @@ def test_bill_rate_follows_the_costs(client, admin_headers):
                                                        "quantity": 1}, headers=h)
     raised = rate()
     assert float(raised["bill_rate"]) > typed                                          # costs passed it: raised
+
+
+def test_typed_bill_rate_needs_no_10_paise_margin(client, admin_headers):
+    """Client, 2026-10-07: a rate typed by hand can be anything above the value per kg that
+    leaves a GST difference above zero — no 10 paise margin, no 25 paise step."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "RATETEST0002", "consignee": "HKR - Mahrishi", "container": "2"},
+                      headers=h).json()["id"]
+    client.patch(f"/shipments/{sid}", json={"gross_wt": "50.000 MTS", "assessable_value": "500000"}, headers=h)
+    pid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
+    client.post(f"/proformas/{pid}/fill-from-shipment", headers=h)
+    v = client.get(f"/proformas/{pid}/invoice", headers=h).json()["value"]
+    per_kg = Decimal(v["value_per_kg"])
+
+    ok = client.patch(f"/proformas/{pid}", json={"bill_rate": str(per_kg + Decimal("0.01"))}, headers=h)
+    assert ok.status_code == 200 and ok.json()["bill_rate_manual"] is True
+    assert Decimal(ok.json()["bill_rate"]) == per_kg + Decimal("0.01")              # 1 paisa over: kept
+    for low in (per_kg, per_kg - 1):
+        r = client.patch(f"/proformas/{pid}", json={"bill_rate": str(low)}, headers=h)
+        assert r.status_code == 400 and "value per kg" in r.json()["detail"]        # not above: refused
 
 
 def test_bill_to_details_from_organization_repository(client, admin_headers):
