@@ -41,9 +41,14 @@ fi
 if [ "${1:-}" = "site-only" ]; then
   # Test: the picker still says "developer key is invalid" → drop the API list, keep the site lock.
   echo "== Restricting the key to the ERP site only (any API)"
-  gcloud services api-keys update "$KEY_NAME" --clear-restrictions >/dev/null
-  gcloud services api-keys update "$KEY_NAME" \
-    --allowed-referrers="$PUBLIC_URL/*,http://localhost:5173/*" >/dev/null
+  # Replace the whole restriction block: site lock kept, API list gone.
+  curl -sf -X PATCH "https://apikeys.googleapis.com/v2/$KEY_NAME?updateMask=restrictions" \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "x-goog-user-project: $PROJECT" -H "Content-Type: application/json" \
+    -d "{\"restrictions\":{\"browserKeyRestrictions\":{\"allowedReferrers\":[\"$PUBLIC_URL/*\",\"http://localhost:5173/*\"]}}}" \
+    >/dev/null || { echo "Couldn't update the key." >&2; exit 1; }
+  sleep 5
+  gcloud services api-keys describe "$KEY_NAME" --format='yaml(restrictions)'
 else
   echo "== Restricting the key to the ERP site + Picker/Drive"
   gcloud services api-keys update "$KEY_NAME" \
