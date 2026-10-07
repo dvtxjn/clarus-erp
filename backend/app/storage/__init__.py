@@ -5,6 +5,7 @@ Every file is written to the local disk first (the working copy the PDF readers 
 With STORAGE_BACKEND=drive the server also saves it in the client's Shared Drive:
 
     <the shipment's linked folder>/<generated name>.pdf      uploaded documents (never a folder the ERP made)
+    System Documents/<generated name>.pdf                    buffer copy while a shipment has no linked folder
     <the shipment's linked folder>/<invoice file name>.pdf   a proforma when Sent, a final invoice when issued
     CLARUS ERP/Proforma Invoices/<client>/...                invoices of a shipment with no linked folder
                                                              (existing folder reused, never a duplicate)
@@ -105,21 +106,26 @@ def ensure_folder(path: str) -> str:
     return current
 
 
-NO_FOLDER = "No Drive folder linked to this shipment — link it and the file is saved there."
+NO_FOLDER = ("No Drive folder linked to this shipment — kept safe in CLARUS ERP - System/Documents; "
+             "link the folder and it is saved there.")
 
 
 def push_document(doc, shipment) -> None:
     """Save the document's file in Drive (STORAGE_BACKEND=drive): only into the folder picked at save
     time or the shipment's linked folder — the ERP never makes folders (client, 2026-10-05). Unlinked:
-    stays pending until a folder is linked. Never raises: a failure marks it pending. Caller commits."""
+    a buffer copy goes flat into CLARUS ERP - System/Documents and it stays pending until a folder is
+    linked, then it is saved there (client, 2026-10-07). Never raises: a failure marks it pending. Caller commits."""
     client = drive()
     if client is None or doc.drive_picked:  # already in Drive: it was picked from there
         return
     folder = doc.drive_folder_id or shipment.drive_folder_id
-    if not folder:
-        doc.drive_sync_pending, doc.drive_error = True, NO_FOLDER
-        return
     try:
+        if not folder:  # nowhere to go yet: a buffer copy in the System drive (the disk is wiped on redeploy)
+            if not doc.drive_file_id:
+                meta = client.upload(roots()["Documents"], doc.generated_filename, Path(doc.file_path).read_bytes())
+                doc.drive_file_id, doc.drive_link = meta["id"], meta.get("webViewLink")
+            doc.drive_sync_pending, doc.drive_error = True, NO_FOLDER
+            return
         data = Path(local_path(doc)).read_bytes()
         meta = client.upload(folder, doc.generated_filename, data, linked=True)
         doc.drive_file_id, doc.drive_link = meta["id"], meta.get("webViewLink")

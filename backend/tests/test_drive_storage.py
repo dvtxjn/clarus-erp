@@ -141,13 +141,20 @@ def test_unlinked_shipment_waits_for_its_folder(client, admin_headers, fake_driv
     before = _folders(fake_drive)
     sid = _ship(client, admin_headers, "DRV0000002", folder=None, client="New Client Ltd")
     doc = _upload(client, admin_headers, sid, "cfs_tax_invoice", cfs_pdf())
-    assert doc["drive_sync_pending"] and "No Drive folder linked" in doc["drive_error"] and not doc["drive_file_id"]
+    assert doc["drive_sync_pending"] and "No Drive folder linked" in doc["drive_error"]
+    buffer = doc["drive_file_id"]  # a buffer copy, flat in System Documents (the disk is wiped on redeploy)
+    assert fake_drive.files[buffer]["parents"] == ["root-docs"]
+    files_before = len(fake_drive.files)
     assert storage.retry_pending() >= 1 and _folders(fake_drive) == before
+    assert len(fake_drive.files) == files_before  # buffered once, not on every retry
+    with SessionLocal() as db:
+        Path(db.get(ShipmentDocument, doc["id"]).file_path).unlink()  # redeploy wiped the disk
     client.patch(f"/shipments/{sid}", json={"drive_folder_id": "shipFolder01"}, headers=admin_headers)
     storage.retry_pending()
     with SessionLocal() as db:
         d = db.get(ShipmentDocument, doc["id"])
         assert not d.drive_sync_pending and fake_drive.files[d.drive_file_id]["parents"] == ["shipFolder01"]
+        assert d.drive_file_id != buffer
     bad = client.post(f"/shipments/{sid}/documents", data={"document_type": "cfs_tax_invoice", "save_to_folder_id": "../x"},
                       files={"file": ("x.pdf", cfs_pdf(), "application/pdf")}, headers=admin_headers)
     assert bad.status_code == 422
