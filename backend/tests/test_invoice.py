@@ -241,8 +241,9 @@ def test_bill_to_details_from_organization_repository(client, admin_headers):
 def test_bl_consignee_by_ad_code_and_seller_disclaimer(client, admin_headers):
     h = admin_headers
     # BE importer (Bill To) details matched by name, despite 'PVT LTD' vs 'PRIVATE LIMITED'
-    r = client.post("/organizations", json={"name": "Acme Tyres Pvt. Ltd.", "gstin": "27ACME0000A1Z5"}, headers=h)
-    assert r.status_code == 201, r.text
+    r = client.post("/organizations", json={"name": "Acme Tyres Pvt. Ltd.", "gstin": "27AACCA1234F1Z5"}, headers=h)
+    # another test may have added it already (near-duplicate names are refused)
+    assert r.status_code == 201 or "Already in the list" in r.text, r.text
     # the org holding the BE's AD code (6390001 on the synthetic BE) is the BL consignee
     orgs = client.get("/organizations", headers=h).json()
     holder = next((o for o in orgs if o["ad_code"] == "6390001"), None)

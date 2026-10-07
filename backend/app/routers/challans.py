@@ -7,6 +7,7 @@ or viewed. Interest = Due Amount - the BE's total duty.
 from __future__ import annotations
 
 import io
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
@@ -182,6 +183,10 @@ async def upload_challans(file: UploadFile = File(...), db: Session = Depends(ge
 def add_challan(payload: ChallanManual, db: Session = Depends(get_db), user: User = Depends(require_billing_access)):
     """One BE's challan Due Amount entered by hand."""
     be = payload.be_no.strip()
+    if not re.fullmatch(r"\d{7}", be):
+        raise HTTPException(status_code=422, detail=f"BE no should be 7 digits — got “{be}”.")
+    if not db.query(Shipment).filter(Shipment.be_no == be).first():
+        raise HTTPException(status_code=422, detail=f"No shipment has BE {be} — enter the BE no on the shipment first.")
     # dated with the BE's latest shipment (BE numbers are reused every year), so it isn't mistaken for
     # another year's figure and outranks older rows for this BE
     latest = (db.query(Shipment).filter(Shipment.be_no == be, Shipment.be_dt.isnot(None))

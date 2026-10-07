@@ -4,7 +4,8 @@ what was read from the uploaded files; nothing is written to shipments or
 proformas here — the batch fee-entry screen decides what to save.
 """
 import io
-from typing import List
+import re
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from app.core.deps import require_admin, require_billing_access
 from app.extraction.batch import scan_batch
 from app.extraction.excel_imports import load_challan_due_amounts, load_org_details
 from app.models.organization import OrganizationEntry
+from app.models.soft_delete import soft_delete
 from app.models.shipment import Shipment
 from app.models.user import User
 from app.schemas.extraction import (
@@ -63,8 +65,10 @@ def list_organizations(db: Session = Depends(get_db), _user: User = Depends(requ
 def create_organization(payload: OrganizationBase, db: Session = Depends(get_db),
                         _user: User = Depends(require_billing_access)):
     payload = _clean_org(payload)
-    if db.query(OrganizationEntry).filter(OrganizationEntry.name == payload.name).first():
-        raise HTTPException(status_code=400, detail="An organization with this name already exists")
+    _check_org(payload, None)
+    clash = name_taken(db, payload.name, None)
+    if clash:
+        raise HTTPException(status_code=400, detail=f"Already in the list as “{clash.name}”")
     org = OrganizationEntry(**payload.model_dump())
     db.add(org)
     db.commit()
@@ -79,10 +83,10 @@ def update_organization(org_id: int, payload: OrganizationBase, db: Session = De
     org = db.get(OrganizationEntry, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    clash = db.query(OrganizationEntry).filter(OrganizationEntry.name == payload.name,
-                                               OrganizationEntry.id != org_id).first()
+    _check_org(payload, org)
+    clash = name_taken(db, payload.name, org_id)
     if clash:
-        raise HTTPException(status_code=400, detail="Another organization already has this name")
+        raise HTTPException(status_code=400, detail=f"Another organization is already called “{clash.name}”")
     for k, v in payload.model_dump().items():
         setattr(org, k, v)
     db.commit()
@@ -90,10 +94,38 @@ def update_organization(org_id: int, payload: OrganizationBase, db: Session = De
     return org
 
 
+GSTIN_RE = re.compile(r"^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
+PAN_RE = re.compile(r"^[A-Z]{5}\d{4}[A-Z]$")
+IEC_RE = re.compile(r"^[A-Z0-9]{10}$")
+
+
+def name_taken(db: Session, name: str, org_id: Optional[int]) -> Optional[OrganizationEntry]:
+    """Same name once case, punctuation and 'Private Limited' / 'Pvt Ltd' are ignored."""
+    from app.invoice.build import _norm
+    key = _norm(name)
+    return next((o for o in db.query(OrganizationEntry) if o.id != org_id and _norm(o.name) == key), None)
+
+
+def _check_org(p: OrganizationBase, org: Optional[OrganizationEntry]) -> None:
+    """GSTIN / PAN / IEC formats — only the ones being changed, so old data doesn't block an edit."""
+    def changed(f):
+        v = getattr(p, f)
+        return v and (org is None or v != getattr(org, f))
+    if changed("gstin") and not GSTIN_RE.match(p.gstin):
+        raise HTTPException(status_code=422, detail=f"GSTIN “{p.gstin}” isn't valid — 15 characters, e.g. 24AAACC1234F1Z5")
+    if changed("pan") and not PAN_RE.match(p.pan):
+        raise HTTPException(status_code=422, detail=f"PAN “{p.pan}” isn't valid — e.g. AAACC1234F")
+    if changed("iec") and not IEC_RE.match(p.iec):
+        raise HTTPException(status_code=422, detail=f"IEC “{p.iec}” should be 10 letters / digits")
+    if (changed("gstin") or changed("pan")) and p.gstin and p.pan and GSTIN_RE.match(p.gstin) \
+            and p.gstin[2:12] != p.pan:
+        raise HTTPException(status_code=422, detail="The PAN doesn't match the GSTIN (characters 3–12)")
+
+
 def _clean_org(payload: OrganizationBase) -> OrganizationBase:
     """Blank strings -> None; GSTIN / PAN upper-case."""
     data = {k: (v.strip() or None) if isinstance(v, str) else v for k, v in payload.model_dump().items()}
-    for k in ("gstin", "pan"):
+    for k in ("gstin", "pan", "iec"):
         if data.get(k):
             data[k] = data[k].upper()
     data["name"] = data["name"] or payload.name
@@ -105,7 +137,7 @@ def delete_organization(org_id: int, db: Session = Depends(get_db), _admin: User
     org = db.get(OrganizationEntry, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    db.delete(org)
+    soft_delete(db, org, _admin.id)  # the admin can restore it from Recently deleted
     db.commit()
 
 

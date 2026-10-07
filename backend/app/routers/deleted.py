@@ -15,6 +15,7 @@ from app.invoice.autofill import refresh_draft_proformas
 from app.models.container import ShipmentContainer
 from app.models.document import ShipmentDocument
 from app.models.final_invoice import FinalInvoice
+from app.models.organization import OrganizationEntry
 from app.models.payment import Payment
 from app.models.proforma import Proforma
 from app.models.shipment import Shipment
@@ -23,11 +24,13 @@ from app.models.user import User
 
 router = APIRouter(prefix="/deleted", tags=["recently deleted"], dependencies=[Depends(require_admin)])
 
-Kind = Literal["shipment", "document", "proforma", "final_invoice", "payment", "container"]
+Kind = Literal["shipment", "document", "proforma", "final_invoice", "payment", "container", "organization"]
 MODELS = {"shipment": Shipment, "document": ShipmentDocument, "proforma": Proforma, "final_invoice": FinalInvoice,
-          "payment": Payment, "container": ShipmentContainer}
+          "payment": Payment, "container": ShipmentContainer,
+          "organization": OrganizationEntry}
 TABLES = {"shipment": "shipments", "document": "shipment_documents", "proforma": "proformas",
-          "final_invoice": "final_invoices", "payment": "payments", "container": "shipment_containers"}
+          "final_invoice": "final_invoices", "payment": "payments", "container": "shipment_containers",
+          "organization": "organizations"}
 
 
 def _all(db: Session, model):
@@ -43,6 +46,8 @@ def _label(kind: str, obj) -> str:
         return f"Proforma v{obj.version_number}" + (f" · {obj.name}" if obj.name else "")
     if kind == "container":
         return f"Container {obj.container_no}"
+    if kind == "organization":
+        return f"Organization {obj.name}"
     if kind == "payment":
         return f"Payment ₹{obj.amount:,.2f} from {obj.party} ({obj.received_on:%d %b %Y})"
     return f"{'Tax' if obj.kind == 'tax' else 'Reimbursement'} invoice (draft)"
@@ -74,7 +79,7 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
         raise HTTPException(status_code=404, detail="Not found")
     if not obj.is_deleted:
         raise HTTPException(status_code=400, detail="This isn't deleted")
-    if kind not in ("shipment", "payment"):
+    if kind not in ("shipment", "payment", "organization"):
         ship = _all(db, Shipment).filter(Shipment.id == obj.shipment_id).first()
         if ship and ship.is_deleted:
             raise HTTPException(status_code=400, detail="Its shipment is deleted — restore the shipment first")
@@ -83,6 +88,10 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
                                                    ShipmentContainer.container_no == obj.container_no).first()
         if again:
             raise HTTPException(status_code=400, detail=f"{obj.container_no} is already back on this shipment")
+    if kind == "organization":
+        from app.routers.extraction import name_taken
+        if name_taken(db, obj.name, obj.id):
+            raise HTTPException(status_code=400, detail=f"{obj.name} is already in the list again")
     if kind == "final_invoice":
         clash = db.query(FinalInvoice).filter(FinalInvoice.proforma_id == obj.proforma_id,
                                               FinalInvoice.kind == obj.kind,

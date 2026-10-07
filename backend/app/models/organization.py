@@ -3,9 +3,10 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 from app.core.database import Base
+from app.models.soft_delete import SoftDeleteMixin
 
 
-class OrganizationEntry(Base):
+class OrganizationEntry(SoftDeleteMixin, Base):
     """
     Spec §5.1 "Organization Repository": the parties we bill, with their
     details for the invoice's Bill To block. AD Code -> officially registered
