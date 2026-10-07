@@ -111,6 +111,9 @@ export interface Shipment {
   /** ICEGATE read-out (on command): gateway IGM for inland, vessel, FPOD ICD BL details, differences. */
   icegate?: {
     fetched_at?: string;
+    /** cleared: read once more after the Cleared Date, then final — never read again */
+    final?: string;
+    final_cleared_date?: string | null;
     gateway_igm?: { port: string | null; no: string | null; date: string | null };
     vessel?: { vessel_code?: string; imo_no?: string; voyage_no?: string; goods?: string };
     icd?: Record<string, string>;

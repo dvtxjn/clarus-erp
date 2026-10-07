@@ -20,7 +20,7 @@ export default function IcegateSettings() {
 
   async function backfill() {
     stop.current = false;
-    const all = (await listShipments({ include_archived: true })).filter((s) => s.mbl);
+    const all = (await listShipments({ include_archived: true })).filter((s) => s.mbl && !s.icegate?.final);
     const r = { done: 0, total: all.length, filled: 0, notFound: 0, errors: 0 };
     setRun({ ...r });
     for (const s of all) {
@@ -64,6 +64,11 @@ export default function IcegateSettings() {
               : "nothing due right now"
             : "…"}
         </span>
+        <span>Cleared — last read</span>
+        <span>
+          Each cleared shipment is read once after its Cleared Date, then its ICEGATE details are final and never read again
+          {status ? (status.final_due.length ? ` · next run: ${status.final_due.length} cleared` : " · all done") : ""}.
+        </span>
       </div>
       <div className="settings-save">
         <button type="button" onClick={backfill} disabled={busy}>
@@ -88,7 +93,7 @@ export default function IcegateSettings() {
         </div>
       )}
       <p className="field-note">
-        Backfill: every shipment (cleared too), one at a time — about 2 seconds each. Typed container arrivals are kept; the stored
+        Backfill: every shipment not yet final, one at a time — about 2 seconds each. Typed container arrivals are kept; the stored
         MBL is never changed (HMM without HDMU is searched with it).
       </p>
     </div>

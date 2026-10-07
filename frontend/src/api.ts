@@ -976,6 +976,7 @@ export interface IcegateStatus {
   last_run: { at: string; checked: number; filled: number; not_found: number; errors: number; jobs: string[] } | null;
   every_hours: number;
   due_now: { id: number; job: string | null; mbl: string | null; port: string | null }[];
+  final_due: { id: number; job: string | null; mbl: string | null; port: string | null }[];
 }
 /** Settings: last automatic ICEGATE run + what the next one would read (admin). */
 export async function getIcegateStatus(): Promise<IcegateStatus> {

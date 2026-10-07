@@ -7,7 +7,6 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin
 from app.igm import batch
 from app.models.settings import AppSetting
-from app.igm import refresh as igm_refresh
 from app.models.user import User
 from app.routers.containers import _shipment
 from app.schemas.shipment import ShipmentOut
@@ -20,8 +19,10 @@ def refresh_from_icegate(shipment_id: int, db: Session = Depends(get_db), user: 
     s = _shipment(db, shipment_id, user)
     if not s.mbl:
         raise HTTPException(status_code=400, detail="This shipment has no MBL")
+    if batch.is_final(s):
+        raise HTTPException(status_code=409, detail="Cleared — the ICEGATE details are final and aren't read again")
     try:
-        summary = igm_refresh.refresh(db, s, user.id)
+        summary = batch.read(db, s, user.id)
     except httpx.HTTPError as e:
         db.rollback()
         batch.record_failure(db, s, e)
@@ -42,4 +43,5 @@ def icegate_status(db: Session = Depends(get_db), _admin: User = Depends(require
         "last_run": row.value if row else None,
         "every_hours": 6,
         "due_now": [{"id": s.id, "job": s.job, "mbl": s.mbl, "port": s.port} for s in batch.due(db)],
+        "final_due": [{"id": s.id, "job": s.job, "mbl": s.mbl, "port": s.port} for s in batch.due_final(db)],
     }

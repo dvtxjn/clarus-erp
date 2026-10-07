@@ -61,3 +61,39 @@ def test_failure_recorded_and_retried(client, admin_headers, monkeypatch):
     db.refresh(s)
     assert s.icegate["error"] == "ICEGATE didn't answer" and s.icegate["sea_found"]  # last good read kept
     db.close()
+
+
+def test_cleared_shipment_read_once_then_final(client, admin_headers, monkeypatch):
+    from app.igm import refresh
+    from app.models.shipment import Shipment
+
+    past = (date.today() - timedelta(days=2)).isoformat()
+    sid = make(client, admin_headers, mbl="FINAL0001", job="8902", port="INMUN1", cleared_date=past)
+    db = SessionLocal()
+    db.get(Shipment, sid).icegate = {"fetched_at": "2026-09-20T08:00", "sea_found": True, "vessel": {"voyage_no": "V1"}}
+    db.commit()
+    db.close()
+    reads = []
+
+    def gone(db, s, _):  # ICEGATE no longer has it
+        reads.append(s.id)
+        s.icegate = {"fetched_at": "2026-10-07T09:00", "sea_found": False, "icd_found": False}
+        return {"inland": False, "sea_found": False, "icd_found": False, "changed": {}, "notes": []}
+
+    monkeypatch.setattr(refresh, "refresh", gone)
+    monkeypatch.setattr(batch, "PAUSE_SECONDS", 0)
+    batch.run_auto()
+    assert reads.count(sid) == 1
+    db = SessionLocal()
+    try:
+        ig = db.get(Shipment, sid).icegate
+        assert ig["final"] and ig["final_cleared_date"] == past
+        assert ig["vessel"] == {"voyage_no": "V1"}  # the earlier read-out is kept
+        assert sid not in {s.id for s in batch.due_final(db)}
+    finally:
+        db.close()
+
+    batch.run_auto()
+    assert reads.count(sid) == 1  # never read again
+    r = client.post(f"/shipments/{sid}/icegate/refresh", headers=admin_headers)
+    assert r.status_code == 409 and reads.count(sid) == 1

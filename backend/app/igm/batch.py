@@ -5,6 +5,8 @@ Which shipments (live = not archived, no Cleared Date):
 - sea ports: no inward date yet and the ETA within 4 days (or past) — the client's sheet rule — or inward
   but no containers on it yet (the container list comes from the sea IGM)
 - inland (ICD): ETA within 4 days (or past) and not every container has arrived at the ICD yet
+Cleared shipments (Cleared Date set, on or before today) are read once more, then marked final
+(icegate["final"]) and never read again — not by the job, not by the button (client, 2026-10-07).
 Each is read like the "Fetch from ICEGATE" button (app/igm/refresh.py), committed one by one, a pause between
 them. The last run is kept in app_settings["icegate_last_run"] for the Settings page.
 """
@@ -26,6 +28,39 @@ from app.models.shipment import Shipment
 log = logging.getLogger("icegate")
 AHEAD_DAYS = 4
 PAUSE_SECONDS = 1.5  # be gentle with a public government site
+FINAL_PER_RUN = 40  # cleared shipments' last read, a few at a time so the first run isn't hours long
+
+
+def is_final(s: Shipment) -> bool:
+    return bool((s.icegate or {}).get("final"))
+
+
+def due_final(db: Session, today: Optional[date] = None) -> list[Shipment]:
+    """Cleared shipments whose last ICEGATE read hasn't been done yet (oldest clearance first)."""
+    today = today or date.today()
+    rows = (db.query(Shipment)
+            .filter(Shipment.cleared_date.isnot(None), Shipment.cleared_date <= today, Shipment.mbl.isnot(None))
+            .order_by(Shipment.cleared_date, Shipment.id).all())
+    return [s for s in rows if not is_final(s)][:FINAL_PER_RUN]
+
+
+def finalise(s: Shipment, before: Optional[dict], summary: dict) -> None:
+    """After a cleared shipment's read: mark it final. If ICEGATE no longer has it, keep the earlier read-out."""
+    record = s.icegate or {}
+    if not summary["sea_found"] and not summary["icd_found"] and before and (before.get("sea_found") or before.get("icd_found")):
+        record = {k: v for k, v in before.items() if k not in ("error", "error_at")}
+    s.icegate = {**record, "final": datetime.now().isoformat(timespec="minutes"),
+                 "final_cleared_date": s.cleared_date.isoformat() if s.cleared_date else None}
+
+
+def read(db: Session, s: Shipment, user_id: Optional[int], retry: bool = False) -> dict:
+    """One shipment's read (button or job); a cleared shipment is marked final afterwards. Does not commit."""
+    before = dict(s.icegate or {})
+    summary = _refresh_with_retry(db, s) if retry else refresh.refresh(db, s, user_id)
+    if s.cleared_date and s.cleared_date <= date.today():
+        finalise(s, before, summary)
+        summary["final"] = True
+    return summary
 
 
 def due(db: Session, today: Optional[date] = None) -> list[Shipment]:
@@ -78,10 +113,12 @@ def run_auto() -> dict:
     result = {"at": datetime.now().isoformat(timespec="minutes"), "checked": 0, "filled": 0, "not_found": 0,
               "errors": 0, "jobs": []}
     try:
-        for s in due(db):
+        result["final"] = 0
+        for s in due(db) + due_final(db):
             result["checked"] += 1
             try:
-                summary = _refresh_with_retry(db, s)
+                summary = read(db, s, None, retry=True)
+                result["final"] += 1 if summary.get("final") else 0
                 db.commit()
                 if summary["changed"] or summary.get("containers", {}).get("updated") or summary.get("containers", {}).get("added"):
                     result["filled"] += 1

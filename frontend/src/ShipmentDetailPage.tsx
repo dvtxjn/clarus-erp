@@ -1292,11 +1292,13 @@ function IcegateBar({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => v
       <div className="icegate-bar">
         <span className="amount-block-title">IGM details</span>
         <span className="field-note">
-          {at ? `read from ICEGATE ${at}` : s.igm ? "IGM no from the tracker; details not read from ICEGATE yet" : "not read from ICEGATE yet"}
+          {s.icegate?.final ? `final — read from ICEGATE after clearance${at ? ` (${at})` : ""}; not read again` : at ? `read from ICEGATE ${at}` : s.igm ? "IGM no from the tracker; details not read from ICEGATE yet" : "not read from ICEGATE yet"}
         </span>
+        {!s.icegate?.final && (
         <button type="button" className="btn-secondary" onClick={run} disabled={busy || !s.mbl}>
           {busy ? "Reading ICEGATE…" : "Fetch from ICEGATE"}
         </button>
+        )}
       </div>
       {msg && (
         <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
