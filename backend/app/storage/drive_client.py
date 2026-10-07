@@ -110,6 +110,18 @@ class DriveClient:
         files = r.json().get("files", [])
         return files[0]["id"] if files else None
 
+    def search_folders(self, terms: list[str], limit: int = 25) -> list[dict]:
+        """Folders the service account can see whose name contains any of `terms` (read only)."""
+        terms = [t.strip() for t in terms if t and t.strip()][:6]
+        if not terms:
+            return []
+        names = " or ".join("name contains '{}'".format(t.replace("\\", "\\\\").replace("'", "\\'")) for t in terms)
+        r = self._req("GET", f"{API}/files", params={
+            "q": f"mimeType = '{FOLDER_MIME}' and trashed = false and ({names})",
+            "fields": "files(id,name,webViewLink)", "includeItemsFromAllDrives": "true", "corpora": "allDrives",
+            "orderBy": "modifiedTime desc", "pageSize": str(limit)})
+        return r.json().get("files", [])
+
     def list_children(self, folder_id: str) -> list[dict]:
         """Files and folders directly inside a folder (read only)."""
         out, token = [], None

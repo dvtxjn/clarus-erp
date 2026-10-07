@@ -275,3 +275,49 @@ def test_file_picked_from_the_shipment_folder_is_linked_not_copied(client, admin
     assert doc["extraction"]["fields"]  # still read like an upload
     client.delete(f"/shipments/{sid}/documents/{doc['id']}", headers=admin_headers)  # removing never renames theirs
     assert len(fake_drive.files) == before
+
+
+def test_file_from_the_folder_read_by_the_server_without_a_google_token(client, admin_headers, fake_drive):
+    """No Google sign-in in the browser: the server's own Drive reads the picked file."""
+    fake_drive.files["staff-file-2"] = {"name": "OOC copy.pdf", "parents": ["shipFolder01"], "mime": "application/pdf",
+                                        "data": be_pdf(mawb="DRV0000009").read()}
+    fake_drive.files["staff-xls-1"] = {"name": "sheet.xlsx", "parents": ["shipFolder01"], "mime": "application/vnd.ms-excel",
+                                       "data": b"x"}
+    real_get = fake_drive.get
+    fake_drive.get = lambda fid, fields="": {**real_get(fid), "mimeType": fake_drive.files[fid]["mime"],
+                                             "size": str(len(fake_drive.files[fid].get("data", b"")))}
+    sid = _ship(client, admin_headers, "DRV0000009", client="Server Pick Co")
+    before = dict(fake_drive.files)
+    r = client.post(f"/shipments/{sid}/documents/from-drive", headers=admin_headers,
+                    json={"document_type": "assessed_bill_of_entry", "file_id": "staff-file-2"})
+    assert r.status_code == 201, r.text
+    assert r.json()["drive_picked"] and r.json()["drive_file_id"] == "staff-file-2"
+    assert fake_drive.files == before  # only read
+    bad = client.post(f"/shipments/{sid}/documents/from-drive", headers=admin_headers,
+                      json={"document_type": "packing_list", "file_id": "staff-xls-1"})
+    assert bad.status_code == 400 and "isn't a PDF" in bad.json()["detail"]
+
+
+def test_folder_search_and_status_use_the_server_drive(client, admin_headers, fake_drive, monkeypatch):
+    seen = {}
+
+    def search(terms, limit=25):
+        seen["terms"] = terms
+        return [{"id": "shipFolder01", "name": "SUNRISE / DRV0000001"}]
+    monkeypatch.setattr(fake_drive, "search_folders", search)
+    assert client.get("/drive/status", headers=admin_headers).json() == {"server": True}
+    r = client.get("/drive/folders", params={"q": ["DRV0000001", "12", "JOB 129"]}, headers=admin_headers)
+    assert r.status_code == 200, r.text
+    assert r.json() == [{"id": "shipFolder01", "name": "SUNRISE / DRV0000001",
+                         "url": "https://drive.google.com/drive/folders/shipFolder01"}]
+    assert seen["terms"] == ["DRV0000001", "JOB 129"]  # too-short terms dropped, phrases kept whole
+    fake_drive.files["pdf-a"] = {"name": "BL.pdf", "parents": ["shipFolder01"], "mime": "application/pdf", "data": b""}
+    fake_drive.list_children = lambda fid: [{"id": i, "name": f["name"], "mimeType": f["mime"]}
+                                            for i, f in fake_drive.files.items() if fid in f["parents"]]
+    assert client.get("/drive/folders/shipFolder01/pdfs", headers=admin_headers).json() == [{"id": "pdf-a", "name": "BL.pdf"}]
+
+
+def test_drive_status_without_server_drive(client, admin_headers):
+    assert client.get("/drive/status", headers=admin_headers).json() == {"server": False}
+    assert client.get("/drive/folders", params={"q": "abc"}).status_code == 401
+    assert client.get("/drive/folders", params={"q": "abc"}, headers=admin_headers).status_code == 400

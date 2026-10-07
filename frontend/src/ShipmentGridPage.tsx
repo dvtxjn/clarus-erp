@@ -41,7 +41,7 @@ import { useAuth } from "./AuthContext";
 import TrackerImportPanel from "./TrackerImportPanel";
 import IcegateSettings from "./IcegateSettings";
 import LinkFoldersPanel from "./LinkFoldersPanel";
-import { driveConfigured } from "./googleDrive";
+import { useDriveReady } from "./googleDrive";
 import { useSaveShipment } from "./useSaveShipment";
 import { colorIndex, connectLive, PRESENCE_COLORS, sendPresence, TAB_ID } from "./live";
 import ColumnsPanel, { type PanelColumn } from "./ColumnsPanel";
@@ -650,6 +650,7 @@ export default function ShipmentGridPage() {
   const confirm = useConfirm();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const driveReady = useDriveReady();
   const [trackerCols, setTrackerCols] = useState<TrackerColumn[]>([]);
   const [showColumns, setShowColumns] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -1575,7 +1576,7 @@ export default function ShipmentGridPage() {
             Import Excel…
           </button>
         )}
-        {(isAdmin || driveConfigured) && (
+        {(isAdmin || driveReady) && (
           <details className="tools-menu" ref={toolsRef}>
             <summary className="btn-secondary">Admin tools…</summary>
             <div className="tools-menu-list" role="menu" onClick={() => toolsRef.current?.removeAttribute("open")}>
@@ -1585,7 +1586,7 @@ export default function ShipmentGridPage() {
                   <span className="field-note">IGM, inward and ICD arrival for every shipment</span>
                 </button>
               )}
-              {driveConfigured && (
+              {driveReady && (
                 <button type="button" role="menuitem" onClick={() => setShowFolders((v) => !v)}>
                   Link Drive folders
                   <span className="field-note">Find each shipment’s “JOB &lt;job&gt; - &lt;MBL/HBL&gt;” folder</span>

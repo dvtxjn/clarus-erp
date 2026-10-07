@@ -498,13 +498,34 @@ export async function addDocumentFromDrive(
   shipmentId: number,
   documentType: string,
   fileId: string,
-  accessToken: string,
+  accessToken?: string, // none: the server reads it with its own Drive connection
 ) {
   const { data } = await client.post(`/shipments/${shipmentId}/documents/from-drive`, {
     document_type: documentType,
     file_id: fileId,
-    access_token: accessToken,
+    ...(accessToken ? { access_token: accessToken } : {}),
   });
+  return data;
+}
+
+export interface DriveFolderHit {
+  id: string;
+  name: string;
+  url: string;
+}
+/** Does the server have its own Google Drive connection (no Google sign-in needed)? */
+export async function getDriveStatus(): Promise<{ server: boolean }> {
+  const { data } = await client.get("/drive/status");
+  return data;
+}
+export async function searchServerDriveFolders(terms: string[]): Promise<DriveFolderHit[]> {
+  const params = new URLSearchParams();
+  terms.forEach((t) => params.append("q", t));
+  const { data } = await client.get(`/drive/folders?${params}`);
+  return data;
+}
+export async function listDriveFolderPdfs(folderId: string): Promise<{ id: string; name: string }[]> {
+  const { data } = await client.get(`/drive/folders/${encodeURIComponent(folderId)}/pdfs`);
   return data;
 }
 

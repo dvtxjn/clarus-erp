@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { getDriveStatus, searchServerDriveFolders } from "./api";
+import { openDriveChooser } from "./DriveChooser";
 import { pickFolder, shipmentRefs, type FolderResult } from "./folderMatch";
 import type { Shipment } from "./types";
 
@@ -18,10 +21,35 @@ const SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis
 
 export const driveConfigured = Boolean(CLIENT_ID && API_KEY && APP_ID);
 
+/**
+ * The server's own Drive connection (service account). When it is there, every Drive step
+ * (find/choose a folder, pick files) goes through the server: no Google sign-in, no consent
+ * screen, no Google picker or API key. The Google sign-in path below is only a fallback.
+ */
+let serverDrive: boolean | null = null;
+let statusReq: Promise<boolean> | null = null;
+export function hasServerDrive(): Promise<boolean> {
+  statusReq ??= getDriveStatus()
+    .then((s) => (serverDrive = s.server))
+    .catch(() => {
+      statusReq = null; // e.g. not logged in yet: ask again next time
+      return false;
+    });
+  return statusReq;
+}
+/** True when Drive can be used (server connection, or Google sign-in set up). */
+export function useDriveReady(): boolean {
+  const [ready, setReady] = useState(serverDrive === true || driveConfigured);
+  useEffect(() => {
+    if (!ready) hasServerDrive().then((s) => s && setReady(true));
+  }, [ready]);
+  return ready;
+}
+
 export interface PickedDriveFile {
   id: string;
   name: string;
-  accessToken: string;
+  accessToken: string; // "" = read by the server's own Drive connection
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -107,6 +135,7 @@ function getToken(): Promise<string> {
 export async function searchDriveFolders(terms: string[]): Promise<{ id: string; name: string; url: string }[]> {
   const wanted = terms.map((t) => t.trim()).filter(Boolean);
   if (!wanted.length) return [];
+  if (await hasServerDrive()) return searchServerDriveFolders(wanted);
   const token = await getDriveToken();
   const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   const q = `mimeType = 'application/vnd.google-apps.folder' and trashed = false and (${wanted
@@ -139,6 +168,10 @@ export async function searchDriveFolders(terms: string[]): Promise<{ id: string;
 
 /** Opens the Google Drive picker (PDFs only), starting in `startFolderId` if given. Resolves null if cancelled. */
 export async function pickPdfFromDrive(startFolderId?: string | null): Promise<PickedDriveFile | null> {
+  if (await hasServerDrive()) {
+    const r = await openDriveChooser("file", startFolderId);
+    return r && "files" in r ? { ...r.files[0], accessToken: "" } : null;
+  }
   if (!driveConfigured) throw new Error("Google Drive isn't set up yet.");
   await loadPicker();
   const accessToken = await getToken();
@@ -174,6 +207,10 @@ export async function pickPdfFromDrive(startFolderId?: string | null): Promise<P
 export async function pickPdfsFromFolder(
   folderId: string,
 ): Promise<{ files: { id: string; name: string }[]; accessToken: string } | null> {
+  if (await hasServerDrive()) {
+    const r = await openDriveChooser("files", folderId);
+    return r && "files" in r ? { files: r.files, accessToken: "" } : null;
+  }
   if (!driveConfigured) throw new Error("Google Drive isn't set up yet.");
   await loadPicker();
   const accessToken = await getToken();
@@ -211,6 +248,10 @@ export interface PickedDriveFolder {
 
 /** Folder picker. Picking a folder is what lets the app save files into it. */
 export async function pickDriveFolder(): Promise<PickedDriveFolder | null> {
+  if (await hasServerDrive()) {
+    const r = await openDriveChooser("folder");
+    return r && "folder" in r ? r.folder : null;
+  }
   if (!driveConfigured) throw new Error("Google Drive isn't set up yet.");
   await loadPicker();
   const accessToken = await getToken();

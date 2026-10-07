@@ -7,6 +7,7 @@ from typing import BinaryIO, Callable, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from urllib.parse import quote
 from pydantic import BaseModel
@@ -18,6 +19,7 @@ from app.core.deps import get_current_user, get_user_allowed_ports, require_admi
 from app.core.locking import locked_shipment_or_404
 from app import storage
 from app.integrations import google_drive
+from app.storage.drive_client import DriveError
 from decimal import Decimal
 
 from app.core.enums import DocumentType
@@ -103,7 +105,30 @@ async def _save_to_drive_folder(db: Session, shipment: Shipment, doc: ShipmentDo
 class DriveDocumentIn(BaseModel):
     document_type: DocumentType
     file_id: str
-    access_token: str  # user's short-lived Google token (drive.file scope); used once, not stored
+    access_token: Optional[str] = None  # user's short-lived Google token; without it the server's own Drive reads the file
+
+
+def _fetch_with_server_drive(file_id: str) -> google_drive.DriveFile:
+    """Read a PDF through the server's own Drive connection (read only)."""
+    client = storage.drive()
+    if client is None:
+        raise google_drive.DriveError("Sign in to Google Drive to pick files (the server has no Drive connection).")
+    try:
+        info = client.get(file_id, "id,name,mimeType,size,webViewLink")
+    except DriveError:
+        raise google_drive.DriveError("File not found in Google Drive (or the ERP can't see it).")
+    name = info.get("name") or "drive.pdf"
+    if info.get("mimeType") != "application/pdf":
+        raise google_drive.DriveError(f"'{name}' isn't a PDF — pick the PDF copy of the document.")
+    if int(info.get("size") or 0) > google_drive.MAX_BYTES:
+        raise google_drive.DriveError(f"'{name}' is larger than 25 MB.")
+    try:
+        data = client.download(file_id)
+    except DriveError:
+        raise google_drive.DriveError(f"Couldn't read '{name}' from Google Drive — try again.")
+    if len(data) > google_drive.MAX_BYTES:
+        raise google_drive.DriveError(f"'{name}' is larger than 25 MB.")
+    return google_drive.DriveFile(file_id=file_id, name=name, web_link=info.get("webViewLink"), content=data)
 
 
 @router.post("/from-drive", response_model=ShipmentDocumentOut, status_code=201)
@@ -117,7 +142,10 @@ async def add_document_from_drive(
     A copy is stored and processed like an upload; the Drive link is kept."""
     shipment = _get_shipment(db, shipment_id, current_user)
     try:
-        drive_file = await google_drive.fetch_drive_pdf(payload.file_id, payload.access_token)
+        if payload.access_token:
+            drive_file = await google_drive.fetch_drive_pdf(payload.file_id, payload.access_token)
+        else:
+            drive_file = await run_in_threadpool(_fetch_with_server_drive, payload.file_id)
     except google_drive.DriveError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPError:

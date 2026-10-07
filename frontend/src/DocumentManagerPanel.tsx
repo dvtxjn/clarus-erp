@@ -11,7 +11,8 @@ import { useSaveShipment } from "./useSaveShipment";
 import { useAuth } from "./AuthContext";
 import { useConfirm } from "./ConfirmDialog";
 import {
-  driveConfigured,
+  hasServerDrive,
+  useDriveReady,
   findFolderFor,
   folderIdFromLink,
   getDriveToken,
@@ -132,6 +133,7 @@ export default function DocumentManagerPanel({
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const confirm = useConfirm();
+  const driveReady = useDriveReady();
 
   async function handleRemove(doc: ShipmentDocument) {
     const ok = await confirm({
@@ -169,9 +171,10 @@ export default function DocumentManagerPanel({
     e.preventDefault();
     if (!file) return;
     setError(null);
-    // Linked Drive folder: also save the renamed file there (needs Google sign-in)
+    // Linked Drive folder: the server saves the renamed file there itself; only without
+    // its own Drive connection does this need the user's Google sign-in
     let driveToken: string | undefined;
-    if (shipment.drive_folder_id && driveConfigured) {
+    if (shipment.drive_folder_id && driveReady && !(await hasServerDrive())) {
       try {
         driveToken = await getDriveToken();
       } catch {
@@ -267,8 +270,8 @@ export default function DocumentManagerPanel({
           type="button"
           className="btn-secondary drive-btn"
           onClick={handlePickFromDrive}
-          disabled={uploading || !driveConfigured}
-          title={driveConfigured ? "Pick a PDF already saved in Google Drive" : "Google Drive isn't set up yet — see PROGRESS.md"}
+          disabled={uploading || !driveReady}
+          title={driveReady ? "Pick a PDF already saved in Google Drive" : "Google Drive isn't set up yet — see PROGRESS.md"}
         >
           <DriveIcon /> Choose from Google Drive
         </button>
@@ -454,6 +457,7 @@ function DriveFolderBar({
   onPickFiles: () => void;
 }) {
   const saveShipment = useSaveShipment();
+  const driveReady = useDriveReady();
   const [link, setLink] = useState("");
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -515,8 +519,8 @@ function DriveFolderBar({
         <button
           type="button"
           onClick={onPickFiles}
-          disabled={!driveConfigured}
-          title={driveConfigured ? "Select files already in this folder and mark which document each one is" : "Google Drive isn't set up yet — see PROGRESS.md"}
+          disabled={!driveReady}
+          title={driveReady ? "Select files already in this folder and mark which document each one is" : "Google Drive isn't set up yet — see PROGRESS.md"}
         >
           Pick files from this folder
         </button>
@@ -536,7 +540,7 @@ function DriveFolderBar({
       <button
         type="button"
         onClick={findInDrive}
-        disabled={!driveConfigured || finding}
+        disabled={!driveReady || finding}
         title={`Looks for a folder named like "JOB ${shipment.job || "<job>"} - ${shipment.mbl}"`}
       >
         {finding ? "Searching Drive…" : "Find in Drive"}
@@ -545,8 +549,8 @@ function DriveFolderBar({
         type="button"
         className="btn-secondary"
         onClick={choose}
-        disabled={!driveConfigured}
-        title={driveConfigured ? "" : "Google Drive isn't set up yet — see PROGRESS.md"}
+        disabled={!driveReady}
+        title={driveReady ? "" : "Google Drive isn't set up yet — see PROGRESS.md"}
       >
         Choose folder
       </button>
