@@ -3,7 +3,7 @@ import { copyText } from "./clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createPortal } from "react-dom";
-import DateCellEditor from "./dateEditor";
+import DateCellEditor, { formatTypedDate, parseTypedDate } from "./dateEditor";
 import { AgGridReact } from "ag-grid-react";
 import {
   AllCommunityModule,
@@ -11,7 +11,6 @@ import {
   themeQuartz,
   type CellClassParams,
   type CellEditingStoppedEvent,
-  type CellKeyDownEvent,
   type CellValueChangedEvent,
   type ColDef,
   type ColumnState,
@@ -1010,13 +1009,19 @@ export default function ShipmentGridPage() {
   // columns whose width someone dragged by hand (per tab) — auto-fit leaves them alone
   const manualKey = `${columnStateKey}.manual`;
   const manualWidths = useRef<Set<string>>(new Set());
+  // columns already fitted once (per tab): after that they keep their width, like Excel — re-fitting on
+  // every refresh/save made the table keep changing shape (client, 2026-10-07)
+  const fittedKey = `${columnStateKey}.fitted`;
+  const fittedCols = useRef<Set<string>>(new Set());
   useEffect(() => {
     try {
       manualWidths.current = new Set(JSON.parse(localStorage.getItem(manualKey) ?? "[]"));
+      fittedCols.current = new Set(JSON.parse(localStorage.getItem(fittedKey) ?? "[]"));
     } catch {
       manualWidths.current = new Set();
+      fittedCols.current = new Set();
     }
-  }, [manualKey]);
+  }, [manualKey, fittedKey]);
   // re-fit when the data or the view changes (like Excel keeping columns readable as rows arrive)
   // ONE fit, once every client section has finished drawing its rows: fitting earlier measured half-drawn
   // sections, narrowed columns, and a second pass widened them again — the "twitch" (client, 2026-09-30).
@@ -1102,15 +1107,23 @@ export default function ShipmentGridPage() {
     saveColumnState();
   }
 
-  /** Autofit every shown column that nobody has sized by hand. */
+  /** Autofit each shown column once — not ones sized by hand or already fitted. Double-click a
+   *  column's edge to fit it again; Reset layout fits everything afresh. */
   function autoFitAll() {
     const header = headerRef.current?.api;
     if (!header) return;
     const ids = header
       .getColumnState()
-      .filter((c) => !c.hide && !manualWidths.current.has(c.colId))
+      .filter((c) => !c.hide && !manualWidths.current.has(c.colId) && !fittedCols.current.has(c.colId))
       .map((c) => c.colId);
+    if (!ids.length) return;
     fitToContent(ids);
+    ids.forEach((id) => fittedCols.current.add(id));
+    try {
+      localStorage.setItem(fittedKey, JSON.stringify([...fittedCols.current]));
+    } catch {
+      /* storage unavailable */
+    }
   }
 
   function saveColumnState() {
@@ -1145,9 +1158,11 @@ export default function ShipmentGridPage() {
   function resetLayout() {
     rememberColView("grid");
     manualWidths.current = new Set(); // back to auto-fit everywhere
+    fittedCols.current = new Set();
     try {
       localStorage.removeItem(columnStateKey);
       localStorage.removeItem(manualKey);
+      localStorage.removeItem(fittedKey);
     } catch {
       /* ignore */
     }
@@ -1315,31 +1330,66 @@ export default function ShipmentGridPage() {
   }, [record, saveShipment]);
   const gridContext = useMemo<GridContext>(() => ({ toggleFlag, saveText }), [toggleFlag, saveText]);
 
-  // Ctrl/⌘+C copies the focused cell (as shown), unless you've selected text yourself.
-  const copyCell = useCallback((e: CellKeyDownEvent<Shipment>) => {
-    const ev = e.event as KeyboardEvent | null;
-    if (!ev || !(ev.ctrlKey || ev.metaKey) || ev.key.toLowerCase() !== "c") return;
-    if (e.api.getEditingCells().length > 0 || window.getSelection()?.toString()) return;
-    const value = e.node ? e.api.getCellValue({ rowNode: e.node, colKey: e.column, useFormatter: true }) : null;
-    const textValue = value == null ? "" : String(value);
-    const ok = () => setMessage({ kind: "ok", text: textValue ? `Copied: ${textValue}` : "Copied (empty cell)" });
-    const fallback = () => {
-      // Older/stricter browsers: copy through a hidden textarea
-      const ta = document.createElement("textarea");
-      ta.value = textValue;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      const done = document.execCommand("copy");
-      ta.remove();
-      if (e.rowIndex != null) e.api.setFocusedCell(e.rowIndex, e.column); // give focus back to the cell
-      if (done) ok();
-      else setMessage({ kind: "error", text: "Couldn't copy — select the text instead." });
+  // Excel-style clipboard (client, 2026-10-07): with a cell selected (not editing), Ctrl/⌘+C copies it
+  // as shown and Ctrl/⌘+V pastes into it — saved like any cell edit (undo too). Selected text copies natively.
+  const fxRef = useRef(fx);
+  fxRef.current = fx;
+  useEffect(() => {
+    const focusedCell = () => {
+      const el = document.activeElement;
+      if (!el?.closest(".client-section .ag-cell") || el.closest(".ag-cell-inline-editing")) return null;
+      const f = fxRef.current;
+      const api = f ? sectionRefs.current.get(f.client)?.current?.api : undefined;
+      if (!f || !api || api.getEditingCells().length) return null;
+      const node = api.getRowNode(String(f.rowId));
+      const col = api.getColumn(f.colId);
+      return node?.data && col ? { api, node, col } : null;
     };
-    if (navigator.clipboard) navigator.clipboard.writeText(textValue).then(ok, fallback);
-    else fallback();
-  }, []);
+    const onCopy = (e: ClipboardEvent) => {
+      if (window.getSelection()?.toString()) return;
+      const cell = focusedCell();
+      if (!cell || !e.clipboardData) return;
+      const value = cell.api.getCellValue({ rowNode: cell.node, colKey: cell.col, useFormatter: true });
+      const textValue = value == null || typeof value === "object" ? "" : String(value);
+      e.clipboardData.setData("text/plain", textValue);
+      e.preventDefault();
+      setMessage({ kind: "ok", text: textValue ? `Copied: ${textValue}` : "Copied (empty cell)" });
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      const cell = focusedCell();
+      if (!cell || !e.clipboardData) return;
+      e.preventDefault();
+      const { node, col, api } = cell;
+      const def = col.getColDef();
+      const name = def.headerName ?? col.getColId();
+      const pasted = e.clipboardData.getData("text/plain").replace(/[\r\n]+$/, "");
+      if (/[\t\r\n]/.test(pasted)) return setMessage({ kind: "error", text: "Paste one cell at a time." });
+      if (!col.isCellEditable(node)) return setMessage({ kind: "error", text: `${name} can't be pasted into — double-click to change it.` });
+      let value: unknown = pasted.trim();
+      if (def.cellEditor === DateCellEditor) {
+        const d = value ? parseTypedDate(String(value)) : null;
+        if (value && !d) return setMessage({ kind: "error", text: `“${pasted}” isn't a date — day first: 8/10, 8 Oct, 08-10-2026` });
+        value = d ? formatTypedDate(d, def.cellEditorParams?.format ?? "iso") : null;
+      } else if (def.cellEditor === "agSelectCellEditor") {
+        const values: string[] = def.cellEditorParams?.values ?? [];
+        const hit = values.find((v) => v.toLowerCase() === String(value).toLowerCase());
+        if (hit === undefined) return setMessage({ kind: "error", text: `“${pasted}” isn't one of the ${name} choices.` });
+        value = hit;
+      } else if (def.cellEditor) {
+        return setMessage({ kind: "error", text: `${name} can't be pasted into — double-click to change it.` });
+      } else if (typeof def.valueParser === "function") {
+        const oldValue = api.getCellValue({ rowNode: node, colKey: col });
+        value = def.valueParser({ newValue: String(value), oldValue, data: node.data!, node, colDef: def, column: col, api, context: gridContext });
+      }
+      node.setDataValue(col, value === "" ? null : value); // the normal cell save (onCellValueChanged)
+    };
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [gridContext]);
 
   async function handleRenameClient(oldName: string, newName: string): Promise<boolean> {
     const target = newName.trim();
@@ -1731,7 +1781,6 @@ export default function ShipmentGridPage() {
                 columnDefs={columnDefs}
                 defaultColDef={sectionColDef}
                 context={gridContext}
-                onCellKeyDown={copyCell}
                 popupParent={document.body} // the date picker on the bottom row was cut off by the section
                 domLayout="autoHeight"
               tooltipShowDelay={350}

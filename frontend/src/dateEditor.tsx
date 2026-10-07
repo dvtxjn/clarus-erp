@@ -11,11 +11,11 @@ import type { CustomCellEditorProps } from "ag-grid-react";
  */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-type Format = "iso" | "sheet";
+export type Format = "iso" | "sheet";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const out = (d: Date, f: Format) => (f === "iso" ? iso(d) : `${pad(d.getDate())}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`);
+export const formatTypedDate = (d: Date, f: Format) => (f === "iso" ? iso(d) : `${pad(d.getDate())}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`);
 
 function valid(y: number, m: number, d: number): Date | null {
   const dt = new Date(y, m, d);
@@ -61,7 +61,7 @@ export default function DateCellEditor(props: CustomCellEditorProps<unknown, str
   }, [typed]);
 
   const pick = (d: Date | null) => {
-    props.onValueChange(d ? out(d, format) : null);
+    props.onValueChange(d ? formatTypedDate(d, format) : null);
     // let the grid read the new value before it closes the editor
     setTimeout(() => props.stopEditing(), 0);
   };
@@ -78,8 +78,14 @@ export default function DateCellEditor(props: CustomCellEditorProps<unknown, str
         ref={input}
         className="date-editor-input"
         value={text}
-        placeholder={start ? out(start, "sheet") : "Type e.g. 8/10 or 8 Oct"}
-        onChange={(e) => setText(e.target.value)}
+        placeholder={start ? formatTypedDate(start, "sheet") : "Type e.g. 8/10 or 8 Oct"}
+        onChange={(e) => {
+          setText(e.target.value);
+          // keep the grid's value in step with the typing: the grid can take Enter before this input
+          // sees it, and then it saves whatever was last handed over (findings 2026-10-07, item 5)
+          const d = parseTypedDate(e.target.value);
+          props.onValueChange(d ? formatTypedDate(d, format) : ((props.initialValue as string | null) ?? null));
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
