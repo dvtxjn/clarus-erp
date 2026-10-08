@@ -39,14 +39,11 @@ export default function FpodContainers({
   inland,
   portLabel,
   onRefreshed,
-  wide = false,
 }: {
   shipment: Shipment;
   inland: boolean;
   portLabel: string;
   onRefreshed: (s: Shipment) => void;
-  /** full-page layout: the table shows (first 5 rows); narrow: folded behind the summary unless free days run out */
-  wide?: boolean;
 }) {
   const ro = useReadOnly();
   const shipmentId = shipment.id;
@@ -173,7 +170,7 @@ export default function FpodContainers({
   const near = urgent.filter((c) => c.days_left! >= 0);
   const maxOver = over.length ? Math.max(...over.map((c) => -c.days_left!)) : 0;
   // opens by itself when a container is over (or within 3 days of) its free days — that shouldn't sit folded
-  const open = userOpen ?? (wide || urgent.length > 0 || adding);
+  const open = userOpen ?? true; // open by default, also in the half peek (client, 2026-10-08)
   const PREVIEW = 5;
   const shown = rows && !showAll ? rows.slice(0, PREVIEW) : rows ?? [];
   const hiddenUrgent = rows ? urgent.filter((c) => !shown.includes(c)).length : 0;

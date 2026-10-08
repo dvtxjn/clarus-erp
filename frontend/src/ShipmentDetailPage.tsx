@@ -408,29 +408,9 @@ function DetailSkeleton({ peek, body = false }: { peek: boolean; body?: boolean 
 
 type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_on_cfs";
 
-/**
- * The Overview's own width (not the window's: the half peek stays one column). Same breakpoints as the
- * CSS container queries on .detail-page: 1100 = the 12-column layout, 1600 = three columns.
- */
-const OVERVIEW_WIDE = 1100;
-function useBoxWidth<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [width, setWidth] = useState(0);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setWidth(el.getBoundingClientRect().width);
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, width] as const;
-}
 
 function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
   const ports = usePorts();
-  const [box, width] = useBoxWidth<HTMLDivElement>();
-  const wide = width >= OVERVIEW_WIDE;
   // IGM & ICD details: open by default at every width
   const [igmUser, setIgmOpen] = useState<boolean | null>(null);
   const igmOpen = igmUser ?? true; // always shown unless folded by hand (client, 2026-10-08)
@@ -438,7 +418,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
   return (
     // Shipment & movement across the page (with the notes and IGM & ICD details), containers under it
     // (client, 2026-10-08). Duty, CFS and Shipping line have their own tabs; billing settings are on Proforma.
-    <div className="overview" ref={box}>
+    <div className="overview">
         <CopyRows.Provider value={true}>
         <section className="detail-section ov-ship">
           <h3>Shipment &amp; movement</h3>
@@ -532,7 +512,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
       {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
           arrival at the FPOD; sea port: from the INW (client, 2026-09-30) */}
       {s.port && (
-        <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} wide={wide} />
+        <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} />
       )}
     </div>
   );

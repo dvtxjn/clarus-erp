@@ -2065,7 +2065,9 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 /* containers: one free-days value for all */
 .fpod-all { align-items: center; }
 .fpod-all label { font-size: 13px; font-weight: 600; }
-.fpod-all input { width: 110px; flex: 0 0 auto; }
+.fpod-all input { width: 110px; flex: 0 0 auto; height: 28px; padding: 0 8px; font-size: 12.5px; }
+.fpod-all button { height: 28px; padding: 0 10px; font-size: 12.5px; font-weight: 500; }
+.fpod-all label, .fpod-all .field-note { font-size: 12.5px; }
 .fpod-until { white-space: nowrap; }
 .fpod-cell.is-do { border-color: var(--color-accent); }
 .fpod-do-tag { margin-left: 4px; padding: 1px 6px; min-height: 0; font-size: 11px; font-weight: 700; border-radius: 4px;
@@ -2707,3 +2709,4 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .row-copy-btn:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
 .row-copy-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .row-copy-btn.is-done { opacity: 1; color: var(--ok-fg); background: var(--ok-bg); }
+.ov-ship .field-row > .field-value { overflow-wrap: break-word; } /* wrap at " · ", not inside a date */

@@ -1,5 +1,11 @@
 # Release notes
 
+## v1.6.6 — 08 Oct 2026
+
+- Containers: the table is open by default everywhere, including the half-view panel from the tracker (it was folded there).
+- Containers: "Reset all to 14" and the days box are the same size as the text around them.
+- Shipment & movement: long IGM values wrap at the " · ", not in the middle of a date.
+
 ## v1.6.5 — 08 Oct 2026
 
 - Customs duty tab: every row has the same copy button as Shipment & movement. Amounts copy as plain numbers (e.g. 189979.00), ready to paste.
