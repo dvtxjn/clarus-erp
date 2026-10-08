@@ -2079,7 +2079,7 @@ export default function ShipmentGridPage() {
           )}
         </SettledStack>
       )}
-      <PeekPanel id={peekId} full={peekFull} onClose={() => window.dispatchEvent(new Event("tracker:peek-close"))} onFull={setPeekFull} />
+      <PeekPanel id={peekId} full={peekFull} onClose={() => window.dispatchEvent(new Event("tracker:peek-close"))} onFull={setPeekFull} hint={peekId ? shipments?.find((x) => x.id === peekId) : null} />
     </div>
   );
 }
@@ -2088,7 +2088,7 @@ export default function ShipmentGridPage() {
  * The shipment panel over the tracker. It slides in; on close it slides out (140 ms) before it unmounts.
  * Switching rows keeps the same panel: the old job stays, dimmed, until the next one has loaded.
  */
-function PeekPanel({ id, full, onClose, onFull }: { id: number | null; full: boolean; onClose: () => void; onFull: (f: boolean) => void }) {
+function PeekPanel({ id, full, onClose, onFull, hint }: { id: number | null; full: boolean; onClose: () => void; onFull: (f: boolean) => void; hint?: Shipment | null }) {
   const [shown, setShown] = useState(id);
   useEffect(() => {
     if (id) return setShown(id);
@@ -2099,7 +2099,7 @@ function PeekPanel({ id, full, onClose, onFull }: { id: number | null; full: boo
   if (!current) return null;
   return (
     <aside className={`peek-panel${full ? " is-full" : ""}${id ? "" : " is-closing"}`} aria-label="Shipment" inert={!id || undefined}>
-      <ShipmentDetail shipmentId={current} onClose={onClose} full={full} onFull={onFull} />
+      <ShipmentDetail shipmentId={current} onClose={onClose} full={full} onFull={onFull} hint={hint} />
     </aside>
   );
 }

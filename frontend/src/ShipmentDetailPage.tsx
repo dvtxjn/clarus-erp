@@ -87,6 +87,7 @@ export function ShipmentDetail({
   onTab,
   full = false,
   onFull,
+  hint,
 }: {
   shipmentId: number;
   onClose?: () => void;
@@ -94,6 +95,8 @@ export function ShipmentDetail({
   onTab?: (t: Tab) => void;
   full?: boolean;
   onFull?: (full: boolean) => void;
+  /** the tracker row just clicked: its job / BL / client head the peek while the full job loads */
+  hint?: Pick<Shipment, "id" | "job" | "mbl" | "client" | "consignee"> | null;
 }) {
   const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
@@ -166,6 +169,15 @@ export function ShipmentDetail({
     if (shipment) shipmentCache.set(shipment.id, shipment);
   }, [shipment]);
 
+  const [slowSwitch, setSlowSwitch] = useState(false);
+  const isSwitching = loading && !!shipment && shipment.id !== shipmentId;
+  useEffect(() => {
+    setSlowSwitch(false);
+    if (!isSwitching) return;
+    const t = window.setTimeout(() => setSlowSwitch(true), 150);
+    return () => window.clearTimeout(t);
+  }, [isSwitching, shipmentId]);
+
   // tabs: one underline that slides to the active tab (transform only), so the labels never shift
   const tabsRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -182,7 +194,56 @@ export function ShipmentDetail({
     if (!peek && job) document.title = `Job ${job} · Clarus ERP`;
   }, [peek, job]);
 
-  if (!shipment && loading) return <DetailSkeleton peek={peek && !full} />;
+  // switching to a job not loaded yet: the old job dims and can't be clicked; a fast load (<150 ms)
+  // swaps straight in, a slower one shows the new job's header (from the row) over a skeleton
+  const switching = loading && !!shipment && shipment.id !== shipmentId;
+  const showSkeleton = loading && (!shipment || (switching && slowSwitch));
+  const peekBar = (
+        <div className="peek-bar">
+          {onFull ? (
+            <button type="button" className="peek-size btn-secondary" onClick={() => onFull(!full)} aria-pressed={full}>
+              {full ? "⇥ Half view" : "⇤ Full width"}
+            </button>
+          ) : (
+            <Link to={`/shipments/${shipmentId}`} className="back-link">
+              Open full page ↗
+            </Link>
+          )}
+          <span className="peek-bar-right">
+            <Link to={`/shipments/${shipmentId}`} className="peek-newtab" target="_blank" rel="noreferrer" title="Open in a new tab">
+              New tab ↗
+            </Link>
+            <button type="button" className="peek-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
+              ✕
+            </button>
+          </span>
+        </div>
+  );
+
+  if (showSkeleton) {
+    const h = hint?.id === shipmentId ? hint : null;
+    return (
+      <div className={`detail-page${peek && !full ? " detail-peek" : ""}`} aria-busy="true" aria-label="Loading the shipment">
+        {peek && peekBar}
+        {peek && (
+          <header className="detail-header">
+            <div className="detail-title">
+              <span className="detail-job">{h ? (h.job ? `Job ${h.job}` : "No job number yet") : "Loading…"}</span>
+              {h && (
+                <span className="detail-client">
+                  {[h.mbl && `BL ${h.mbl}`, h.client, h.consignee].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </div>
+            <span className="peek-loading" role="status">
+              <span className="spinner" aria-hidden="true" /> Loading…
+            </span>
+          </header>
+        )}
+        <DetailSkeleton peek={peek && !full} body={peek} />
+      </div>
+    );
+  }
   if (!shipment && loadErr === "failed")
     return <LoadError what="this shipment" onRetry={() => setReloadKey((n) => n + 1)} />;
   if (!shipment)
@@ -198,27 +259,10 @@ export function ShipmentDetail({
       key={shipment.id}
       className={`detail-page${peek && !full ? " detail-peek" : ""}${loading ? " is-stale" : ""}`}
       aria-busy={loading || undefined}
+      inert={switching || undefined}
     >
       {peek ? (
-        <div className="peek-bar">
-          {onFull ? (
-            <button type="button" className="peek-size btn-secondary" onClick={() => onFull(!full)} aria-pressed={full}>
-              {full ? "⇥ Half view" : "⇤ Full width"}
-            </button>
-          ) : (
-            <Link to={`/shipments/${shipment.id}`} className="back-link">
-              Open full page ↗
-            </Link>
-          )}
-          <span className="peek-bar-right">
-            <Link to={`/shipments/${shipment.id}`} className="peek-newtab" target="_blank" rel="noreferrer" title="Open in a new tab">
-              New tab ↗
-            </Link>
-            <button type="button" className="peek-close" onClick={onClose} aria-label="Close" title="Close (Esc)">
-              ✕
-            </button>
-          </span>
-        </div>
+        peekBar
       ) : (
         <BackLink />
       )}
@@ -312,10 +356,10 @@ export function ShipmentDetail({
 }
 
 /** First open: grey blocks in the page's own shape (key strip, next step, stepper, cards) instead of "Loading…". */
-function DetailSkeleton({ peek }: { peek: boolean }) {
+function DetailSkeleton({ peek, body = false }: { peek: boolean; body?: boolean }) {
   return (
-    <div className={`detail-page detail-skeleton${peek ? " detail-peek" : ""}`} aria-busy="true" aria-label="Loading the shipment">
-      <div className="sk sk-title" />
+    <div className={`detail-page detail-skeleton${peek ? " detail-peek" : ""}${body ? " sk-body" : ""}`} aria-busy="true" aria-label="Loading the shipment">
+      {!body && <div className="sk sk-title" />}
       <div className="sk sk-strip" />
       <div className="sk sk-next" />
       <div className="sk sk-stepper" />

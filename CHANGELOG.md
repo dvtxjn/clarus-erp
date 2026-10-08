@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.4.7 — peek never shows the old job under a switch
+- Peek, switching to a job not opened yet: the old job fades to 40% at once and nothing on it can be clicked. A load that takes over 150 ms then shows the new job's header (job no · BL · client, from the row you clicked) with a spinner over a skeleton. Fast loads and jobs already opened swap straight in, with no flicker.
+
 ## v1.4.6 — bagdu's pass on v1.4.5
 - After a deploy, a normal refresh opens the new version. If the first load still gets the old copy, the page reloads itself once. The "new version" banner is only for tabs left open.
 - Grid: hovering the ↗ heading shows "Open job".
