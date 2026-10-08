@@ -1,5 +1,10 @@
 # Release notes
 
+## v1.6.3 — 08 Oct 2026
+
+- Red alerts (backups) now show as a box in the sidebar, under the menu, instead of a strip across the top. The collapsed sidebar shows a red "!"; phones keep the top strip.
+- Shipment key strip: on narrower windows it shows two rows of four, so BE numbers and dates no longer break across lines.
+
 ## v1.6.2 — 08 Oct 2026
 
 - Overview status box: the labels (Duty, CFS, Liner) are bold, the values are regular. "Shipping line" reads "Liner".

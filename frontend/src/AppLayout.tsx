@@ -173,6 +173,16 @@ export default function AppLayout() {
         </nav>
         {/* page tools (see sidebarSlot.tsx) */}
         <div className="app-sidebar-slot" ref={setSlot} />
+        {/* red alerts sit in the sidebar, where they are seen, not as a strip on top (client, 2026-10-08) */}
+        {backupWarnings.length > 0 && (
+          <div className="sidebar-alert" role="alert" title={`Backups: ${backupWarnings.join(" ")}`}>
+            <span className="sidebar-alert-icon" aria-hidden="true">!</span>
+            <span className="sidebar-alert-text">
+              <strong>Backups</strong>
+              {backupWarnings.join(" ")}
+            </span>
+          </div>
+        )}
         <div className="app-sidebar-foot">
           {appearanceOpen && appearanceAt && createPortal(
             <div className="appearance-pop" id="appearance-pop" ref={appearancePop} role="dialog" aria-label="Appearance" style={appearanceAt}>
@@ -306,6 +316,7 @@ export default function AppLayout() {
           </div>
         )}
         {backupWarnings.length > 0 && (
+          // narrow screens have no side column: the strip on top stays there
           <div className="backup-banner" role="alert">
             <strong>Backups:</strong> {backupWarnings.join(" ")}
           </div>

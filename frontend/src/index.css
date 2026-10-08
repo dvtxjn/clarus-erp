@@ -1037,6 +1037,14 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .folder-candidates { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .folder-candidate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
 
+.sidebar-alert { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0; padding: 10px; border-radius: var(--radius); background: var(--bad-bg); color: var(--bad-fg); border: 1px solid var(--bad-border); font-size: 12.5px; line-height: 1.4; }
+.sidebar-alert-icon { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--bad-fg); color: var(--color-surface); font-size: 12px; font-weight: 700; }
+.sidebar-alert-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sidebar-alert-text strong { font-weight: 600; }
+.sidebar-collapsed .sidebar-alert { padding: 6px; justify-content: center; }
+.sidebar-collapsed .sidebar-alert-text { display: none; }
+@media (min-width: 901px) { .backup-banner { display: none; } }
+@media (max-width: 900px) { .sidebar-alert { display: none; } }
 .backup-banner { background: var(--bad-bg); color: var(--bad-fg); border-bottom: 1px solid var(--bad-border); padding: 8px 24px; font-size: 13px; }
 
 .auth-forgot { margin-top: 10px; align-self: center; }
@@ -2563,7 +2571,13 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 .grid-dragging .tracker-page { user-select: none; -webkit-user-select: none; }
 .switch-row .chip-select.line-cost-select, .chip-select.line-cost-select { min-width: 25ch; max-width: none; flex: none; }
 /* key strip: identifiers wrap, never "…"; the BL cell gets the extra room */
-@container (min-width: 761px) { .key-strip { grid-template-columns: minmax(0, .7fr) minmax(0, 1.4fr) minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)); } }
+@container (min-width: 1001px) { .key-strip { grid-template-columns: minmax(0, .7fr) minmax(0, 1.4fr) minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)); } }
+/* mid widths (narrow window, peek): two rows of four, so BE numbers and dates don't break up */
+@container (min-width: 761px) and (max-width: 1000px) {
+  .key-strip { grid-template-columns: minmax(0, .7fr) minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(0, 1.2fr); }
+  .key-strip .key-cell:nth-child(4n+1) { border-left: none; }
+  .key-strip .key-cell:nth-child(n+5) { border-top: 1px solid var(--color-border-soft); }
+}
 .key-value.is-id { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .key-cell:has(.is-id) .key-sub { white-space: normal; overflow-wrap: anywhere; }
 .cell-none { color: var(--color-text-muted); }
