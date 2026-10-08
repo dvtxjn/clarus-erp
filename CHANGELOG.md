@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.5.10 — ↗ (open job) locked at the far left
+- Tracker: the ↗ column that opens a job in the side pane is always the first column, at the far left of every table. It can't be dragged or unpinned, and no column can be dropped in front of it. A column layout saved earlier that had it elsewhere is put right on load.
+
 ## v1.5.9 — no progress chart on Proforma & Billing
 - Proforma & Billing tab: the "Next" step and the clearance progress chart are hidden, so the invoice controls start higher. The key strip and the Duty / CFS / Shipping line box stay. The other tabs are unchanged.
 

@@ -384,7 +384,7 @@ function withSavedState(defs: ColDef<Shipment>[], key: string): ColDef<Shipment>
   return defs
     .map((d, i) => {
       const c = byId.get(idOf(d));
-      const order = c ? c.i : saved.length + i; // new columns go to the end, as applyOrder does
+      const order = idOf(d) === "open" ? -1 : c ? c.i : saved.length + i; // new columns go to the end, as applyOrder does; ↗ is always first
       if (!c) return { d, order };
       return {
         d: {
@@ -421,6 +421,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       filter: false,
       resizable: false,
       suppressMovable: true,
+      // always the first column, at the far left: can't be dragged, unpinned or have a column dropped before it (client, 2026-10-08)
+      lockPosition: "left",
+      lockPinned: true,
       cellClass: "cell-open",
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
@@ -1334,9 +1337,11 @@ export default function ShipmentGridPage() {
       const saved = localStorage.getItem(columnStateKey);
       if (saved) {
         const keys = new Set(["job", "mbl", "be_no"]);
-        const state = (JSON.parse(saved) as ColumnState[]).map((c) =>
+        const rest = (JSON.parse(saved) as ColumnState[]).filter((c) => c.colId !== "open");
+        // ↗ (open job) is always first, pinned at the far left, whatever an older saved layout says
+        const state = [{ colId: "open", pinned: "left" as const, hide: false }, ...rest.map((c) =>
           keys.has(c.colId) ? { ...c, pinned: "left" as const } : c,
-        );
+        )];
         headerRef.current?.api.applyColumnState({ state, applyOrder: true });
       }
     } catch {
