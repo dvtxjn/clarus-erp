@@ -36,6 +36,8 @@ gcloud run jobs deploy erp-migrate --image "$TAG" --region "$REGION" --service-a
 gcloud run jobs execute erp-migrate --region "$REGION" --wait
 
 echo "== 3/3 deploy"
+# kept on standby: the version that's live now (rollback.sh sends traffic back to it in seconds)
+PREV=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.traffic[0].revisionName)' 2>/dev/null || true)
 gcloud run deploy "$SERVICE" --image "$TAG" --region "$REGION" --service-account "$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" \
   --add-cloudsql-instances "$CONN" --set-env-vars "$ENV" --set-secrets "$SECRETS" \
   --memory 1Gi --cpu 1 --timeout 3600 --concurrency 80 --min-instances 1 --max-instances 2 \
@@ -83,3 +85,4 @@ done
 # uptime alert (created once; e-mail when the site stops answering) — never stops a release
 bash deploy/gcp/uptime.sh || echo "(uptime alert not set up — run: bash deploy/gcp/uptime.sh)"
 echo "Released: $URL"
+echo "Standby: ${PREV:-none} — if anything is wrong, roll back instantly with:  bash deploy/gcp/rollback.sh ${PREV:-}"

@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.7.3 — 08 Oct 2026
+
+- Deploy: instant rollback. `bash deploy/gcp/rollback.sh` sends the ERP back to the previous version in seconds, with no rebuild. Every deploy now ends by printing which version is on standby and the exact rollback command.
+
 ## v1.7.2 — 08 Oct 2026
 
 - Customs Duty is always the OOC copy's total duty, with no exceptions:
