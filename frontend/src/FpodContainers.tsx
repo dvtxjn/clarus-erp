@@ -50,6 +50,12 @@ export default function FpodContainers({
   const [rows, setRows] = useState<ShipmentContainer[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // a done-message clears itself after a few seconds; an error stays until the next action
+  useEffect(() => {
+    if (!msg?.ok) return;
+    const t = window.setTimeout(() => setMsg(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [msg]);
   const [adding, setAdding] = useState(false);
   const [newNo, setNewNo] = useState("");
   const [newDate, setNewDate] = useState("");

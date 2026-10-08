@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.7.1 — 08 Oct 2026
+
+- Containers: the green confirmation ("Copied as an image…", "Saved…", "Set … days free…") disappears after 3 seconds. Red errors stay until the next action.
+
 ## v1.7.0 — 08 Oct 2026
 
 - Shipment page: Customs duty, CFS and Shipping line are now one tab, "Charges", stacked top to bottom in that order.
