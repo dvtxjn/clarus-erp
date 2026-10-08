@@ -112,7 +112,7 @@ const COLUMN_VIEWS = {
   },
   movement: {
     label: "Movement",
-    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "igm", "container", "gross_wt", "container_status", "cfs", "poc",
+    cols: ["job", "mbl", "eta", "inw", "consignee", "port", "igm", "be_no", "container", "gross_wt", "container_status", "cfs", "poc",
       "delivery_status", "remark"],
   },
   billing: {
@@ -138,7 +138,7 @@ const QUICK_CHIPS: Record<string, { label: string; hint: string; test: (s: Shipm
     },
   },
   week: {
-    label: "ETA this week",
+    label: "ETA next 7 days",
     hint: "ETA today or in the next 7 days",
     test: (s) => {
       const d = daysFromToday(s.eta);
@@ -269,8 +269,21 @@ const FLAG_LABELS = Object.fromEntries([...FLAGS, ...CFS_TDS_FLAGS].map(([f, , t
   string
 >;
 
+/** the question when a chip is turned OFF: "Mark Shipping line as NOT paid?" */
+const FLAG_NOT: Record<FlagField, string> = {
+  duty_paid: "Duty as NOT paid",
+  cfs_inv_received: "CFS invoice as NOT received",
+  line_paid: "Shipping line as NOT paid",
+  ooc: "OOC as NOT done",
+  do: "DO as NOT received",
+  cfs_paid_by_us: "CFS as NOT paid by us",
+  tds_deducted: "TDS as NOT cut by the client",
+  tds_on_cfs: "TDS on CFS as NOT cut",
+};
+
 interface GridContext {
-  toggleFlag: (s: Shipment, field: FlagField) => Promise<void>;
+  /** onSaving: called once the change is going ahead (after a confirm, if one was asked) */
+  toggleFlag: (s: Shipment, field: FlagField, onSaving?: () => void) => Promise<void>;
   saveText: (s: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => Promise<void>;
 }
 
@@ -292,8 +305,8 @@ function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & 
             aria-busy={busy === f || undefined}
             title={`${tip}: ${on ? "Yes" : "No"} — click to change`}
             onClick={() => {
-              setBusy(f);
-              Promise.resolve(p.context.toggleFlag(s, f)).finally(() => setBusy(null));
+              // the chip flips only once the change goes ahead — a cancelled "are you sure?" leaves it as it was
+              Promise.resolve(p.context.toggleFlag(s, f, () => setBusy(f))).finally(() => setBusy(null));
             }}
           >
             {on && <span aria-hidden="true">✓ </span>}
@@ -305,6 +318,15 @@ function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & 
   );
 }
 
+// --- undo / redo stack (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y, and the toast's Undo) ---
+// Our own stack of saved changes: AG Grid's built-in undo is lost whenever rows refresh after a save,
+// and doesn't cover the checklist chips. Kept outside the page so it survives the peek opening,
+// going full and closing. Undo re-saves the old value (audit-logged like any edit).
+type Change = { id: number; field: string; customKey: string | null; oldValue: unknown; newValue: unknown; label: string };
+const undoStack: { current: Change[] } = { current: [] };
+const redoStack: { current: Change[] } = { current: [] };
+type Toast = { kind: "ok" | "error"; text: string; undo?: Change };
+
 /** " · Status → IGM Filed" when a save moved the status (status follows the evidence). */
 /** A friendly reason for a failed save (e.g. two saves at the very same moment). */
 function saveErrorText(err: unknown): string {
@@ -314,6 +336,13 @@ function saveErrorText(err: unknown): string {
 
 function statusNote(before: ShipmentStatus, after: ShipmentStatus): string {
   return before !== after ? ` · Status → ${SHIPMENT_STATUS_LABELS[after]}` : "";
+}
+
+/** The Exceptions chip's hover: the reason, then each job and what it's missing. */
+function exceptionsHint(hint: string, rows: Shipment[]): string {
+  const ex = rows.filter(isException);
+  const lines = ex.slice(0, 12).map((s) => `${s.job ? `Job ${s.job}` : `BL ${s.mbl}`}: ${s.missing_for_clearance.join(", ")}`);
+  return [hint, ...lines, ex.length > 12 ? `+ ${ex.length - 12} more` : ""].filter(Boolean).join("\n");
 }
 
 /** Cleared Date entered but not every clearance check ticked — needs a person to look at it. */
@@ -416,11 +445,18 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       pinned: "left",
       // no job number yet: a muted dash, so the cell doesn't look broken
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
-        p.value ? p.value : <span className="cell-none" title="No job number yet">—</span>,
+        isException(p.data) ? (
+          // an exception says why on hover (which clearance checks are still missing)
+          <span title={`Exception: Cleared Date is set but ${p.data!.missing_for_clearance.join(", ") || "a check is missing"}`}>
+            {p.value || "—"}
+          </span>
+        ) : p.value ? p.value : <span className="cell-none" title="No job number yet">—</span>,
     },
     {
       ...text("mbl", "MBL", 212),
       minWidth: 150, // the number + the HBL / FTA buttons
+      // the search also finds a job by its HBL or any container number, full or part ("AAU7596")
+      getQuickFilterText: (p) => [p.data?.mbl, p.data?.hbl, ...(p.data?.container_nos ?? [])].filter(Boolean).join(" "),
       pinned: "left",
       cellRenderer: (p: ICellRendererParams<Shipment, string, GridContext>) => (
         <span className="mbl-cell">
@@ -521,6 +557,8 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       colId: "icegate_status",
       headerName: "ICEGATE status",
       width: 200,
+      minWidth: 132, // the heading always fits on its own (fitting the Clearance view squeezed it off the edge)
+      suppressSizeToFit: true,
       editable: false,
       headerTooltip: "Bill of entry status on ICEGATE, read automatically every 30 minutes (8 am – 10 pm)",
       valueGetter: (p) => p.data?.icegate?.be_status?.label ?? "",
@@ -662,7 +700,7 @@ export default function ShipmentGridPage() {
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
   // the rows each section shows after the search and filters, for its totals
   const [visibleRows, setVisibleRows] = useState<Record<string, Shipment[]>>({});
-  const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<Toast | null>(null);
   // formula bar (client, 2026-09-30): the selected cell's full value, to copy — or type over, like Excel
   const [fx, setFx] = useState<{ client: string; rowId: number; colId: string } | null>(null);
   const statusFilter = (searchParams.get("status") as ShipmentStatus | null) ?? undefined;
@@ -732,7 +770,7 @@ export default function ShipmentGridPage() {
       if (
         !t?.isConnected ||
         t.closest(
-          ".peek-panel, .toolbar-more, .chip-fold, .ag-row, .ag-root-wrapper, .client-grid-stack, .grid-sticky-top, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, [role='dialog'], [role='menu'], [role='listbox']",
+          ".peek-panel, .toolbar-more, .chip-fold, .ag-row, .ag-root-wrapper, .client-grid-stack, .grid-sticky-top, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, .tracker-toast, [role='dialog'], [role='menu'], [role='listbox']",
         )
       )
         return;
@@ -1045,7 +1083,7 @@ export default function ShipmentGridPage() {
 
   useEffect(() => {
     if (!message) return;
-    const t = setTimeout(() => setMessage(null), 4000);
+    const t = setTimeout(() => setMessage(null), message.undo ? 10000 : 4000); // an Undo stays ~10 s
     return () => clearTimeout(t);
   }, [message]);
 
@@ -1343,14 +1381,25 @@ export default function ShipmentGridPage() {
     scheduleFit(50);
   }
 
-  // --- undo / redo (Ctrl/⌘+Z, Ctrl/⌘+Shift+Z or Ctrl+Y) ---
-  // Our own stack of saved changes: AG Grid's built-in undo is lost whenever rows
-  // refresh after a save, and doesn't cover the checklist chips. Undo re-saves the
-  // old value (audit-logged like any edit).
-  type Change = { id: number; field: string; customKey: string | null; oldValue: unknown; newValue: unknown; label: string };
+  // Column filters: an empty date box showed a clipped "dd/mm/yy…". Marked required so an empty one is :invalid
+  // and its text hides (CSS); the calendar icon stays, and a picked date shows as normal.
+  useEffect(() => {
+    if (!showColFilters) return;
+    const mark = () =>
+      document.querySelectorAll<HTMLInputElement>(".ag-floating-filter input[type='date']:not([required])").forEach((i) => {
+        i.required = true;
+        i.title = "Filter by date";
+      });
+    mark();
+    const root = document.querySelector(".tracker-page");
+    if (!root) return;
+    const mo = new MutationObserver(mark);
+    mo.observe(root, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, [showColFilters]);
+
+  // --- undo / redo: the stack lives at module level (see Change) ---
   const saveShipment = useSaveShipment();
-  const undoStack = useRef<Change[]>([]);
-  const redoStack = useRef<Change[]>([]);
   const record = useCallback((c: Change) => {
     undoStack.current = [...undoStack.current.slice(-49), c];
     redoStack.current = [];
@@ -1379,6 +1428,13 @@ export default function ShipmentGridPage() {
       setMessage({ kind: "error", text: `Couldn't ${direction} ${c.label}.` });
     }
   }, []);
+  // the toast's Undo: takes that change off the stack (wherever it is) and puts the old value back
+  const undoFromToast = useCallback((c: Change) => {
+    const i = undoStack.current.lastIndexOf(c);
+    if (i < 0) return setMessage(null); // already undone (Ctrl/⌘+Z)
+    undoStack.current.splice(i, 1);
+    applyChange(c, "undo");
+  }, [applyChange]);
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
       if (!(ev.ctrlKey || ev.metaKey)) return;
@@ -1471,14 +1527,13 @@ export default function ShipmentGridPage() {
       let old = e.oldValue ?? null;
       if (typeof old === "string" && old.trim() === "") old = null;
       if (field === "job" && old === null) old = "";
-      record({ id, field: String(field), customKey: customKey ?? null, oldValue: old, newValue: value, label: `${e.colDef.headerName ?? field}` });
-      setMessage({
-        kind: "ok",
-        text:
-          value === null && old !== null
-            ? `Cleared ${e.colDef.headerName} · Ctrl/⌘+Z puts it back`
-            : `Saved ${e.colDef.headerName}${statusNote(e.data.status, saved.status)}`,
-      });
+      const change: Change = { id, field: String(field), customKey: customKey ?? null, oldValue: old, newValue: value, label: `${e.colDef.headerName ?? field}` };
+      record(change);
+      setMessage(
+        value === null && old !== null
+          ? { kind: "ok", text: `Cleared ${e.colDef.headerName}`, undo: change }
+          : { kind: "ok", text: `Saved ${e.colDef.headerName}${statusNote(e.data.status, saved.status)}` },
+      );
     } catch (err) {
       revert();
       setMessage({ kind: "error", text: `Couldn't save ${e.colDef.headerName} — ${saveErrorText(err)}` });
@@ -1506,20 +1561,41 @@ export default function ShipmentGridPage() {
   }, [readOnly]);
 
   // Chip toggles in the Checklist column save like any other cell edit.
-  const toggleFlag = useCallback(async (row: Shipment, field: FlagField) => {
+  const toggleFlag = useCallback(async (row: Shipment, field: FlagField, onSaving?: () => void) => {
     if (readOnly) return setMessage({ kind: "error", text: "This login is view-only." });
+    const on = !row[field];
+    // turning ON stays one click; turning OFF — or anything that moves the job between Ongoing and Cleared — asks first
+    const clearanceFlag = FLAGS.some(([f]) => f === field);
+    const willClear = on && clearanceFlag && !!row.cleared_date && FLAGS.every(([f]) => f === field || !!row[f]);
+    const willReopen = !on && clearanceFlag && row.is_fully_cleared;
+    if (!on || willClear) {
+      const job = row.job ? `Job ${row.job}` : `BL ${row.mbl}`;
+      const ok = await confirm({
+        title: on ? `Mark ${FLAG_LABELS[field]}?` : `Mark ${FLAG_NOT[field]}?`,
+        message: on
+          ? `That's the last clearance check — ${job} will move to Cleared.`
+          : willReopen
+            ? `${job} will move back to Ongoing.`
+            : `${job} · ${FLAG_LABELS[field]} → No.`,
+        confirmLabel: on ? "Yes, move to Cleared" : "Yes, untick",
+        cancelLabel: "Cancel",
+      });
+      if (!ok) return;
+    }
+    onSaving?.();
     const left = readHScroll();
     try {
-      const { shipment: saved, kept } = await saveShipment(row, { [field]: !row[field] } as Partial<Shipment>, FLAG_LABELS[field]);
+      const { shipment: saved, kept } = await saveShipment(row, { [field]: on } as Partial<Shipment>, FLAG_LABELS[field]);
       setShipments((prev) => prev?.map((x) => (x.id === row.id ? saved : x)) ?? prev);
       restoreHScroll(left);
       if (kept === "theirs") return;
-      record({ id: row.id, field, customKey: null, oldValue: !!row[field], newValue: !row[field], label: FLAG_LABELS[field] });
-      setMessage({ kind: "ok", text: `Saved ${FLAG_LABELS[field]}${statusNote(row.status, saved.status)}` });
+      const change: Change = { id: row.id, field, customKey: null, oldValue: !on, newValue: on, label: FLAG_LABELS[field] };
+      record(change);
+      setMessage({ kind: "ok", text: `${on ? "Saved" : "Unticked"} ${FLAG_LABELS[field]}${statusNote(row.status, saved.status)}`, undo: change });
     } catch (err) {
       setMessage({ kind: "error", text: `Couldn't save — ${saveErrorText(err)}` });
     }
-  }, [record, saveShipment, readOnly]);
+  }, [record, saveShipment, readOnly, confirm]);
   // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
   const saveText = useCallback(async (row: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => {
     if (readOnly) return setMessage({ kind: "error", text: "This login is view-only." });
@@ -1739,7 +1815,16 @@ export default function ShipmentGridPage() {
             )}
           </p>
         </div>
-        {message && <div role="status" className={`grid-toast grid-toast-${message.kind}`}>{message.text}</div>}
+        {message && (
+          <div role="status" aria-live="polite" className={`grid-toast tracker-toast grid-toast-${message.kind}`}>
+            {message.text}
+            {message.undo && (
+              <button type="button" className="grid-toast-undo" onClick={() => undoFromToast(message.undo!)}>
+                Undo
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       <div className="tracker-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Tracker section">
@@ -1773,7 +1858,23 @@ export default function ShipmentGridPage() {
           })}
         </div>
         <div className="tracker-search">
-          <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
+          <input
+            placeholder="Search all columns, containers…"
+            aria-label="Search the tracker"
+            value={quickFilter}
+            onChange={(e) => setQuickFilter(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && quickFilter && (e.preventDefault(), setQuickFilter(""))}
+          />
+          {quickFilter.trim() && (
+            <>
+              <span className="tracker-search-count" aria-live="polite">
+                {shownGroups.reduce((n, [c]) => n + (visibleCounts[c] ?? 0), 0)} of {groups.reduce((n, [, rows]) => n + rows.length, 0)}
+              </span>
+              <button type="button" className="tracker-search-clear" aria-label="Clear search" title="Clear search" onClick={() => setQuickFilter("")}>
+                ✕
+              </button>
+            </>
+          )}
         </div>
         <div className="toolbar-more" ref={moreRef}>
         <button type="button" className="btn-secondary toolbar-more-btn" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
@@ -1831,7 +1932,7 @@ export default function ShipmentGridPage() {
             />
           )}
         </div>
-        <button className="btn-secondary" onClick={resetLayout}>
+        <button className="btn-secondary more-sep" onClick={resetLayout}>
           Reset filters &amp; layout
         </button>
         {isAdmin && (
@@ -1928,7 +2029,7 @@ export default function ShipmentGridPage() {
               ))}
               <span className="chip-sep" />
               {Object.entries(QUICK_CHIPS).map(([k, c]) => (
-                <button key={k} type="button" className={chips.has(k) ? "chip on" : "chip"} onClick={() => toggleChip(k)} title={c.hint}>
+                <button key={k} type="button" className={chips.has(k) ? "chip on" : "chip"} onClick={() => toggleChip(k)} title={k === "exceptions" ? exceptionsHint(c.hint, allOngoing) : c.hint}>
                   {c.label}
                   <span className="chip-count">{allOngoing.filter(c.test).length}</span>
                 </button>

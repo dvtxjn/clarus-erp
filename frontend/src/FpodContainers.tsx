@@ -16,6 +16,10 @@ import type { Shipment } from "./types";
 
 const STANDARD_FREE_DAYS = 14;
 const fmt = (v: string | null) => fmtDay(v);
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+/** "Day 35 · 21 days over" — the row and the summary use the same words */
+const dayText = (c: ShipmentContainer) =>
+  c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} · ${plural(-c.days_left, "day")} over` : `Day ${c.day}`;
 /** "2026-10-04" -> "04 Oct" (the summary line; the table keeps full dates) */
 const short = (v: string | null | undefined) => fmtDayShort(v);
 const errText = (e: unknown) =>
@@ -165,6 +169,9 @@ export default function FpodContainers({
   const arrived = (rows ?? []).filter((c) => c.arrival_date).length;
   const standard = rows?.find((c) => !c.free_days_typed)?.free_days ?? STANDARD_FREE_DAYS;
   const urgent = (rows ?? []).filter((c) => c.days_left != null && c.days_left <= 3);
+  const over = urgent.filter((c) => c.days_left! < 0);
+  const near = urgent.filter((c) => c.days_left! >= 0);
+  const maxOver = over.length ? Math.max(...over.map((c) => -c.days_left!)) : 0;
   // opens by itself when a container is over (or within 3 days of) its free days — that shouldn't sit folded
   const open = userOpen ?? (wide || urgent.length > 0 || adding);
   const PREVIEW = 5;
@@ -180,8 +187,14 @@ export default function FpodContainers({
       `${n} container${n === 1 ? "" : "s"}`,
       arrived === n ? `all arrived ${short(dates[dates.length - 1])}` : arrived ? `${arrived} of ${n} arrived` : "none arrived yet",
       free.length ? `free till ${short(free[0])}${rows.some((c) => c.do_valid_until && c.last_free_day === free[0]) ? " (DO)" : ""}` : null,
-      days.length ? `Day ${Math.max(...days)}` : null,
-      urgent.length ? `${urgent.length} ${urgent.some((c) => c.days_left! < 0) ? "over or near" : "near"} the free-day end` : null,
+      days.length ? `Day ${Math.max(...days)} since arrival` : null,
+      // the same words as the rows: containers over, by how many days (Job 191 read "1 over" vs "21 over")
+      over.length
+        ? n === 1
+          ? `${plural(maxOver, "day")} over free days`
+          : `${over.length} of ${n} over free days (up to ${plural(maxOver, "day")})`
+        : null,
+      near.length ? `${near.length} within 3 days of the free-day end` : null,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -278,7 +291,9 @@ export default function FpodContainers({
               <th>{inland ? "Arrived at FPOD" : "Inward (INW)"}</th>
               <th className="num">Days free</th>
               <th>Free until</th>
-              <th className="num">Day</th>
+              <th className="num" title={inland ? "Days since the container arrived at the FPOD" : "Days since the container arrived at the CFS (inward)"}>
+                {inland ? "Since arrival at FPOD" : "Since arrival at CFS"}
+              </th>
               <th>Source</th>
               <th aria-label="Remove" />
             </tr>
@@ -390,7 +405,7 @@ function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], i
     { label: inland ? "Arrived at FPOD" : "Inward (INW)", get: (c: ShipmentContainer) => fmt(c.arrival_date) },
     { label: "Days free", get: (c: ShipmentContainer) => String(c.free_days) },
     { label: "Free until", get: (c: ShipmentContainer) => fmt(c.last_free_day) },
-    { label: "Day", get: (c: ShipmentContainer) => (c.day == null ? "—" : c.days_left != null && c.days_left < 0 ? `Day ${c.day} · ${-c.days_left} over` : `Day ${c.day}`) },
+    { label: inland ? "Since arrival at FPOD" : "Since arrival at CFS", get: (c: ShipmentContainer) => dayText(c) },
     { label: "Source", get: srcLabel },
   ];
   const pad = 24;
@@ -450,7 +465,7 @@ function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], i
     ctx.stroke();
     x = pad;
     cols.forEach((c, i) => {
-      const over = c.label === "Day" && r.days_left != null && r.days_left < 0;
+      const over = c.label.startsWith("Since") && r.days_left != null && r.days_left < 0;
       ctx.fillStyle = over ? "#9A3129" : "#1B1C1F";
       ctx.fillText(c.get(r), x + 8, y + 19);
       x += widths[i];

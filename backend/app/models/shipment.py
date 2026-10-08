@@ -242,6 +242,21 @@ class Shipment(SoftDeleteMixin, Base):
     def is_fully_cleared(self) -> bool:
         return self.cleared_date is not None and not self.missing_for_clearance
 
+    @property
+    def container_nos(self) -> list:
+        """Container numbers (the list endpoint fills them for all rows in one query)."""
+        known = self.__dict__.get("_container_nos")
+        if known is not None:
+            return known
+        from sqlalchemy.orm import object_session
+        from app.models.container import ShipmentContainer
+
+        db = object_session(self)
+        if db is None or self.id is None:
+            return []
+        return [n for (n,) in db.query(ShipmentContainer.container_no)
+                .filter(ShipmentContainer.shipment_id == self.id).order_by(ShipmentContainer.id)]
+
     def apply_hss_from_consignee(self) -> None:
         """Set HSS + seller/buyer from the consignee name ('SELLER - BUYER')."""
         parties = split_hss(self.consignee)

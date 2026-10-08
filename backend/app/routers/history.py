@@ -45,13 +45,27 @@ def _labels(db: Session) -> dict[str, str]:
     return {c.key: c.label for c in db.query(TrackerColumn).all()}
 
 
-_FIXED = {"missing_from_sheet": "Not in sheet"}  # say what it is, not "missing"
+_FIXED = {"missing_from_sheet": "Not in sheet",  # say what it is, not "missing"
+          # the words the office uses (bagdu, v1.5.0): "Be dt" -> "BE date", "Igst amount" -> "IGST", …
+          "be_dt": "BE date", "be_no": "BE No", "igst_amount": "IGST", "ooc_done": "OOC done", "remarks": "Notes",
+          "duty_amount": "Duty", "bcd_amount": "BCD", "sws_amount": "SWS", "cleared_date": "Cleared date",
+          "duty_paid": "Duty paid", "line_paid": "Shipping line paid", "cfs_inv_received": "CFS invoice received",
+          "do": "DO", "ooc": "OOC", "eta_is_deadline": "ETA is a deadline", "inw": "Inward", "gross_wt": "Gross Wt"}
+# short forms that stay in capitals when a field name is turned into words
+_ACRONYMS = {"be", "bl", "mbl", "hbl", "igm", "igst", "ooc", "do", "cfs", "eta", "gst", "hs", "hss", "tds", "bcd", "sws",
+             "pcv", "fpod", "pod", "icd", "inw", "gw", "pkg", "id", "coo", "iec", "gstin", "pan"}
+
+
+def _words(field: str) -> str:
+    words = [w.upper() if w in _ACRONYMS else w for w in field.split("_") if w]
+    out = " ".join(words)
+    return out[:1].upper() + out[1:]
 
 
 def _label(field: str, labels: dict[str, str]) -> str:
     if field.startswith("custom:"):
         return labels.get(field[7:], field[7:])
-    return labels.get(field) or _FIXED.get(field) or field.replace("_", " ").capitalize()
+    return _FIXED.get(field) or labels.get(field) or _words(field)
 
 
 def _typed(field: str, raw: Optional[str], model=Shipment) -> tuple[bool, Any]:

@@ -187,8 +187,12 @@ def _settle(db: Session, m: IcegateMail) -> None:
     now = datetime.now(timezone.utc)
     q = db.query(IcegateMail).filter(IcegateMail.attention.is_(True), IcegateMail.resolved_at.is_(None),
                                      IcegateMail.id != m.id)
-    if m.kind == "be_ack" and m.job_no:
-        for x in q.filter(IcegateMail.kind == "be_nak", IcegateMail.job_no == m.job_no):
+    if m.kind in ("be_ack", "be_ack_amend", "be_generated", "processed_be") and (m.job_no or m.shipment_id):
+        # the same job (by job no, or the shipment it was matched to) filed again and accepted
+        same = (IcegateMail.job_no == m.job_no) if m.job_no else (IcegateMail.shipment_id == m.shipment_id)
+        if m.job_no and m.shipment_id:
+            same = same | (IcegateMail.shipment_id == m.shipment_id)
+        for x in q.filter(IcegateMail.kind.in_(("be_nak", "be_rejected", "filing_failed")), same):
             if _ts(x.received_at) <= _ts(m.received_at):
                 x.resolved_at, x.resolved_note = now, "Filed again and accepted"
     if m.kind in ("out_of_charge", "gate_pass") and m.be_no:

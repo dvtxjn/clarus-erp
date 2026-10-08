@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -41,7 +41,7 @@ def list_shipments(
     status_filter: Optional[ShipmentStatus] = Query(None, alias="status"),
     is_stuck: Optional[bool] = Query(None),
     include_archived: bool = Query(False, description="Include billed/archived shipments"),
-    search: Optional[str] = Query(None, description="Free-text match on job/mbl/hbl/be_no/client/consignee"),
+    search: Optional[str] = Query(None, description="Free-text match on job/mbl/hbl/be_no/client/consignee/container no"),
     cleared: Optional[bool] = Query(None, description="true = only fully cleared, false = only ongoing"),
 ):
     """
@@ -76,6 +76,7 @@ def list_shipments(
             | (Shipment.be_no.ilike(like))
             | (Shipment.client.ilike(like))
             | (Shipment.consignee.ilike(like))
+            | Shipment.id.in_(db.query(ShipmentContainer.shipment_id).filter(ShipmentContainer.container_no.ilike(like)))
         )
 
     if cleared is True:
@@ -84,6 +85,15 @@ def list_shipments(
     if cleared is not None:
         # "fully cleared" also needs the five checks, which only the model knows
         rows = [s for s in rows if s.is_fully_cleared == cleared]
+    # container numbers for every row in one query (the tracker's search matches them)
+    by_ship: dict[int, list[str]] = {s.id: [] for s in rows}
+    if by_ship:
+        for sid, no in (db.query(ShipmentContainer.shipment_id, ShipmentContainer.container_no)
+                        .filter(ShipmentContainer.shipment_id.in_(list(by_ship)))
+                        .order_by(ShipmentContainer.id)):
+            by_ship[sid].append(no)
+    for s in rows:
+        s.__dict__["_container_nos"] = by_ship[s.id]
     return rows
 
 
@@ -229,6 +239,15 @@ def get_dashboard_summary(db: Session = Depends(get_db), current_user: User = De
     }
 
 
+# B/E mails that mean "accepted" / "rejected" (app/icegate_mail/parse.py kinds)
+BE_ACCEPTED = ("be_ack", "be_ack_amend", "be_generated", "processed_be", "out_of_charge")
+BE_REJECTED = ("be_nak", "be_rejected", "filing_failed")
+
+
+def _aware(d: datetime) -> datetime:
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
 @router.get("/alerts")
 def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Dashboard "Needs attention": "d" deadlines, free days at the POD, documents missing
@@ -267,9 +286,23 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
 
     by_id = {s.id: s for s in live}
     if by_id:
+        # the newest B/E acceptance per job: an older rejection / negative ack is settled by it
+        accepted: dict[int, datetime] = {}
+        for sid, at in (db.query(IcegateMail.shipment_id, func.max(IcegateMail.received_at))
+                        .filter(IcegateMail.shipment_id.in_(list(by_id)), IcegateMail.kind.in_(BE_ACCEPTED))
+                        .group_by(IcegateMail.shipment_id)):
+            if at:
+                accepted[sid] = at
+        seen: set[tuple] = set()
         for m in (db.query(IcegateMail).filter(IcegateMail.attention.is_(True), IcegateMail.resolved_at.is_(None),
                                                IcegateMail.shipment_id.in_(list(by_id)))
-                  .order_by(IcegateMail.received_at)):
+                  .order_by(IcegateMail.received_at.desc())):
+            if m.kind in BE_REJECTED and m.shipment_id in accepted and m.received_at and _aware(m.received_at) <= _aware(accepted[m.shipment_id]):
+                continue
+            key = (m.shipment_id, m.kind, m.summary)  # the same mail twice (e.g. resent) shows once, newest
+            if key in seen:
+                continue
+            seen.add(key)
             found.append({**alerts._base(by_id[m.shipment_id]), "kind": "icegate", "severity": "urgent", "days_left": 0,
                           "due": None, "mail_id": m.id, "text": f"{m.label}: {m.summary}"})
     return alerts.sort_alerts(found)

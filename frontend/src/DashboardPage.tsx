@@ -99,7 +99,7 @@ export default function DashboardPage() {
           <div className="stat-row">
             <Link to="/shipments?tab=ongoing" className="stat-card stat-card-link">
               <div className="stat-value">{fmtMetric(metric === "containers" ? summary.live_containers : summary.live_tonnes, metric)}</div>
-              <div className="stat-label">In progress (not cleared)</div>
+              <div className="stat-label">{metric === "containers" ? "Containers" : "Tonnes"} in progress (not cleared)</div>
               <div className="stat-sub">{both({ containers: summary.live_containers, tonnes: summary.live_tonnes })}</div>
             </Link>
             <div className="stat-card">

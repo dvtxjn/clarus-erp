@@ -148,7 +148,7 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
             <tbody>
               {shown.map((x) => (
                 <tr key={x.id}>
-                  <td className="num">{historyTime(x.at)}</td>
+                  <td className="num">{historyTime(x.at, true)}</td>
                   <td>{x.automatic ? <span className="history-auto">ERP (automatic)</span> : x.who}</td>
                   <td>
                     {x.label}

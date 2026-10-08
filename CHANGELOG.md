@@ -1,5 +1,17 @@
 # Release notes
 
+## v1.5.0 — go-live sweep (bagdu)
+- Checklist chips (Duty / CFS Inv / Line / OOC / DO): turning one ON is still one click. Turning one OFF asks first, e.g. "Mark Shipping line as NOT paid? Job 142 will move back to Ongoing." So does a last tick that moves a job to Cleared. Cancel changes nothing.
+- The toast after a chip change or a **Delete** in a cell has **Undo** for about 10 s. It floats at the bottom, over the peek too. Undo (and Ctrl/⌘+Z) still works after the peek opens or closes.
+- Search finds a job by any container number, full or part ("CAAU7596246" or "AAU7596"). It shows "3 of 190" and has a ✕ to clear (Esc clears too).
+- Dashboard "Needs attention": a newer accepted B/E closes an older B/E rejection / negative ack. The same ICEGATE mail received twice shows once, and the ICEGATE tab counts jobs, so its number matches the list.
+- Views: Movement shows BE No. Clearance: the "ICEGATE status" heading keeps its room when the view is fitted to the screen.
+- Duty: one line, "Duty due ₹3,97,810 (incl. interest ₹3,564)", instead of a separate Interest row. Display only.
+- Day counts say what they count: "Since inward" (key strip) and "Since arrival at CFS" / "at FPOD" (containers). The containers summary uses the rows' words: "21 days over free days".
+- History: field names in plain words (BE date, IGST, OOC done, Notes) and dates with the year ("06 Oct 2026, 18:22").
+- Customs mail and timeline: dates read "06 Oct 2026", ICEGATE's ALL-CAPS text reads in sentence case, and error codes (791_ITEMS, 413_LICENCE) get a plain line saying where to look.
+- Small: "ETA next 7 days" chip; the Exceptions chip and an exception row's job number say what's missing on hover; dashboard "Containers in progress"; peek Notes says "Saves when you click away"; an empty date column filter no longer shows a clipped "dd/mm/yy"; **More ▾** has a divider above Reset / Import / Admin tools.
+
 ## v1.4.9 — old versions let go of the database after a deploy
 - Each tab's live-update stream now reconnects by itself every 10 minutes, without a "Live" blink. An open stream used to keep the previous version's server running, with its database connections, for up to an hour after a deploy, so the database still ran out of connections after v1.4.8. Old versions now shut down within about 10 minutes.
 - The live-update listener closes a broken database connection before retrying.

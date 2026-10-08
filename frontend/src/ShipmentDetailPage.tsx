@@ -871,8 +871,13 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
       )}
       {!editing && final && (
         <>
-          <Field label="Interest" value={fmtMoney(final.interest)} hint={finalHint} />
-          <Field label={s.ooc ? "Final Duty (incl. interest)" : "Duty due (incl. interest)"} value={fmtMoney(final.total)} strong hint={finalHint} />
+          {/* one line: "₹3,97,810 (incl. interest ₹3,564)" — display only */}
+          <Field
+            label={s.ooc ? "Final Duty" : "Duty due"}
+            value={Number(final.interest) > 0 ? `${fmtMoney(final.total)} (incl. interest ${fmtMoney(final.interest)})` : fmtMoney(final.total)}
+            strong
+            hint={finalHint}
+          />
         </>
       )}
       {editing && (
@@ -1471,7 +1476,7 @@ function KeyStrip({ s }: { s: Shipment }) {
       sub: s.eta_is_deadline ? "ETA is a deadline" : null,
       id: true, // both dates always show in full: wraps under a narrow peek
     },
-    { label: "Age", value: age, sub: /^\d+$/.test(s.days) ? "since inward" : null, empty: !/^\d+$/.test(s.days) },
+    { label: "Age", value: age, sub: /^\d+$/.test(s.days) ? "Since inward" : null, empty: !/^\d+$/.test(s.days) },
   ];
   return (
     <div className="key-strip" role="group" aria-label="Shipment keys">
@@ -1666,7 +1671,10 @@ function MoneyCard({
       dot: s.duty_paid ? "ok" : dutyAmt == null ? "todo" : "warn",
       value: dutyAmt == null ? "Not assessed" : fmtMoney(dutyAmt)!,
       words: dutyAmt == null,
-      meta: s.duty_paid ? "Paid" : dutyAmt == null ? "Waiting for the assessed BE" : "Not paid yet",
+      meta: [
+        s.duty_paid ? "Paid" : dutyAmt == null ? "Waiting for the assessed BE" : "Not paid yet",
+        dutyAmt != null && dutyAmt === fd?.total && Number(fd?.interest) > 0 ? `incl. interest ${fmtMoney(fd!.interest)}` : "",
+      ].filter(Boolean).join(" · "),
       action: (
         <button type="button" className="link-btn money-action" onClick={onDuty}>
           Details
@@ -1782,7 +1790,10 @@ function EditField({
         ) : kind === "date" ? (
           <DateInput autoFocus ariaLabel={label} value={v} disabled={busy} onCommit={(iso) => save(iso)} onCancel={() => setEditing(false)} />
         ) : multiline ? (
-          <textarea autoFocus rows={2} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={() => save()} onKeyDown={keys} />
+          <>
+            <textarea autoFocus rows={2} value={v} disabled={busy} onChange={(e) => setV(e.target.value)} onBlur={() => save()} onKeyDown={keys} aria-describedby={`${field}-saves`} />
+            <span className="field-note edit-saves" id={`${field}-saves`}>Saves when you click away · ⌘/Ctrl+Enter</span>
+          </>
         ) : (
           <input
             autoFocus

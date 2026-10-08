@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { readableCustoms } from "./customsMail";
 import { Link } from "react-router-dom";
 import { getAlerts, refreshIcegate, type AlertKind, type ShipmentAlert } from "./api";
 
@@ -45,7 +46,8 @@ export default function NeedsAttention() {
     }
   }
 
-  const count = (k: AlertKind) => alerts?.filter((a) => a.kind === k).length ?? 0;
+  // jobs, not reasons: a job with two ICEGATE mails counts once, as it's listed once
+  const count = (k: AlertKind) => new Set(alerts?.filter((a) => a.kind === k).map((a) => a.shipment_id)).size;
   // one row per job, all its reasons together (QA 2026-10-07: Job 191 was listed twice); alerts come worst first
   const list: ShipmentAlert[][] = [];
   const at = new Map<number, ShipmentAlert[]>();
@@ -119,7 +121,7 @@ export default function NeedsAttention() {
                 <span className="attention-text">
                   {g.map((x, i) => (
                     <span key={`${x.kind}-${x.mail_id ?? i}`} className="attention-reason">
-                      {x.text}
+                      {x.kind === "icegate" ? readableCustoms(x.text) : x.text}
                     </span>
                   ))}
                   {lookup && a.mbl && (

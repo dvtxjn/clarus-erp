@@ -1897,6 +1897,7 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .customs-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .customs-label { font-weight: 600; font-size: var(--text-sm); }
 .customs-summary, .customs-notes { font-size: var(--text-xs); color: var(--color-text-muted); overflow-wrap: anywhere; }
+.customs-error-line { font-size: var(--text-xs); color: var(--bad-fg); }
 .customs-btn { height: 28px; padding: 0 10px; font-size: var(--text-xs); }
 @media (max-width: 767px) {
   .customs-row { grid-template-columns: 1fr; }
@@ -2455,6 +2456,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 /* column filters: date boxes are wider than their 76px columns — compact text, and the focused box grows over its neighbour */
 .ag-header-cell.ag-floating-filter { overflow: visible; }
 .ag-floating-filter input[type="date"] { font-size: 11px; padding-inline: 3px; min-width: 0; }
+.ag-floating-filter input[type="date"]:invalid:not(:focus)::-webkit-datetime-edit { color: transparent; }
 .ag-floating-filter input[type="date"]:focus { position: relative; z-index: 3; min-width: 124px; background: var(--color-surface); }
 .page-title { margin: 0; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.011em; }
 /* Final invoices: the text column right after a money column gets room (Outstanding → Status) */
@@ -2600,6 +2602,9 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
   .toolbar-more-list.is-open .columns-anchor > button:hover,
   .toolbar-more-list.is-open .tools-menu > summary:hover { background: var(--color-hover); }
   .toolbar-more-list.is-open > .btn-secondary.is-on { color: var(--color-accent-text); font-weight: 500; }
+  /* views above, Reset / Import / Admin tools below a divider */
+  .toolbar-more-list.is-open > .more-sep { margin-top: 6px; position: relative; overflow: visible; }
+  .toolbar-more-list.is-open > .more-sep::before { content: ""; position: absolute; left: -6px; right: -6px; top: -4px; border-top: 1px solid var(--color-border); }
   .tracker-page.has-peek .toolbar-more-list.is-open > .more-add { margin-top: 6px; position: relative; justify-content: center; }
   .tracker-page.has-peek .toolbar-more-list.is-open > .more-add::before {
     content: ""; position: absolute; left: -6px; right: -6px; top: -4px; border-top: 1px solid var(--color-border);
@@ -2621,3 +2626,20 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 .detail-skeleton.sk-body { padding: 0; margin-top: 8px; }
+
+/* tracker toast: floats at the bottom, over the peek too, with an Undo for ~10 s (v1.5.0) */
+.tracker-toast {
+  position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: var(--z-tray); display: inline-flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 6px 20px rgb(0 0 0 / .12);
+}
+.grid-toast-undo {
+  background: none; border: 0; padding: 4px 6px; min-height: 24px; font: inherit; font-weight: 600;
+  color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.tracker-search { position: relative; align-items: center; }
+.tracker-search-count { position: absolute; right: 36px; font-size: 12px; color: var(--color-text-muted); font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+.tracker-search-clear { position: absolute; right: 4px; width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--color-text-muted); cursor: pointer; border-radius: var(--radius); }
+.tracker-search-clear:hover { color: var(--color-text); background: var(--color-subtle); }
+.tracker-search:has(.tracker-search-clear) input { padding-right: 96px; }
+.edit-field .edit-saves { display: block; margin-top: 2px; }

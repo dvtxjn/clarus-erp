@@ -147,6 +147,7 @@ export interface Shipment {
   // Cleared = Cleared Date + Duty, CFS Inv, Line, OOC, DO all ticked
   is_fully_cleared: boolean;
   missing_for_clearance: string[];
+  container_nos?: string[];
   missing_from_sheet_at: string | null; // not in the last tracker CSV import (flagged, never deleted)
   // read from uploaded documents (decimals arrive as strings)
   assessable_value: string | null;

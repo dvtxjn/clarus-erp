@@ -128,7 +128,7 @@ export default function HistoryPage() {
             <tbody>
               {rows.map((x) => (
                 <tr key={x.id}>
-                  <td className="num">{historyTime(x.at)}</td>
+                  <td className="num">{historyTime(x.at, true)}</td>
                   <td>{x.automatic ? <span className="history-auto">ERP (automatic)</span> : x.who}</td>
                   <td>{x.shipment_id ? <Link to={`/shipments/${x.shipment_id}?tab=history`}>{x.job ? `Job ${x.job}` : "Open"}</Link> : "—"}</td>
                   <td translate="no">{x.mbl ?? "—"}</td>

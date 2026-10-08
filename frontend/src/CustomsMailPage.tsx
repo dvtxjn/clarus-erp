@@ -12,7 +12,7 @@ import {
 } from "./api";
 import type { Shipment } from "./types";
 import { useAuth } from "./AuthContext";
-import { istTime } from "./customsMail";
+import { errorCodeLines, istTime, readableCustoms } from "./customsMail";
 import CustomsReadBar from "./CustomsReadBar";
 import { formatPort, usePorts } from "./ports";
 
@@ -384,8 +384,16 @@ export default function CustomsMailPage() {
 
 /** The mail's text in a fixed-width cell: short ones as they are, long ones cut to one line that opens on click. */
 function Says({ text }: { text: string | null | undefined }) {
-  const t = (text ?? "").trim();
+  const t = readableCustoms(text);
   if (!t) return <>—</>;
+  const codes = errorCodeLines(text);
+  if (codes.length)
+    return (
+      <details className="customs-says-box">
+        <summary title="Show the whole text">{codes[0]}</summary>
+        <div className="customs-says-full">{[...codes.slice(1), t].join("\n")}</div>
+      </details>
+    );
   const firstLine = t.split("\n")[0];
   if (t.length <= 90 && firstLine === t) return <div className="customs-says-box">{t}</div>;
   return (
@@ -423,7 +431,7 @@ function JobPicker({ mail, onPick, onClose }: { mail: IcegateMail; onPick: (s: S
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div className="confirm-dialog job-picker" role="dialog" aria-modal="true" aria-labelledby="jp-title" onClick={(e) => e.stopPropagation()}>
         <h2 id="jp-title">Which job is this mail for?</h2>
-        <p>{mail.label}{mail.summary ? `: ${mail.summary}` : ""}</p>
+        <p>{mail.label}{mail.summary ? `: ${readableCustoms(mail.summary)}` : ""}</p>
         <input autoFocus value={q} placeholder="Job, BE no or BL" aria-label="Search job, BE or BL" onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && found?.length === 1 && onPick(found[0])} />
         <ul className="job-picker-list">

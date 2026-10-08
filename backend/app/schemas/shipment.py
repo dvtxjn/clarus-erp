@@ -165,6 +165,7 @@ class ShipmentOut(ShipmentBase):
     # Cleared = Cleared Date + all five checks; otherwise it stays with the ongoing shipments
     is_fully_cleared: bool = False
     missing_for_clearance: list[str] = []
+    container_nos: list[str] = []  # the shipment's container numbers (the tracker's search finds them)
     # read from uploaded documents
     assessable_value: Optional[Decimal] = None
     igst_amount: Optional[Decimal] = None
