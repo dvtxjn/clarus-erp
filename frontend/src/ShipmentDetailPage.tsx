@@ -1702,17 +1702,17 @@ function MoneyCard({
 
   let lineRow: Row;
   if (!line.length) {
-    lineRow = { key: "line", label: "Shipping line", dot: s.line_paid ? "ok" : "todo", value: "Not attached", words: true, meta: by(s.line_paid_by_us), action: uploadBtn("line") };
+    lineRow = { key: "line", label: "Liner", dot: s.line_paid ? "ok" : "todo", value: "Not attached", words: true, meta: by(s.line_paid_by_us), action: uploadBtn("line") };
   } else if (s.line_paid_by_us) {
-    lineRow = { key: "line", label: "Shipping line", dot: s.line_paid ? "ok" : "warn", value: fmtMoney(s.line_amount_total) ?? "—", meta: `Paid by us · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Liner", dot: s.line_paid ? "ok" : "warn", value: fmtMoney(s.line_amount_total) ?? "—", meta: `Paid by us · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
   } else if (s.line_excluded_by) {
-    lineRow = { key: "line", label: "Shipping line", dot: "muted", value: "Left out", words: true, meta: `${plural(line.length, "invoice")} · ${s.line_excluded_by}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Liner", dot: "muted", value: "Left out", words: true, meta: `${plural(line.length, "invoice")} · ${s.line_excluded_by}`, action: drawerBtn("line") };
   } else if (!Number(s.line_amount_total)) {
-    lineRow = { key: "line", label: "Shipping line", dot: "warn", value: "Pick charges", words: true, meta: `Cost inclusion · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Liner", dot: "warn", value: "Pick charges", words: true, meta: `Cost inclusion · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
   } else {
     const all = line.flatMap((d) => chargesOf(d).map((_, i) => !(d.cost_excluded ?? []).includes(i)));
     const picked = all.length ? ` · ${all.filter(Boolean).length} of ${all.length} charges` : "";
-    lineRow = { key: "line", label: "Shipping line", dot: "ok", value: fmtMoney(s.line_amount_total)!, meta: `Cost inclusion · ${plural(line.length, "invoice")}${picked}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Liner", dot: "ok", value: fmtMoney(s.line_amount_total)!, meta: `Cost inclusion · ${plural(line.length, "invoice")}${picked}`, action: drawerBtn("line") };
   }
 
   const rows: Row[] = [

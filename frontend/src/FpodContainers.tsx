@@ -204,6 +204,16 @@ export default function FpodContainers({
     <section className="detail-section detail-wide fpod" id="shipment-containers">
       <div className="fpod-head">
         <h3>{inland ? "Containers at FPOD" : "Containers"} · {portLabel}</h3>
+        {/* summary and fold toggle sit in the heading row, to keep the section short (client, 2026-10-08) */}
+        {summary && (
+          <span className="fpod-summary">
+            <button type="button" className="fold-toggle" aria-expanded={open} aria-controls="fpod-body" onClick={() => setUserOpen(!open)}>
+              <span className="fold-caret" aria-hidden="true">▸</span>
+              {open ? "Hide" : "Show"}
+            </button>
+            <span className={`fpod-summary-text${urgent.length ? " is-urgent" : ""}`}>{summary}</span>
+          </span>
+        )}
         <span className="fpod-actions">
           <button type="button" className="btn-secondary" onClick={copyImage} disabled={!rows?.length}>
             Copy as image
@@ -216,15 +226,6 @@ export default function FpodContainers({
           </button>
         </span>
       </div>
-      {summary && (
-        <div className="fpod-summary">
-          <button type="button" className="fold-toggle" aria-expanded={open} aria-controls="fpod-body" onClick={() => setUserOpen(!open)}>
-            <span className="fold-caret" aria-hidden="true">▸</span>
-            {open ? "Hide containers" : "Show containers"}
-          </button>
-          <span className={`fpod-summary-text${urgent.length ? " is-urgent" : ""}`}>{summary}</span>
-        </div>
-      )}
       {msg && (
         <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
           {msg.text}
@@ -249,27 +250,24 @@ export default function FpodContainers({
       )}
       {open && !!rows?.length && (
         <div id="fpod-body" className="fold-body">
-        <p className="field-note">
-          {inland
-            ? `Free days count from each container’s arrival (standard ${standard}); a DO’s validity replaces it.`
-            : `Free days count from the inward date (standard ${standard}); a DO’s validity replaces it.`}
-        </p>
         <form className="fpod-add fpod-all" onSubmit={applyAll}>
-          <label htmlFor="fpod-all-days">Days free for all containers</label>
+          <label htmlFor="fpod-all-days">Days free, all</label>
           <input
             id="fpod-all-days"
             type="number"
             inputMode="numeric"
             min={0}
             max={365}
-            placeholder={`blank = standard ${standard}`}
+            placeholder={`standard ${standard}`}
             value={allDays}
             onChange={(e) => setAllDays(e.target.value)}
           />
           <button type="submit" className="btn-secondary btn-sm" disabled={busy}>
             {allDays.trim() ? "Apply to all" : `Reset all to ${standard}`}
           </button>
-          <span className="field-note">or change one container in its row below</span>
+          <span className="field-note">
+            {inland ? "Counted from each container’s arrival" : "Counted from the inward date"}; a DO’s validity replaces it. Change one container in its row.
+          </span>
         </form>
         </div>
       )}

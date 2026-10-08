@@ -1,5 +1,10 @@
 # Release notes
 
+## v1.6.2 — 08 Oct 2026
+
+- Overview status box: the labels (Duty, CFS, Liner) are bold, the values are regular. "Shipping line" reads "Liner".
+- Containers: the show / hide toggle and the summary sit in the heading row; the free-days note and the "Days free, all" control share one line. The section is two rows shorter.
+
 ## v1.6.1 — 08 Oct 2026
 
 - Proforma & Billing: the Billing settings switches were drawn as squares; they are round toggles again.
