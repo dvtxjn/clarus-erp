@@ -3,11 +3,21 @@
 entered by mistake is soft-deleted by the admin and can be restored."""
 import pypdfium2
 
+from app.core.database import SessionLocal
+from app.core.enums import DocumentType
+from app.models.document import ShipmentDocument
+
 
 def _issued_pair(client, h, name, gstin, mbl):
     client.post("/organizations", json={"name": name, "gstin": gstin}, headers=h)
     sid = client.post("/shipments", json={"mbl": mbl, "consignee": name, "container": "1"}, headers=h).json()["id"]
     client.patch(f"/shipments/{sid}", json={"duty_amount": "100000", "igst_amount": "0"}, headers=h)
+    # Customs Duty is billed at the OOC copy's total (client, 2026-10-08)
+    with SessionLocal() as db:  # just its total — no BE side effects (importer, port)
+        db.add(ShipmentDocument(shipment_id=sid, document_type=DocumentType.OOC_BILL_OF_ENTRY, original_filename="ooc.pdf",
+                                generated_filename="ooc.pdf", file_path="ooc.pdf",
+                                extraction={"fields": {"tot_amount": "100000"}}))
+        db.commit()
     pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
     client.post(f"/proformas/{pid}/final-invoices", headers=h)
     return {i["kind"]: i for i in client.post(f"/proformas/{pid}/final-invoices/issue", headers=h).json()}

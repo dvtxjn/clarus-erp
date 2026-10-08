@@ -237,8 +237,10 @@ def extract_container_count(text: str) -> str:
 
 def extract_duty_summary(text: str) -> dict:
     """Assessable value / IGST from the line(s) under the '1.BCD ... 18.TOT.ASS VAL'
-    header, total duty from under '9.SG ... 19.TOT. AMOUNT'."""
-    out = {"tot_ass_val": None, "igst": None, "tot_amount": None}
+    header, total duty from under '9.SG ... 19.TOT. AMOUNT' — and from the same row the interest
+    ('15.INT'): the row ends TOTAL DUTY, INT, PNLTY, FINE, TOT. AMOUNT (blank cells left out),
+    taken only when those four add up to the total."""
+    out = {"tot_ass_val": None, "igst": None, "tot_amount": None, "interest": None}
     lines = text.splitlines()
     for i, line in enumerate(lines):
         if "1.BCD" in line and "18.TOT.ASS VAL" in line:
@@ -255,6 +257,10 @@ def extract_duty_summary(text: str) -> dict:
                     nums = re.findall(r'\d+(?:\.\d+)?', lines[i + offset])
                     if nums:
                         out["tot_amount"] = nums[-1]
+                        if len(nums) >= 5:
+                            duty, intr, pnlty, fine, tot = (float(x) for x in nums[-5:])
+                            if abs(duty + intr + pnlty + fine - tot) < 1:
+                                out["interest"] = nums[-4]
                         break
     return out
 

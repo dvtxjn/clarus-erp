@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import ChargeCategory
 from app.invoice.build import (
-    GST_DIFFERENCE_CODE, bill_to_organization, bill_to_name, container_count,
+    GST_DIFFERENCE_CODE, bill_to_organization, bill_to_name, container_count, ooc_duty,
 )
 from app.invoice.company import bank as company_bank, company as company_details, terms as final_terms
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
@@ -163,8 +163,43 @@ def lines_for(proforma: Proforma, kind: str) -> list[dict]:
                         "gst_rate": format(Decimal(li.gst_rate).normalize(), "f")})
         elif kind == "reimbursement" and li.category == ChargeCategory.REIMBURSEMENT and code != GST_DIFFERENCE_CODE:
             out.append({"description": li.description, "sub_description": None, "sac": li.sac_code, "tax_type": "P",
-                        "non_gst_value": _money(li.total), "taxable_value": "0", "gst_rate": "0"})
+                        "non_gst_value": _money(li.total), "taxable_value": "0", "gst_rate": "0", "code": code})
+    if kind == "reimbursement":
+        feed_customs_duty(proforma.shipment, out)
     return out
+
+
+DUTY_CODE = "CD"
+
+
+def is_duty_line(ln: dict) -> bool:
+    """A Customs Duty line (drafts made before lines carried their code: by the description)."""
+    code = ln.get("code")
+    return code == DUTY_CODE or (code is None and str(ln.get("description") or "").strip().lower().startswith("customs duty"))
+
+
+def feed_customs_duty(shipment, lines: list[dict]) -> None:
+    """Customs Duty on the reimbursement invoice is the OOC copy's total duty, without exception
+    (client, 2026-10-08): set every Customs Duty line to it. Stamp duty and the rest stay editable."""
+    ooc = ooc_duty(shipment)
+    if ooc is None:
+        return
+    for ln in lines:
+        if is_duty_line(ln):
+            ln.update(non_gst_value=_money(ooc), taxable_value="0", gst_rate="0", tax_type="P")
+
+
+def duty_problem(inv: FinalInvoice) -> Optional[str]:
+    """Why a reimbursement invoice can't be issued over its Customs Duty, or None."""
+    lines = [ln for ln in (inv.lines or []) if is_duty_line(ln)]
+    if inv.kind != "reimbursement" or not lines:
+        return None
+    ooc = ooc_duty(inv.shipment)
+    if ooc is None:
+        return "Customs Duty must match the OOC copy's total duty — attach the OOC BE first"
+    if any(_d(ln.get("non_gst_value")) != ooc for ln in lines):
+        return f"Customs Duty must be the OOC copy's total ₹{ooc:,.2f}"
+    return None
 
 
 NOT_APPLICABLE = "BILL CANCELLED — NOT APPLICABLE"

@@ -151,7 +151,9 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         sync.set("gross_wt", kg_to_mts(fields.get("gross_wt")))
         sync.set("assessable_value", _money(fields.get("tot_ass_val")))
         sync.set("igst_amount", _money(fields.get("igst")))
-        sync.set("duty_amount", _money(fields.get("tot_amount")))
+        # duty without interest: the OOC's total less its INT (client, 2026-10-08)
+        total, intr = _money(fields.get("tot_amount")), _money(fields.get("interest"))
+        sync.set("duty_amount", total - intr if total is not None and intr else total)
         # Client rule (2026-09-29): customs duty always carries IGST — none found = a problem to check
         if fields.get("tot_amount") and not _money(fields.get("igst")):
             fields["gst_missing"] = True

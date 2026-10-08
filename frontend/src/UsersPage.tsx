@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import { fmtWhen } from "./dates";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import axios from "axios";
@@ -89,7 +90,7 @@ export default function UsersPage() {
         </div>
         {!me?.read_only && <button onClick={() => setAdding((a) => !a)}>{adding ? "Cancel" : "+ Add user"}</button>}
       </div>
-      {msg && <div role="status" className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
+      {msg && <Toast ok={msg.kind === "ok"} stamp={msg}>{msg.text}</Toast>}
       {requests.length > 0 && (
         <div className="backup-banner">
           <strong>Password reset requested:</strong> {requests.map((u) => u.email).join(", ")}

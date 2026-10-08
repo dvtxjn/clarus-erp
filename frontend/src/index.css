@@ -2712,3 +2712,15 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .ov-ship .field-row > .field-value { overflow-wrap: break-word; } /* wrap at " · ", not inside a date */
 .charges-tab { display: flex; flex-direction: column; gap: 16px; }
 .charges-tab > div { scroll-margin-top: 12px; }
+.be-copies .amount-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.be-copies-actions { margin-left: auto; display: flex; gap: 6px; }
+.be-copies-actions button, .charge-more button { height: 28px; padding: 0 10px; font-size: 12.5px; font-weight: 500; }
+.charge-more { display: flex; justify-content: flex-end; }
+
+/* Customs duty: two columns (details + BE copies | BE amounts) when wide enough */
+.overview.duty-tab { container-type: inline-size; }
+.duty-cols { display: grid; grid-template-columns: 1fr; gap: 0 32px; }
+@container (min-width: 760px) {
+  .duty-cols { grid-template-columns: 1fr 1fr; align-items: start; }
+  .duty-col > .amount-block:first-child { margin-top: 0; }
+}

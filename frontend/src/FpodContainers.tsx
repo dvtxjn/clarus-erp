@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import { fmtDay, fmtDayShort, istToday } from "./dates";
 import { useReadOnly } from "./AuthContext";
 import LoadError from "./LoadError";
@@ -230,9 +231,7 @@ export default function FpodContainers({
         </span>
       </div>
       {msg && (
-        <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
-          {msg.text}
-        </div>
+        <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>
       )}
       {adding && (
         <form className="fpod-add" onSubmit={add}>

@@ -52,7 +52,7 @@ def make_pdf(lines):
 
 
 def be_pdf(be_no="2345678", mawb="MEDU1234567890", hawb="HBL998877", importer="ACME TYRES PRIVATE LIMITED",
-           ad_code="6390001", containers=("MSKU1234567", "TGHU7654321"), gw="24500.5", extra=()):
+           ad_code="6390001", containers=("MSKU1234567", "TGHU7654321"), gw="24500.5", extra=(), tot="61500.00"):
     """Synthetic BE laid out like an ICEGATE BE: label rows with values beneath."""
     lines = [
         (40, 40, "BILL OF ENTRY FOR HOME CONSUMPTION"),
@@ -70,7 +70,7 @@ def be_pdf(be_no="2345678", mawb="MEDU1234567890", hawb="HBL998877", importer="A
         (40, 240, "1.BCD 2.ACD 3.SWS 7.IGST 18.TOT.ASS VAL"),
         (40, 252, "15000.00 0 1500.00 45000.00 0 250000.00"),
         (40, 280, "9.SG 10.SAED 19.TOT. AMOUNT"),
-        (40, 292, "0 0 61500.00"),
+        (40, 292, f"0 0 {tot}"),
         *extra,
     ]
     return make_pdf(lines)

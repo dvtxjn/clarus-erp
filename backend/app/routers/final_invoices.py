@@ -20,7 +20,7 @@ from app.core.audit import record_change
 from app.core.database import get_db
 from app.core.deps import require_admin, require_billing_access
 from app.core.locking import locked_proforma
-from app.invoice.final import TAX_TYPES, NumberingNotSet, alter_until, check_series, number_for, compute, create_from_proforma, fy_of, issue
+from app.invoice.final import TAX_TYPES, NumberingNotSet, duty_problem, feed_customs_duty, alter_until, check_series, number_for, compute, create_from_proforma, fy_of, issue
 from app.models.settings import get_setting
 from app.invoice.final_pdf import render_final_pdf
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
@@ -40,6 +40,7 @@ class FinalLine(BaseModel):
     non_gst_value: Decimal = Field(default=Decimal("0"), ge=0)
     taxable_value: Decimal = Field(default=Decimal("0"), ge=0)
     gst_rate: Decimal = Field(default=Decimal("0"), ge=0, le=28)
+    code: Optional[str] = Field(default=None, max_length=10)  # charge code; "CD" = Customs Duty, fed from the OOC copy
 
 
 class FinalInvoiceUpdate(BaseModel):
@@ -281,6 +282,8 @@ def update_final_invoice(invoice_id: int, payload: FinalInvoiceUpdate, db: Sessi
             value = {**(inv.header or {}), **value}
         if field == "customer":
             value = {**(inv.customer or {}), **value}
+        if field == "lines" and inv.kind == "reimbursement":
+            feed_customs_duty(inv.shipment, value)  # Customs Duty stays the OOC total, whatever was typed
         old = getattr(inv, field)
         if old != value:
             record_change(db, "final_invoices", inv.id, field, old, value, user.id)
@@ -308,6 +311,8 @@ def issue_final_invoice(invoice_id: int, db: Session = Depends(get_db), user: Us
         raise HTTPException(status_code=400, detail="The invoice has no lines")
     if not (inv.customer or {}).get("gstin"):
         raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
+    if duty_problem(inv):
+        raise HTTPException(status_code=400, detail=duty_problem(inv))
     try:
         issue(db, inv)
     except NumberingNotSet as e:
@@ -338,6 +343,8 @@ def issue_pair(proforma_id: int, db: Session = Depends(get_db), user: User = Dep
             raise HTTPException(status_code=400, detail=f"The {inv.kind} invoice has no lines")
         if not (inv.customer or {}).get("gstin"):
             raise HTTPException(status_code=400, detail="Enter the customer's GSTIN first (place of supply depends on it)")
+        if duty_problem(inv):
+            raise HTTPException(status_code=400, detail=duty_problem(inv))
     for inv in drafts:
         try:
             issue(db, inv)

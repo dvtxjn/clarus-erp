@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import LoadError from "./LoadError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -186,9 +187,7 @@ export default function CustomsMailPage() {
         </label>
       )}
       {msg && (
-        <div role="status" aria-live="polite" className={`grid-toast ${msg.ok ? "grid-toast-ok" : "grid-toast-error"}`}>
-          {msg.text}
-        </div>
+        <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>
       )}
 
       {(isAdmin || user?.role === "import_manager") && <CustomsReadBar isAdmin={isAdmin} onRead={load} />}

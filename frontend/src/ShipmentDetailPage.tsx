@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import { fmtDay, fmtDayShort, fmtWhen, MONTHS } from "./dates";
 import LoadError from "./LoadError";
 import { tabKeys } from "./tabKeys";
@@ -10,7 +11,7 @@ import { useAuth, useReadOnly } from "./AuthContext";
 import { kgLooking } from "./weight";
 import { docsCache, rememberShipment, shipmentCache } from "./detailCache";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
-import { correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, openDocumentFile, refreshIcegate, setCostInclusion } from "./api";
+import { attachBeFromMail, correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, openDocumentFile, refreshIcegate, setCostInclusion } from "./api";
 import { useDismiss } from "./useDismiss";
 import { useSaveShipment } from "./useSaveShipment";
 import { SHIPMENT_STATUS_LABELS, docShort, type DocumentType, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
@@ -364,7 +365,18 @@ export function ShipmentDetail({
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={onSaved} />}
       {tab === "charges" && (
         <div className="charges-tab">
-          <div id="charges-duty"><DutyTab shipment={shipment} onChange={onSaved} /></div>
+          <div id="charges-duty">
+            <DutyTab
+              shipment={shipment}
+              docs={docs}
+              onChange={onSaved}
+              onDocs={reload}
+              onUpload={(t) => {
+                setUploadType(t);
+                setTab("documents");
+              }}
+            />
+          </div>
           {(["cfs", "line"] as const).map((g) => (
             <div id={`charges-${g}`} key={g}>
               <ChargeDrawer
@@ -531,17 +543,70 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
 }
 
 /** Customs duty, its own tab (client, 2026-10-08): licence, ICD BE details and the BE amounts / final duty. */
-function DutyTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+function DutyTab({ shipment: s, docs, onChange, onDocs, onUpload }: {
+  shipment: Shipment;
+  docs: ShipmentDocument[];
+  onChange: (s: Shipment) => void;
+  onDocs: () => Promise<void>;
+  onUpload: (t: DocumentType) => void;
+}) {
   const inland = !!s.port && !SEA_PORTS.has(s.port);
+  const ro = useReadOnly();
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const has = (t: DocumentType) => docs.some((d) => d.document_type === t);
+  const copies: [DocumentType, string][] = [
+    ["assessed_bill_of_entry", "Assessed BE"],
+    ["ooc_bill_of_entry", "OOC copy"],
+    ["gatepass_bill_of_entry", "Gate pass"],
+  ];
+  // customs mail brings BE copies too: pull in any it holds for this job (client, 2026-10-08)
+  async function fromMail() {
+    setBusy(true);
+    try {
+      const r = await attachBeFromMail(s.id);
+      if (r.added) await onDocs();
+      setMsg({ ok: true, text: r.added ? `${r.added} BE cop${r.added === 1 ? "y" : "ies"} added from customs mail` : "No new BE copy in customs mail for this job" });
+    } catch {
+      setMsg({ ok: false, text: "Couldn't read customs mail — try again" });
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="overview duty-tab">
       <CopyRows.Provider value={true}>
       <section className="detail-section" id={`duty-${s.id}`}>
         <h3>Customs duty</h3>
+        {/* two columns side by side when there's room: less scrolling (client, 2026-10-08) */}
+        <div className="duty-cols">
+        <div className="duty-col">
+          <BeAmounts shipment={s} onChange={onChange} />
+        </div>
+        <div className="duty-col">
         <EditField label="License" field="license" s={s} onChange={onChange} />
-        {inland && s.icegate?.icd?.be_location && <Field label="BE location" value={s.icegate.icd.be_location} hint="From the ICD BL status" />}
         {inland && s.icegate?.icd?.importer && <Field label="Importer (ICD)" value={s.icegate.icd.importer} hint="From the ICD BL status" />}
-        <BeAmounts shipment={s} onChange={onChange} />
+        <div className="amount-block be-copies">
+          <div className="amount-block-head">
+            <span className="amount-block-title">BE copies</span>
+            {!ro && (
+              <span className="be-copies-actions">
+                <button type="button" className="btn-secondary" onClick={() => onUpload(has("assessed_bill_of_entry") ? "ooc_bill_of_entry" : "assessed_bill_of_entry")}>
+                  Upload BE
+                </button>
+                <button type="button" className="btn-secondary" onClick={fromMail} disabled={busy}>
+                  {busy ? "Reading customs mail…" : "Get from customs mail"}
+                </button>
+              </span>
+            )}
+          </div>
+          {copies.map(([t, label]) => (
+            <Field key={t} label={label} value={has(t) ? "Attached" : "Not attached"} copy={[]} />
+          ))}
+          {msg && <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>}
+        </div>
+        </div>
+        </div>
       </section>
       </CopyRows.Provider>
     </div>
@@ -1192,6 +1257,14 @@ function ChargeDrawer({
         {all.map((d) => (
           <InvoiceCard key={d.id} group={group} doc={d} notCounted={why(d)} onSaved={onSaved} />
         ))}
+        {/* more than one invoice is normal (e.g. a second CFS bill): one more can always go on */}
+        {inline && all.length > 0 && onUpload && !ro && (
+          <div className="charge-more">
+            <button type="button" className="btn-secondary" onClick={() => onUpload(cfg.uploadType)}>
+              + Upload another invoice
+            </button>
+          </div>
+        )}
         {receipts.length > 0 && <Receipts receipts={receipts} onSaved={onSaved} />}
         {group === "cfs" && s.cfs_paid_by_us && (
           <div className="charge-tds">
@@ -2010,9 +2083,7 @@ function IcegateBar({ s, onChange, open, onToggle }: { s: Shipment; onChange: (s
         )}
       </div>
       {msg && (
-        <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>
-          {msg.text}
-        </div>
+        <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>
       )}
     </>
   );

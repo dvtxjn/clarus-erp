@@ -125,11 +125,16 @@ def _doc_amount(shipment: Shipment, doc_type: DocumentType, key: str) -> Optiona
     return None
 
 
+def ooc_duty(shipment: Shipment) -> Optional[Decimal]:
+    """The OOC copy's total duty — what Customs Duty is billed at, always (client, 2026-10-08)."""
+    return _doc_amount(shipment, DocumentType.OOC_BILL_OF_ENTRY, "tot_amount")
+
+
 def customs_duty(shipment: Shipment, challan: Optional[DutyChallan]) -> Optional[dict]:
     """{total, gst, basic, interest, source}. Customs duty total, by what's available:
-      1. duty challan: BE total duty + interest (interest = Due Amount - BE duty, never < 0)
-      2. OOC copy (no challan): its total amount — the final amount paid; interest =
-         OOC total - assessed BE total
+      1. OOC copy: its total amount — the final amount paid, no exception (client, 2026-10-08);
+         interest = the OOC's own INT figure, else OOC total - assessed BE total
+      2. duty challan: BE total duty + interest (interest = Due Amount - BE duty, never < 0)
       3. the BE's total duty
     GST = IGST; basic = total - GST."""
     assessed = _doc_amount(shipment, DocumentType.ASSESSED_BILL_OF_ENTRY, "tot_amount")
@@ -137,17 +142,20 @@ def customs_duty(shipment: Shipment, challan: Optional[DutyChallan]) -> Optional
     duty = assessed if assessed is not None else (
         Decimal(shipment.duty_amount) if shipment.duty_amount is not None else None)
     interest = ZERO
-    if challan is not None:
+    if ooc is not None:
+        source, total = "ooc", ooc
+        printed = _doc_amount(shipment, DocumentType.OOC_BILL_OF_ENTRY, "interest")  # its '15.INT'
+        if printed is not None:
+            interest = printed
+        elif assessed is not None:
+            interest = max(ZERO, ooc - assessed)
+    elif challan is not None:
         source = "challan"
         if duty is not None:
             interest = max(ZERO, Decimal(challan.due_amount) - duty)
             total = duty + interest
         else:
             total = Decimal(challan.due_amount)
-    elif ooc is not None:
-        source, total = "ooc", ooc
-        if assessed is not None:
-            interest = max(ZERO, ooc - assessed)
     elif duty is not None:
         source, total = "be", duty
     else:

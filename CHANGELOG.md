@@ -1,5 +1,23 @@
 # Release notes
 
+## v1.7.2 — 08 Oct 2026
+
+- Customs Duty is always the OOC copy's total duty, with no exceptions:
+  - On the proforma it is filled from the OOC and can't be edited by hand.
+  - On the reimbursement invoice the amount is locked to the OOC total. Any other figure is reset to it.
+  - A reimbursement invoice with Customs Duty can't be issued until the OOC copy is attached.
+  - Stamp Duty and the other lines stay editable.
+- Interest is read from the OOC copy's own INT column. Duty without interest = OOC total − INT.
+  - OOC copies uploaded before today: press Re-read on the OOC in Documents to pick up the interest.
+- Charges tab: Customs duty is in two columns (Bill of entry on the left; licence and BE copies on the right). The tab fits on one screen.
+- New "BE copies" section:
+  - Shows whether the Assessed BE, OOC copy and Gate pass are attached.
+  - "Upload BE" uploads a copy.
+  - "Get from customs mail" attaches any BE PDFs already in customs mail for this job.
+- CFS / Shipping line: once an invoice is attached, "+ Upload another invoice" adds more.
+- Every green confirmation box across the app disappears after 3 seconds. Red errors stay until the next action.
+- "BE location" (an ICD-internal code) is no longer shown.
+
 ## v1.7.1 — 08 Oct 2026
 
 - Containers: the green confirmation ("Copied as an image…", "Saved…", "Set … days free…") disappears after 3 seconds. Red errors stay until the next action.

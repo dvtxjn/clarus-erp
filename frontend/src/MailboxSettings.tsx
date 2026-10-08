@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { disconnectMailbox, getMailbox, mailboxConnectUrl, setMailboxPush, type MailboxStatus } from "./api";
@@ -57,9 +58,7 @@ export default function MailboxSettings() {
   return (
     <div className="settings-body" id="mailbox">
       {msg && (
-        <div role="status" aria-live="polite" className={`grid-toast ${msg.ok ? "grid-toast-ok" : "grid-toast-error"}`}>
-          {msg.text}
-        </div>
+        <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>
       )}
       {m?.connected ? (
         <>

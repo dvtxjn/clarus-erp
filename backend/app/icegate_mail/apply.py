@@ -131,25 +131,32 @@ def _apply(db: Session, m: IcegateMail, s: Shipment, user: Optional[User]) -> li
             s.under_examination = prescribed
             notes.append("Examination ordered" if prescribed else "No examination")
     elif m.pdf and user is not None and auto_rules.on(db, "mail.documents"):
-        from app.routers.documents import _store_document
+        notes.extend(attach_pdf(db, m, s, user))
+    return notes
 
-        doc_type = DocumentType[(m.detail or {}).get("doc_type") or ""]
-        dup = (db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
-                                                 ShipmentDocument.original_filename == m.pdf_name).first()
-               or db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
-                                                    ShipmentDocument.document_type == doc_type).first())
-        if dup:  # this copy (or one of the same kind, uploaded by hand) is already there: no duplicate
-            m.document_id = dup.id
-            notes.append("Already on the shipment — not added again")
-        else:
-            data = m.pdf
-            db.flush()
-            doc = _store_document(db, s, doc_type, m.pdf_name, lambda f: f.write(data), user)
-            m.document_id = doc.id
-            notes.extend((doc.extraction or {}).get("notes") or [])
-            notes.append({"ASSESSED_BILL_OF_ENTRY": "Assessed BE copy added", "OOC_BILL_OF_ENTRY": "OOC copy added",
-                          "GATEPASS_BILL_OF_ENTRY": "OOC gate pass added"}[doc_type.name])
-        m.pdf = None
+
+def attach_pdf(db: Session, m: IcegateMail, s: Shipment, user: User) -> list[str]:
+    """Put the mail's BE / OOC / gate pass copy on the shipment (never twice), then drop it from the mail."""
+    from app.routers.documents import _store_document
+
+    notes: list[str] = []
+    doc_type = DocumentType[(m.detail or {}).get("doc_type") or ""]
+    dup = (db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
+                                             ShipmentDocument.original_filename == m.pdf_name).first()
+           or db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == s.id,
+                                                ShipmentDocument.document_type == doc_type).first())
+    if dup:  # this copy (or one of the same kind, uploaded by hand) is already there: no duplicate
+        m.document_id = dup.id
+        notes.append("Already on the shipment — not added again")
+    else:
+        data = m.pdf
+        db.flush()
+        doc = _store_document(db, s, doc_type, m.pdf_name, lambda f: f.write(data), user)
+        m.document_id = doc.id
+        notes.extend((doc.extraction or {}).get("notes") or [])
+        notes.append({"ASSESSED_BILL_OF_ENTRY": "Assessed BE copy added", "OOC_BILL_OF_ENTRY": "OOC copy added",
+                      "GATEPASS_BILL_OF_ENTRY": "OOC gate pass added"}[doc_type.name])
+    m.pdf = None
     return notes
 
 

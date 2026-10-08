@@ -1,5 +1,6 @@
 """Final invoices from a proforma — modelled on the client's CL/200/26-27 (tax) and
 RI/CL/200/26-27 (reimbursement) for BAHUBALI RUBBER (Rajasthan -> IGST)."""
+from tests.conftest import be_pdf
 from tests.test_invoice import _setup
 
 
@@ -38,6 +39,13 @@ def test_final_invoices_from_proforma(client, admin_headers):
                      "lines": [*tax["lines"][:1], {**tax["lines"][1], "sub_description": "Transportation"}]}, headers=h).json()
     assert t["header"]["origin_port"] == "Qingdao" and t["lines"][1]["sub_description"] == "Transportation"
     t = client.post(f"/final-invoices/{tax['id']}/issue", headers=h).json()
+    # Customs Duty must be the OOC copy's total: no OOC attached yet -> can't issue (client, 2026-10-08)
+    r2 = client.post(f"/final-invoices/{reim['id']}/issue", headers=h)
+    assert r2.status_code == 400 and "OOC" in r2.json()["detail"]
+    client.post(f"/shipments/{sid}/documents", data={"document_type": "ooc_bill_of_entry"},
+                files={"file": ("ooc.pdf", be_pdf(be_no="7770165"), "application/pdf")}, headers=h)
+    fed = client.patch(f"/final-invoices/{reim['id']}", json={"lines": reim["lines"]}, headers=h).json()
+    assert fed["lines"][0]["non_gst_value"] == "61500.00"  # the OOC total replaces the tracker's figure
     r2 = client.post(f"/final-invoices/{reim['id']}/issue", headers=h).json()
     n = t["number"].split("/")[1]
     assert t["number"].startswith("CL/") and r2["number"] == f"RI/CL/{n}/{t['number'].split('/')[2]}"
@@ -264,3 +272,29 @@ def test_number_formats_restart_and_deleting_trial_invoices(client, admin_header
     live = client.post(f"/proformas/{pair('SERIES0003')}/final-invoices/issue", headers=h).json()
     assert {i["number"] for i in live} == {f"CLR/5001/{fy}", f"CLR-RI/5001/{fy}"}
     client.put("/invoice-series", json={"tax": "CL/{n}/{fy}", "reimbursement": "RI/CL/{n}/{fy}"}, headers=h)  # back for other tests
+
+
+def test_customs_duty_is_always_the_ooc_total(client, admin_headers):
+    """Client, 2026-10-08: Customs Duty on the reimbursement invoice = the OOC BE's total duty, no
+    exception — not editable on the proforma or the final invoice; Stamp Duty stays editable."""
+    from tests.test_invoice import _setup
+
+    h = admin_headers
+    sid = _setup(client, h, port_consignee="Divine")
+    pid = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    p = client.post(f"/proformas/{pid}/fill-from-shipment", headers=h).json()["proforma"]
+    cd = next(li for li in p["line_items"] if li["description"].startswith("Customs Duty"))
+    assert float(cd["total"]) == 61500.0
+    r = client.patch(f"/proformas/{pid}/line-items/{cd['id']}", json={"rate": "1"}, headers=h)
+    assert r.status_code == 400 and "OOC" in r.json()["detail"]
+
+    ri = next(i for i in client.post(f"/proformas/{pid}/final-invoices", headers=h).json() if i["kind"] == "reimbursement")
+    duty = next(ln for ln in ri["lines"] if ln["code"] == "CD")
+    assert duty["non_gst_value"] == "61500.00"
+    # typing another figure: Customs Duty goes back to the OOC total, Stamp Duty keeps the edit
+    lines = [{**ln, "non_gst_value": "1" if ln["code"] in ("CD", "SD") else ln["non_gst_value"]} for ln in ri["lines"]]
+    lines = [{k: ln[k] for k in ("description", "sac", "tax_type", "non_gst_value", "taxable_value", "gst_rate", "code")}
+             for ln in lines]
+    out = client.patch(f"/final-invoices/{ri['id']}", json={"lines": lines}, headers=h).json()
+    by = {ln["code"]: ln for ln in out["lines"]}
+    assert by["CD"]["non_gst_value"] == "61500.00" and by["SD"]["non_gst_value"] == "1.00"

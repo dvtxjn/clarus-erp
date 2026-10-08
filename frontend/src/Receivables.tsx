@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import LoadError from "./LoadError";
 import { fmtDay } from "./dates";
 import { useEffect, useMemo, useState } from "react";
@@ -167,7 +168,7 @@ export default function Receivables() {
           <input type="checkbox" role="switch" checked={withPaid} onChange={() => setWithPaid((x) => !x)} />
         </label>
       </div>
-      {msg && <div role="status" className={msg.ok ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      {msg && <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>}
 
       <div className="tracker-grid-wrap">
         <table className="tracker-grid inv-register">

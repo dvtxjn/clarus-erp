@@ -579,6 +579,7 @@ export interface FinalInvoiceLine {
   non_gst_value: string;
   taxable_value: string;
   gst_rate: string;
+  code?: string | null; // charge code; "CD" = Customs Duty (fixed to the OOC copy's total)
   tax?: string;
   cgst?: string | null;
   sgst?: string | null;

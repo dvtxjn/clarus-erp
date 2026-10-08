@@ -364,3 +364,13 @@ def test_grand_total_rounded_up_to_the_rupee():
     assert round_off(D("720403.40")) == (D("720404"), D("0.60"))
     assert round_off(D("231043.50")) == (D("231044"), D("0.50"))
     assert round_off(D("231044.00")) == (D("231044"), D("0.00"))
+
+
+def test_ooc_interest_read_from_int_column():
+    """The OOC prints TOTAL DUTY, INT, PNLTY, FINE, TOT. AMOUNT (blank cells left out): interest is its INT."""
+    from app.extraction.be_pdf import extract_duty_summary
+
+    row = "9.SG 10.SAED 11.GSIA 12.TTA 13.HEALTH 14.TOTAL DUTY 15.INT 16.PNLTY 17.FINE 19.TOT. AMOUNT"
+    out = extract_duty_summary(f"{row}\n189434 545 0 0 189979\n")
+    assert (out["tot_amount"], out["interest"]) == ("189979", "545")
+    assert extract_duty_summary(f"{row}\n0 0 61500.00\n")["interest"] is None  # short row: no INT read

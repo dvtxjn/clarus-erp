@@ -1024,6 +1024,12 @@ export async function refreshIcegate(shipmentId: number): Promise<{ summary: Ice
   return data;
 }
 
+/** The BE / OOC / gate pass copies customs mail holds for this shipment, put on it now. */
+export async function attachBeFromMail(shipmentId: number): Promise<{ added: number; notes: string[] }> {
+  const { data } = await client.post(`/shipments/${shipmentId}/icegate-mails/attach-be`);
+  return data;
+}
+
 export interface IcegateStatus {
   last_run: { at: string; checked: number; filled: number; not_found: number; errors: number; jobs: string[] } | null;
   every_hours: number;

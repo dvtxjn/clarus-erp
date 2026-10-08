@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import LoadError from "./LoadError";
 import { fmtDay } from "./dates";
 import { useEffect, useState } from "react";
@@ -232,6 +233,7 @@ function FinalInvoiceEditor({
               non_gst_value: l.non_gst_value || "0",
               taxable_value: l.taxable_value || "0",
               gst_rate: l.gst_rate || "0",
+              code: l.code ?? null,
             })),
             advance_received: f.advance_received || "0",
             remarks: f.remarks || null,
@@ -357,11 +359,23 @@ function FinalInvoiceEditor({
                     {TAX_TYPES.map((x) => <option key={x}>{x}</option>)}
                   </select>
                 </td>
-                {(["non_gst_value", "taxable_value", "gst_rate"] as const).map((k) => (
-                  <td key={k} className="num">
-                    <input className="num" inputMode="decimal" value={l[k]} disabled={!editable} onChange={(e) => setLine(i, { [k]: e.target.value })} />
-                  </td>
-                ))}
+                {(["non_gst_value", "taxable_value", "gst_rate"] as const).map((k) => {
+                  // Customs Duty = the OOC copy's total duty, no exception (client, 2026-10-08)
+                  const duty = inv.kind === "reimbursement" && isDutyLine(l);
+                  return (
+                    <td key={k} className="num">
+                      <input
+                        className="num"
+                        inputMode="decimal"
+                        value={l[k]}
+                        disabled={!editable || duty}
+                        title={duty ? "Fixed: the OOC BE's total duty" : undefined}
+                        aria-label={duty ? `${k.replace(/_/g, " ")} (fixed: the OOC BE's total duty)` : undefined}
+                        onChange={(e) => setLine(i, { [k]: e.target.value })}
+                      />
+                    </td>
+                  );
+                })}
                 <td className="num">{inr(inv.lines[i]?.total)}</td>
                 {editable && (
                   <td>
@@ -413,7 +427,7 @@ function FinalInvoiceEditor({
         </div>
       </div>
 
-      {msg && <div role="status" className={msg.kind === "ok" ? "grid-toast grid-toast-ok" : "grid-toast grid-toast-error"}>{msg.text}</div>}
+      {msg && <Toast ok={msg.kind === "ok"} stamp={msg}>{msg.text}</Toast>}
       <div className="final-actions">
         {(draft || inv.status === "issued") && (
           <button disabled={!dirty || saving} onClick={() => save()}>
@@ -452,6 +466,9 @@ function FinalInvoiceEditor({
   );
 }
 
+/** The Customs Duty line (older drafts: by its description) — fixed to the OOC BE's total. */
+const isDutyLine = (l: FinalInvoiceLine) => l.code === "CD" || (!l.code && /^customs duty/i.test(l.description.trim()));
+
 function toForm(inv: FinalInvoice) {
   return {
     invoice_date: inv.invoice_date ?? "",
@@ -466,6 +483,7 @@ function toForm(inv: FinalInvoice) {
       non_gst_value: String(Number(l.non_gst_value)),
       taxable_value: String(Number(l.taxable_value)),
       gst_rate: String(Number(l.gst_rate)),
+      code: l.code ?? null,
     })) as FinalInvoiceLine[],
     advance_received: String(Number(inv.totals.advance_received ?? 0)),
     remarks: inv.remarks ?? "",

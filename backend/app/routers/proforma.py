@@ -16,7 +16,7 @@ from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
 from fastapi.encoders import jsonable_encoder
 
-from app.invoice.build import GST_DIFFERENCE_CODE, clarus_total, match_total, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
+from app.invoice.build import GST_DIFFERENCE_CODE, ooc_duty, clarus_total, match_total, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.invoice.pdf import render_pdf
 from app.invoice.xlsx import render_xlsx
@@ -376,6 +376,9 @@ def update_line_item(
         raise HTTPException(status_code=404, detail="Line item not found")
     _require_draft(li.proforma, db, current_user)
     changes = payload.model_dump(exclude_unset=True)
+    if li.charge and li.charge.code == "CD" and ooc_duty(li.proforma.shipment) is not None \
+            and set(changes) - {"description"}:
+        raise HTTPException(status_code=400, detail="Customs Duty is the OOC copy's total — it can't be changed by hand.")
     gst_given = "gst_amount" in changes
     gst_value = changes.pop("gst_amount", None)
     for field, value in changes.items():

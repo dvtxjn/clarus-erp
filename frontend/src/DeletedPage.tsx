@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import { fmtWhen } from "./dates";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -73,7 +74,7 @@ export default function DeletedPage() {
           it back exactly as it was. Issued invoices can't be deleted (cancel them instead).
         </p>
       </div>
-      {msg && <div role="status" className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
+      {msg && <Toast ok={msg.kind === "ok"} stamp={msg}>{msg.text}</Toast>}
       {!!items?.length && (
         <div className="inv-filters">
           <select aria-label="What" value={kind} onChange={(e) => setKind(e.target.value)}>

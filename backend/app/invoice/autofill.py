@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from app.models.challan import ist_day, today_ist
 from app.core.enums import ChargeCategory, ProformaStatus
 from app.extraction.cfs_totals import cost_inclusion, invoice_charges, line_invoices_counted
-from app.invoice.build import SECTION_TITLES, _norm, value_summary, be_importer_name, bl_consignee_organization, customs_duty, latest_challan, match_organization, stamp_duty, weight_kgs
+from app.invoice.build import SECTION_TITLES, _norm, value_summary, be_importer_name, bl_consignee_organization, customs_duty, latest_challan, ooc_duty, match_organization, stamp_duty, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.models.charge import ChargeMasterEntry
 from app.models.document import ShipmentDocument
@@ -200,6 +200,8 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
         derived = code in DERIVED_CODES
         existing = find(key)
         if existing is not None:
+            if existing.is_manual and code == "CD" and ooc_duty(s) is not None:
+                existing.is_manual = False  # Customs Duty follows the OOC copy, never a hand figure
             if existing.is_manual:
                 if full:
                     skipped.append(f"{existing.description}: edited by hand — left as is")
@@ -284,7 +286,7 @@ def sync_proforma(db: Session, proforma: Proforma, full: bool) -> tuple[list[str
         add("CD", duty["basic"], gst=duty["gst"], description=desc)
         duty_total = duty["total"]
         if duty["source"] == "ooc":
-            skipped.append("Customs Duty: no challan — taken from the OOC copy's total (final amount paid)")
+            skipped.append("Customs Duty: the OOC copy's total (final amount paid) — fixed, can't be edited")
         elif challan is None:
             skipped.append("ACTION NEEDED — upload the duty challan (Dashboard) for this BE: without it or an OOC copy "
                            "the interest is unknown and Customs Duty is the BE amount only")

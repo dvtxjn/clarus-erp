@@ -163,6 +163,29 @@ def shipment_mails(shipment_id: int, db: Session = Depends(get_db), user: User =
     return [_out(m, s, user) for m in rows]
 
 
+class FromMailOut(BaseModel):
+    added: int
+    notes: list[str]
+
+
+@router.post("/shipments/{shipment_id}/icegate-mails/attach-be", response_model=FromMailOut)
+def attach_be_from_mail(shipment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """The BE / OOC / gate pass copies customs mail holds for this shipment, put on it now (on command)."""
+    s = _shipment(db, shipment_id, user)
+    rows = (db.query(IcegateMail).filter(IcegateMail.shipment_id == s.id, IcegateMail.pdf.isnot(None))
+            .order_by(IcegateMail.received_at.asc().nullsfirst(), IcegateMail.id).all())
+    notes: list[str] = []
+    added = 0
+    for m in rows:
+        before = m.document_id
+        got = mail_apply.attach_pdf(db, m, s, user)
+        if m.document_id and m.document_id != before and "not added again" not in " ".join(got):
+            added += 1
+        notes.extend(got)
+    db.commit()
+    return FromMailOut(added=added, notes=notes)
+
+
 class ResolveIn(BaseModel):
     note: Optional[str] = None
 

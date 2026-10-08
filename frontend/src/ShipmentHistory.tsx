@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import LoadError from "./LoadError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { editContainer, shipmentHistory, updateShipment, type HistoryEntry } from "./api";
@@ -122,9 +123,7 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
         {rows && <span className="field-note">{shown.length} change{shown.length === 1 ? "" : "s"}</span>}
       </div>
       {msg && (
-        <div role="status" aria-live="polite" className={`grid-toast ${msg.ok ? "grid-toast-ok" : "grid-toast-error"}`}>
-          {msg.text}
-        </div>
+        <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>
       )}
       {rows === null && loadErr ? (
         <LoadError what="the history" onRetry={load} />

@@ -1,3 +1,4 @@
+import Toast from "./Toast";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { applyTrackerImport, previewTrackerImport, type TrackerImportResult } from "./api";
@@ -142,7 +143,7 @@ export default function TrackerImportPanel({ onApplied, onClose }: { onApplied: 
               <span className="field-note">Every change is logged.</span>
             </div>
           )}
-          {done && <div role="status" className="grid-toast grid-toast-ok">Import applied — the tracker is up to date with the sheet.</div>}
+          {done && <Toast ok stamp={done}>Import applied — the tracker is up to date with the sheet.</Toast>}
         </div>
       )}
     </div>

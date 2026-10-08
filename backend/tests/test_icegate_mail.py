@@ -158,3 +158,23 @@ def test_feed_filters_hide_history_by_default(client, admin_headers):
     assert jobs("?scope=all&date_from=2026-09-25&date_to=2026-09-25") == {"5961"}
     assert any(k["kind"] == "be_query" for k in client.get("/icegate-mails/kinds", headers=h).json())
     assert live_id
+
+
+def test_be_copy_from_mail_on_command(client, admin_headers):
+    """Documents-from-mail switched off: the BE copy waits in the mail until someone asks for it."""
+    h = admin_headers
+    sid = client.post("/shipments", json={"mbl": "MAILTEST7", "job": "977", "port": "INNSA1", "be_no": "9088677"}, headers=h).json()["id"]
+    client.put("/auto-rules", json={"custom": [], "off": ["mail.documents", "odex.cfs_fill"]}, headers=h)
+    try:
+        raw = mail("Electronic first copy of BoE  for Bill of Entry No9088677Dt29092026", "Please find attached",
+                   "noreply@icegate.gov.in", [("908867729092026INNSA1BE0290920261321.pdf", be_pdf(be_no="9088677", mawb="MAILTEST7").getvalue())],
+                   date="Tue, 29 Sep 2026 13:21:21 +0530")
+        client.post("/icegate-mails/import", files=[("files", ("be.eml", raw, "message/rfc822"))], headers=h)
+        assert not any(d["document_type"] == "assessed_bill_of_entry" for d in client.get(f"/shipments/{sid}/documents", headers=h).json())
+        r = client.post(f"/shipments/{sid}/icegate-mails/attach-be", headers=h)
+        assert r.status_code == 200, r.text
+        assert r.json()["added"] == 1
+        assert any(d["document_type"] == "assessed_bill_of_entry" for d in client.get(f"/shipments/{sid}/documents", headers=h).json())
+        assert client.post(f"/shipments/{sid}/icegate-mails/attach-be", headers=h).json()["added"] == 0  # nothing left
+    finally:
+        client.put("/auto-rules", json={"custom": [], "off": ["odex.cfs_fill"]}, headers=h)  # back to the defaults
