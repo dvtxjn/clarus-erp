@@ -2656,3 +2656,14 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .pf-preview-col { align-self: stretch; min-width: 0; }
 .pf-preview-col > .pf-right { position: sticky; top: 12px; }
 .pf-split.pf-solo { grid-template-columns: minmax(0, 1fr); }
+
+/* header: job + status on top; under it the client, then the section tabs on the same line (client, 2026-10-08) */
+.detail-page .detail-header { flex-direction: column; align-items: stretch; gap: 4px; margin-bottom: 12px; }
+.detail-job { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.detail-job .status-pill { margin: 0; }
+.detail-subrow { display: flex; flex-wrap: wrap; align-items: center; column-gap: 28px; row-gap: 0; min-width: 0; border-bottom: 1px solid var(--color-border); }
+.detail-subrow .detail-client { flex: none; white-space: nowrap; }
+.detail-subrow .detail-tabs { margin: 0; border-bottom: none; gap: 22px; height: 40px; flex-wrap: nowrap; flex: none; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.detail-subrow .detail-tabs .tab { white-space: nowrap; flex: none; margin-right: 0; }
+.detail-tabs .tab, .detail-tabs .tab:hover { box-shadow: none; background: none; }
+.detail-main > .tab-body { margin-top: 4px; }

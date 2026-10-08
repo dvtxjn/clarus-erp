@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.5.6 — shipment header: tabs up beside the client
+- Shipment page: the job number and its status sit on the top line, with space between them. Under them, the client, then the section tabs (Overview · Customs timeline · Documents · History · Proforma & Billing) on the same line. This saves a row, and the tabs stay at the top.
+- Tabs have no boxes, only the underline on the open one. Where the line is too narrow (e.g. beside the invoice preview), the tabs move to their own line under the client.
+
 ## v1.5.5 — one live invoice; the invoice takes the right half
 - Proforma: each shipment has one live invoice (one each for seller and buyer on HSS), edited in place. No v1 / v2, no "New version" and no "Delete draft": an invoice is always made, so it can't be deleted. A sent copy is still kept under "Sent copies" when it's edited again. Copies replaced before this change stay read only under "Earlier copies".
 - Proforma & Billing tab, wide screens: the invoice preview fills the right half of the page, top to bottom, and stays in place while you scroll. The job's cards and the proforma controls are on the left.

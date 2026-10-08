@@ -288,9 +288,31 @@ export function ShipmentDetail({
             {shipment.job ? `Job ${shipment.job}` : "No job number yet"}
             <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
           </span>
-          <span className="detail-client">
-            {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
-          </span>
+        </div>
+        {/* under the job: client, then the sections on the same line (client, 2026-10-08) */}
+        <div className="detail-subrow">
+        <span className="detail-client">
+          {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
+        </span>
+        <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections" ref={tabsRef}>
+          <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
+            Overview
+          </button>
+          <button role="tab" aria-selected={tab === "customs"} className={tab === "customs" ? "tab active" : "tab"} onClick={() => setTab("customs")}>
+            Customs timeline
+          </button>
+          <button role="tab" aria-selected={tab === "documents"} className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
+            Documents
+          </button>
+          <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab active" : "tab"} onClick={() => setTab("history")}>
+            History
+          </button>
+          {isAdmin && (
+            <button role="tab" aria-selected={tab === "proforma"} className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
+              Proforma &amp; Billing
+            </button>
+          )}
+        </div>
         </div>
       </header>
 
@@ -339,25 +361,6 @@ export function ShipmentDetail({
         </div>
       )}
 
-      <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections" ref={tabsRef}>
-        <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
-          Overview
-        </button>
-        <button role="tab" aria-selected={tab === "customs"} className={tab === "customs" ? "tab active" : "tab"} onClick={() => setTab("customs")}>
-          Customs timeline
-        </button>
-        <button role="tab" aria-selected={tab === "documents"} className={tab === "documents" ? "tab active" : "tab"} onClick={() => setTab("documents")}>
-          Documents
-        </button>
-        <button role="tab" aria-selected={tab === "history"} className={tab === "history" ? "tab active" : "tab"} onClick={() => setTab("history")}>
-          History
-        </button>
-        {isAdmin && (
-          <button role="tab" aria-selected={tab === "proforma"} className={tab === "proforma" ? "tab active" : "tab"} onClick={() => setTab("proforma")}>
-            Proforma &amp; Billing
-          </button>
-        )}
-      </div>
 
       <div className="tab-body" key={tab}>
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={onSaved} />}
