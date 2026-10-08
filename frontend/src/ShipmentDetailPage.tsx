@@ -495,7 +495,7 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
       : "CFS paid by the client — we pass the invoice on",
     s.line_paid_by_us
       ? "line paid by us (reimbursement)"
-      : `line paid by the client (${s.line_excluded_by ? "left off the proforma" : "shown as cost inclusion"}${s.line_cost_inclusion ? ", overridden for this job" : ", client default"})`,
+      : `line paid by the client (${s.line_excluded_by ? "left off the proforma" : "shown as cost inclusion"}${lineOverridden(s) ? ", overridden for this job" : ", client default"})`,
   ].filter(Boolean);
   return (
     <section className="detail-section billing-settings ov-billing" aria-label="Billing settings">
@@ -542,14 +542,18 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
  * Shipping line in the cost inclusion: Include / Leave out, the client default marked "(client default)" and
  * preset — picking it goes back to following the client; picking the other overrides this shipment only.
  */
+/** One reading of the line-cost setting for every place that shows it: null, or the same as the client, = client default. */
+const lineClientDefault = (s: Shipment) => (s.line_client_excluded_by ? "exclude" : "include");
+const lineOverridden = (s: Shipment) => s.line_cost_inclusion != null && s.line_cost_inclusion !== lineClientDefault(s);
+
 function LineCostSelect({ s, disabled, onSave }: { s: Shipment; disabled?: boolean; onSave: (v: "include" | "exclude" | null) => void }) {
   const ro = useReadOnly(); // view-only login: no edit controls
-  const clientDefault = s.line_client_excluded_by ? "exclude" : "include";
+  const clientDefault = lineClientDefault(s);
   const value = s.line_cost_inclusion ?? clientDefault;
   const tag = (v: "include" | "exclude") => (v === clientDefault ? " (client default)" : " (override)");
   return (
     <select
-      className="chip-select"
+      className="chip-select line-cost-select"
       aria-label="Shipping line in the cost inclusion"
       value={value}
       disabled={disabled || ro}
@@ -1394,21 +1398,24 @@ function KeyStrip({ s }: { s: Shipment }) {
   const ports = usePorts();
   const portName = s.port ? ports.find((p) => p.code === s.port)?.name ?? s.port : null;
   const age = /^\d+$/.test(s.days) ? `Day ${s.days}` : s.days || "—";
-  const cells: { label: string; value: React.ReactNode; sub?: React.ReactNode; empty?: boolean; wide?: boolean }[] = [
+  // BL / BE / container numbers are never cut: those cells wrap to a second line instead
+  const cells: { label: string; value: React.ReactNode; sub?: React.ReactNode; empty?: boolean; wide?: boolean; id?: boolean }[] = [
     {
       label: s.hbl ? "BL (MBL / HBL)" : "BL",
       value: <CopyValue value={s.mbl} label="BL no" />,
       sub: s.hbl ? <CopyValue value={s.hbl} label="HBL no" /> : s.shipping_line || s.line_from_bl?.line || null,
       wide: true,
+      id: true,
     },
     {
       label: "BE No",
       value: s.be_no ? <CopyValue value={s.be_no} label="BE No" /> : "Not filed yet",
       sub: s.be_no ? fmtDate(s.be_dt) ?? "date not entered" : null,
       empty: !s.be_no,
+      id: true,
     },
     { label: "Port", value: portName ?? "—", sub: portName && portName !== s.port ? s.port : null, empty: !s.port },
-    { label: "Containers", value: s.container || "—", sub: s.container_status, empty: !s.container },
+    { label: "Containers", value: s.container || "—", sub: s.container_status, empty: !s.container, id: true },
     {
       label: "ETA → Inward",
       value: (
@@ -1425,7 +1432,7 @@ function KeyStrip({ s }: { s: Shipment }) {
       {cells.map((c) => (
         <div className={`key-cell${c.wide ? " key-cell-wide" : ""}`} key={c.label}>
           <span className="key-label">{c.label}</span>
-          <span className={`key-value${c.empty ? " is-empty" : ""}`}>{c.value}</span>
+          <span className={`key-value${c.empty ? " is-empty" : ""}${c.id ? " is-id" : ""}`}>{c.value}</span>
           {c.sub && <span className="key-sub">{c.sub}</span>}
         </div>
       ))}
@@ -1593,17 +1600,17 @@ function MoneyCard({
 
   let lineRow: Row;
   if (!line.length) {
-    lineRow = { key: "line", label: "Line", dot: s.line_paid ? "ok" : "todo", value: "Not attached", words: true, meta: by(s.line_paid_by_us), action: uploadBtn("line") };
+    lineRow = { key: "line", label: "Shipping line", dot: s.line_paid ? "ok" : "todo", value: "Not attached", words: true, meta: by(s.line_paid_by_us), action: uploadBtn("line") };
   } else if (s.line_paid_by_us) {
-    lineRow = { key: "line", label: "Line", dot: s.line_paid ? "ok" : "warn", value: fmtMoney(s.line_amount_total) ?? "—", meta: `Paid by us · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Shipping line", dot: s.line_paid ? "ok" : "warn", value: fmtMoney(s.line_amount_total) ?? "—", meta: `Paid by us · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
   } else if (s.line_excluded_by) {
-    lineRow = { key: "line", label: "Line", dot: "muted", value: "Left out", words: true, meta: `${plural(line.length, "invoice")} · ${s.line_excluded_by}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Shipping line", dot: "muted", value: "Left out", words: true, meta: `${plural(line.length, "invoice")} · ${s.line_excluded_by}`, action: drawerBtn("line") };
   } else if (!Number(s.line_amount_total)) {
-    lineRow = { key: "line", label: "Line", dot: "warn", value: "Pick charges", words: true, meta: `Cost inclusion · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Shipping line", dot: "warn", value: "Pick charges", words: true, meta: `Cost inclusion · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
   } else {
     const all = line.flatMap((d) => chargesOf(d).map((_, i) => !(d.cost_excluded ?? []).includes(i)));
     const picked = all.length ? ` · ${all.filter(Boolean).length} of ${all.length} charges` : "";
-    lineRow = { key: "line", label: "Line", dot: "ok", value: fmtMoney(s.line_amount_total)!, meta: `Cost inclusion · ${plural(line.length, "invoice")}${picked}`, action: drawerBtn("line") };
+    lineRow = { key: "line", label: "Shipping line", dot: "ok", value: fmtMoney(s.line_amount_total)!, meta: `Cost inclusion · ${plural(line.length, "invoice")}${picked}`, action: drawerBtn("line") };
   }
 
   const rows: Row[] = [

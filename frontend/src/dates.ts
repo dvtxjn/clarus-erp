@@ -12,8 +12,11 @@ export function fmtDay(v: string | null | undefined): string {
 export function fmtDayShort(v: string | null | undefined): string {
   if (!v) return "—";
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
-  if (!m) return v;
-  return `${m[3]} ${MONTHS[Number(m[2]) - 1]}`;
+  if (m) return `${m[3]} ${MONTHS[Number(m[2]) - 1]}`;
+  // the sheet's text dates ("06-Oct-2026", INW) read the same: "06 Oct"
+  const t = /^(\d{1,2})[-\s]([A-Za-z]{3})[A-Za-z]*(?:[-\s]\d{2,4})?$/.exec(v.trim());
+  const mon = t ? MONTHS.findIndex((x) => x.toLowerCase() === t[2].toLowerCase()) : -1;
+  return t && mon >= 0 ? `${t[1].padStart(2, "0")} ${MONTHS[mon]}` : v;
 }
 
 /** The IST calendar parts of a moment (numeric, so no locale spells September "Sept"). */

@@ -583,7 +583,8 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 .columns-add input, .columns-add select { padding: 6px 8px; border: 1px solid var(--color-border); border-radius: var(--radius); }
 
 /* compact tracker cells */
-.inw-cell { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
+.inw-cell { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; min-height: 23px; } /* row height, so a lone badge sits centred */
+.inw-cell > span:empty { display: none; } /* no date yet: "Pending" starts at the left edge */
 .day-badge {
   font-size: 11px;
   font-weight: 600;
@@ -2529,7 +2530,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 /* red ghost: a destructive action that isn't the point of the screen (asks before it acts) */
 button.btn-ghost-danger { background: none; border: 1px solid transparent; box-shadow: none; color: var(--color-danger); font-weight: 500; transition: background-color var(--dur-fast); }
 button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
-.pf-delete-draft { align-self: flex-start; justify-self: start; margin-top: 16px; }
+.pf-delete-draft { margin-left: 16px; }
 /* documents: one column in the half peek (and any narrow detail) — two only with real room */
 .detail-peek .doc-columns { grid-template-columns: minmax(0, 1fr); }
 @container (max-width: 1100px) { .doc-columns { grid-template-columns: minmax(0, 1fr); } }
@@ -2560,3 +2561,9 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
   }
   .toolbar-more-list.is-open .columns-anchor > button, .toolbar-more-list.is-open .tools-menu > summary { width: 100%; justify-content: center; }
 }
+.grid-dragging .tracker-page { user-select: none; -webkit-user-select: none; }
+.switch-row .chip-select.line-cost-select, .chip-select.line-cost-select { min-width: 25ch; max-width: none; flex: none; }
+/* key strip: identifiers wrap, never "…"; the BL cell gets the extra room */
+@container (min-width: 761px) { .key-strip { grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)); } }
+.key-value.is-id { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.key-cell:has(.is-id) .key-sub { white-space: normal; overflow-wrap: anywhere; }

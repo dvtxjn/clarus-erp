@@ -1,5 +1,14 @@
 # Release notes
 
+## v1.4.2 — bagdu's live pass
+- Peek: moving to a cell in another row (click or arrows) switches the peek to that job. Dragging a grid scrollbar or header no longer selects text across the page.
+- Line cost: the Billing card and the Charges drawer now read the same setting. A value that matches the client is "client default", not "overridden". The select is wide enough for "Include (client default)".
+- Key strip: BL, BE and container numbers wrap instead of being cut. "ETA → Inward" reads "06 Oct → 06 Oct".
+- History: amounts read "₹7,53,687.00".
+- Proforma: **Delete draft…** sits last, after Mark as Sent.
+- Money card: "Line" now reads "Shipping line".
+- Tracker: the INW "Pending" badge is centred and starts at the left edge.
+
 ## v1.4.1 — fixes from bagdu's review
 - Peek: clicking outside while typing saves the field and keeps the peek open. A second click closes it. It never closes mid-edit.
 - **Delete** leaves Job, MBL, HBL, BE No and BE date alone.

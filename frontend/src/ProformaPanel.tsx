@@ -257,12 +257,6 @@ export default function ProformaPanel({
         </div>
       )}
 
-      {/* last, quiet and red: deleting is rare and asks first */}
-      {active?.status === "draft" && (
-        <button type="button" className="btn-ghost-danger pf-delete-draft" onClick={handleDeleteDraft}>
-          Delete draft…
-        </button>
-      )}
     </>
   );
 
@@ -290,6 +284,7 @@ export default function ProformaPanel({
           initialPane={wanted.current.final && active.id === wanted.current.pf ? "final" : "proforma"}
           prefillChargeId={prefillChargeId}
           onPrefilled={() => setPrefillChargeId(null)}
+          onDeleteDraft={handleDeleteDraft}
           onChange={(updated) => {
             setProformas((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
             if (shipment.is_hss) reloadQuietly();
@@ -486,6 +481,7 @@ function ProformaVersion({
   prefillChargeId,
   onPrefilled,
   onChange,
+  onDeleteDraft,
 }: {
   side: ReactNode;
   finals: ReactNode;
@@ -498,6 +494,7 @@ function ProformaVersion({
   prefillChargeId: number | null;
   onPrefilled: () => void;
   onChange: (p: Proforma) => void;
+  onDeleteDraft: () => void;
 }) {
   const [chargeId, setChargeId] = useState<number | "">("");
   const [rate, setRate] = useState("");
@@ -815,6 +812,11 @@ function ProformaVersion({
               Mark as sent
             </button>
           )}
+          {isDraft && (
+            <button type="button" className="btn-ghost-danger" onClick={onDeleteDraft}>
+              Delete draft…
+            </button>
+          )}
         </div>
         {error && <div role="alert" className="invoice-error">{error}</div>}
         {blockedNotice}
@@ -878,6 +880,12 @@ function ProformaVersion({
             {isDraft && proforma.line_items.length > 0 && (
               <button onClick={markSent}>
                 Mark as Sent
+              </button>
+            )}
+            {/* last, quiet and red: deleting is rare and asks first */}
+            {isDraft && (
+              <button type="button" className="btn-ghost-danger pf-delete-draft" onClick={onDeleteDraft}>
+                Delete draft…
               </button>
             )}
             {proforma.status === "sent" && (

@@ -741,6 +741,16 @@ export default function ShipmentGridPage() {
       if (document.querySelector(".ag-cell-inline-editing, .confirm-dialog, .modal-backdrop")) return;
       close();
     };
+    // dragging a grid scrollbar / header / section bar never selects text across the page (cell text still selects)
+    const dragStart = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest(".tracker-page .ag-root-wrapper, .tracker-page .client-grid-stack") && !t.closest(".ag-cell, input, textarea"))
+        document.body.classList.add("grid-dragging");
+    };
+    const dragEnd = () => document.body.classList.remove("grid-dragging");
+    document.addEventListener("pointerdown", dragStart, true);
+    document.addEventListener("pointerup", dragEnd, true);
+    document.addEventListener("pointercancel", dragEnd, true);
     window.addEventListener("tracker:peek", open);
     window.addEventListener("tracker:peek-close", close);
     window.addEventListener("keydown", esc);
@@ -750,6 +760,9 @@ export default function ShipmentGridPage() {
       window.removeEventListener("tracker:peek-close", close);
       window.removeEventListener("keydown", esc);
       document.removeEventListener("pointerdown", away);
+      document.removeEventListener("pointerdown", dragStart, true);
+      document.removeEventListener("pointerup", dragEnd, true);
+      document.removeEventListener("pointercancel", dragEnd, true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- grids() reads refs
   }, [setPeek]);
@@ -2020,6 +2033,8 @@ export default function ShipmentGridPage() {
                   if (!row) return;
                   announce(row.id, e.column.getColId(), false);
                   setFx({ client, rowId: row.id, colId: e.column.getColId() });
+                  // peek open: moving to another row's cell shows that row's job
+                  if (peekRef.current && peekRef.current !== row.id) setPeek(row.id);
                 }}
                 onCellEditingStarted={(e) => e.data && announce(e.data.id, e.column.getColId(), true)}
                 onCellEditingStopped={onEditingStopped}
