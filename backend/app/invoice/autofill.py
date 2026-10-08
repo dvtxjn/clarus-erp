@@ -56,6 +56,12 @@ def line_excluded_by(db: Session, s: Shipment) -> Optional[str]:
         return None
     if s.line_cost_inclusion == "exclude":
         return "switched off for this shipment"
+    return client_line_excluded_by(db, s)
+
+
+def client_line_excluded_by(db: Session, s: Shipment) -> Optional[str]:
+    """The client default, whatever the shipment's own switch says: "<org>'s setting" if a party on the
+    shipment keeps the line out of the cost inclusion, else None (it goes in)."""
     for name in {be_importer_name(s), s.consignee, s.hss_seller, s.hss_buyer} - {None, ""}:
         org = match_organization(db, name)
         if org is not None and not org.line_in_cost_inclusion:

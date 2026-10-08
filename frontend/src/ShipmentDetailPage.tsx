@@ -479,7 +479,7 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
       : "CFS paid by the client — we pass the invoice on",
     s.line_paid_by_us
       ? "line paid by us (reimbursement)"
-      : `line paid by the client (${s.line_cost_inclusion === "exclude" ? "left off the proforma" : s.line_cost_inclusion === "include" ? "shown as cost inclusion" : "cost inclusion per client setting"})`,
+      : `line paid by the client (${s.line_excluded_by ? "left off the proforma" : "shown as cost inclusion"}${s.line_cost_inclusion ? ", overridden for this job" : ", client default"})`,
   ].filter(Boolean);
   return (
     <section className="detail-section billing-settings ov-billing" aria-label="Billing settings">
@@ -510,25 +510,40 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
           <label className="switch-row">
             <span className="switch-label">
               Line cost
-              <InfoTip text="Shipping line in cost inclusion. Client's setting follows the client (e.g. Harekrishna Rubber: not included)" />
+              <InfoTip text="Shipping line in the cost inclusion. Preset to the client default; pick the other to override for this shipment only" />
             </span>
-            <select
-              className="chip-select"
-              value={s.line_cost_inclusion ?? "auto"}
-              onChange={async (e) => {
-                const v = e.target.value === "auto" ? null : (e.target.value as "include" | "exclude");
-                onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment);
-              }}
-            >
-              <option value="auto">Client's setting</option>
-              <option value="include">Include</option>
-              <option value="exclude">Leave out</option>
-            </select>
+            <LineCostSelect s={s} onSave={async (v) => onChange((await saveShipment(s, { line_cost_inclusion: v })).shipment)} />
           </label>
         )}
       </div>
       <p className="billing-summary">{summary.join(" · ")}.</p>
     </section>
+  );
+}
+
+/**
+ * Shipping line in the cost inclusion: Include / Leave out, the client default marked "(client default)" and
+ * preset — picking it goes back to following the client; picking the other overrides this shipment only.
+ */
+function LineCostSelect({ s, disabled, onSave }: { s: Shipment; disabled?: boolean; onSave: (v: "include" | "exclude" | null) => void }) {
+  const clientDefault = s.line_client_excluded_by ? "exclude" : "include";
+  const value = s.line_cost_inclusion ?? clientDefault;
+  const tag = (v: "include" | "exclude") => (v === clientDefault ? " (client default)" : " (override)");
+  return (
+    <select
+      className="chip-select"
+      aria-label="Shipping line in the cost inclusion"
+      value={value}
+      disabled={disabled}
+      title={s.line_client_excluded_by ? `Client default: left out (${s.line_client_excluded_by})` : "Client default: included"}
+      onChange={(e) => {
+        const v = e.target.value as "include" | "exclude";
+        onSave(v === clientDefault ? null : v);
+      }}
+    >
+      <option value="include">Include{tag("include")}</option>
+      <option value="exclude">Leave out{tag("exclude")}</option>
+    </select>
   );
 }
 
@@ -959,16 +974,7 @@ function ChargeDrawer({
           {group === "line" && !s.line_paid_by_us && (
             <label className="switch-row">
               <span className="switch-label">In cost inclusion</span>
-              <select
-                className="chip-select"
-                value={s.line_cost_inclusion ?? "auto"}
-                disabled={busy}
-                onChange={(e) => save({ line_cost_inclusion: e.target.value === "auto" ? null : (e.target.value as "include" | "exclude") })}
-              >
-                <option value="auto">Client's setting</option>
-                <option value="include">Include</option>
-                <option value="exclude">Leave out</option>
-              </select>
+              <LineCostSelect s={s} disabled={busy} onSave={(v) => save({ line_cost_inclusion: v })} />
             </label>
           )}
           {group === "cfs" && s.cfs_paid_by_us && (

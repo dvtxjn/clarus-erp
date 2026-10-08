@@ -110,6 +110,7 @@ export interface Shipment {
   // duty as actually payable: BE duty + challan interest, or the OOC copy's total (detail responses only)
   final_duty?: { total: string; interest: string; source: "challan" | "ooc" | "be" } | null;
   line_excluded_by?: string | null; // why the line is left off the cost inclusion (single-shipment GET only)
+  line_client_excluded_by?: string | null; // client default: "<org>'s setting" = left out, null = included
   /** ICEGATE read-out (on command): gateway IGM for inland, vessel, FPOD ICD BL details, differences. */
   icegate?: {
     fetched_at?: string;

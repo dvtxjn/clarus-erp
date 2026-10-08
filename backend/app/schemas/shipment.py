@@ -152,6 +152,7 @@ class ShipmentOut(ShipmentBase):
     line_from_bl: Optional[dict[str, Any]] = None  # {"line", "note"} from the MBL's format (computed)
     final_duty: Optional[dict[str, Any]] = None    # {"total", "interest", "source"}; single-shipment responses only
     line_excluded_by: Optional[str] = None         # why the line is left off the cost inclusion; single-shipment only
+    line_client_excluded_by: Optional[str] = None  # client default: "<org>'s setting" = left out, None = included
     model_config = ConfigDict(from_attributes=True)
 
     id: int
