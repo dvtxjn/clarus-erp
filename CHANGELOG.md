@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.5.4 — design fixes, checked on screen
+- Shipment Overview, wide screens: cards end where their content ends. Billing settings no longer has an empty block at its bottom.
+- Checklist chips: an unticked chip's label is centred. Ticked and unticked chips are the same width, so nothing moves when you click one.
+
 ## v1.5.3 — no gap in the Overview on wide screens
 - Shipment Overview, wide screens: Notes sits under Customs duty in the middle column, and Billing settings has the right column to itself. The short Duty card no longer leaves an empty space.
 

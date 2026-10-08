@@ -1858,6 +1858,9 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
 .check-chip:hover:not(:disabled) { border-color: var(--color-text-muted); color: var(--color-text); background: var(--color-surface); }
 .check-tick { display: inline-block; width: 1.1em; visibility: hidden; }
 .check-chip.is-on .check-tick { visibility: visible; }
+/* unticked: the ✓'s room is split either side, so the label is centred and the chip keeps the same width */
+.check-chip:not(.is-on) .check-tick { width: .55em; }
+.check-chip:not(.is-on) { padding-right: calc(6px + .55em); }
 .check-chip.is-on { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
 .check-chip.is-on:hover:not(:disabled) { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-fg); }
 
@@ -2178,8 +2181,8 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 }
 @container (min-width: 1600px) {
   .overview {
-    /* Notes sits under Duty (Duty is short: it left a hole beside Notes + Billing); Notes takes the rest of the column */
-    grid-template-rows: auto 1fr auto;
+    /* Notes sits under Duty; cards keep their own height (no stretched card with an empty bottom) */
+    grid-template-rows: auto 1fr auto; align-items: start;
     grid-template-areas:
       "ship ship ship ship ship duty duty duty duty bill bill bill"
       "ship ship ship ship ship notes notes notes notes bill bill bill"

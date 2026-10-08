@@ -31,3 +31,4 @@ secrets/
 # Playwright CLI output (may contain credentials)
 .playwright-cli/
 samples/
+.preview-login
