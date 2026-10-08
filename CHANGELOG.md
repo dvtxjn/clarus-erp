@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.6.1 — 08 Oct 2026
+
+- Proforma & Billing: the Billing settings switches were drawn as squares; they are round toggles again.
+
 ## v1.6.0 — 08 Oct 2026
 
 - Shipment page: Customs duty, CFS and Shipping line are now their own tabs, next to Overview.

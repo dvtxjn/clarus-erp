@@ -1319,7 +1319,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 /* left column: one card per block, one button size (uniform — client, 2026-09-30) */
 .pf-left > * { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 10px 12px; margin: 0; }
 .pf-left > p.tracker-subtitle { background: none; border: none; padding: 0 2px; }
-.pf-left button:not(.tab):not(.link-button):not(.link-btn):not(.mini-field) {
+.pf-left button:not(.tab):not(.link-button):not(.link-btn):not(.mini-field):not(.switch) {
   font-size: 12.5px; font-weight: 500; padding: 0 12px; height: 30px; line-height: 28px; border-radius: var(--radius);
 }
 .pf-left .proforma-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
