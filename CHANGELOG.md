@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.5.1 — checklist chips stay inside their column
+- Ticking a chip (Duty / CFS Inv / Line / OOC / DO) no longer makes it wider. The ✓'s room is always kept, so a column fitted to unticked chips doesn't overflow once they're ticked.
+
 ## v1.5.0 — go-live sweep (bagdu)
 - Checklist chips (Duty / CFS Inv / Line / OOC / DO): turning one ON is still one click. Turning one OFF asks first, e.g. "Mark Shipping line as NOT paid? Job 142 will move back to Ongoing." So does a last tick that moves a job to Cleared. Cancel changes nothing.
 - The toast after a chip change or a **Delete** in a cell has **Undo** for about 10 s. It floats at the bottom, over the peek too. Undo (and Ctrl/⌘+Z) still works after the peek opens or closes.

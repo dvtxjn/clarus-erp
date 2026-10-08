@@ -1856,6 +1856,8 @@ html, .ag-root-wrapper, .ag-body-horizontal-scroll-viewport, .ag-body-vertical-s
   box-shadow: none; white-space: nowrap; cursor: pointer;
 }
 .check-chip:hover:not(:disabled) { border-color: var(--color-text-muted); color: var(--color-text); background: var(--color-surface); }
+.check-tick { display: inline-block; width: 1.1em; visibility: hidden; }
+.check-chip.is-on .check-tick { visibility: visible; }
 .check-chip.is-on { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-fg); }
 .check-chip.is-on:hover:not(:disabled) { background: var(--ok-bg); color: var(--ok-fg); border-color: var(--ok-fg); }
 

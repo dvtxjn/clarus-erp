@@ -309,7 +309,8 @@ function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & 
               Promise.resolve(p.context.toggleFlag(s, f, () => setBusy(f))).finally(() => setBusy(null));
             }}
           >
-            {on && <span aria-hidden="true">✓ </span>}
+            {/* the tick's room is always kept: ticking never widens the chip past the fitted column */}
+            <span className="check-tick" aria-hidden="true">✓</span>
             {label}
           </button>
         );
