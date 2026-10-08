@@ -2526,3 +2526,10 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
   box-shadow: var(--shadow-md); transform-origin: top left;
 }
 @media (prefers-reduced-motion: no-preference) { .overflow-tip { animation: pop-in 150ms cubic-bezier(.2, 0, 0, 1); } }
+/* red ghost: a destructive action that isn't the point of the screen (asks before it acts) */
+button.btn-ghost-danger { background: none; border: 1px solid transparent; box-shadow: none; color: var(--color-danger); font-weight: 500; transition: background-color var(--dur-fast); }
+button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
+.pf-delete-draft { align-self: flex-start; justify-self: start; margin-top: 16px; }
+/* documents: one column in the half peek (and any narrow detail) — two only with real room */
+.detail-peek .doc-columns { grid-template-columns: minmax(0, 1fr); }
+@container (max-width: 1100px) { .doc-columns { grid-template-columns: minmax(0, 1fr); } }

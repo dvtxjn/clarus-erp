@@ -22,6 +22,11 @@ const FILTERS: [string, string, (f: FolderFile) => boolean][] = [
 
 const TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter((t) => !LEGACY_DOCUMENT_TYPES.includes(t));
 const label = (t: string | null) => (t ? (t in DOCUMENT_TYPE_LABELS ? docShort(t as DocumentType) : t) : "");
+/** Drive can hang: after 10s say so and offer Retry instead of "Reading…" forever (the read may still finish). */
+const READ_TIMEOUT_MS = 10_000;
+function within<T>(p: Promise<T>): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, no) => window.setTimeout(() => no(new Error("timeout")), READ_TIMEOUT_MS))]);
+}
 const errText = (e: unknown, fallback: string) => {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   return typeof d === "string" ? d : fallback;
@@ -69,7 +74,7 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
     setReading(true);
     setError(null);
     try {
-      const r = await syncFolder(shipment.id);
+      const r = await within(syncFolder(shipment.id));
       setFiles(r.files);
       const added = r.files.filter((f) => f.status === "added").length;
       setSummary(
@@ -93,7 +98,7 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
     if (!folderId) return;
     const key = `${shipment.id}:${folderId}`;
     if (readThisSession.has(key)) {
-      getFolderFiles(shipment.id).then(setFiles, (e) => setError(errText(e, "Couldn't open the Drive folder.")));
+      within(getFolderFiles(shipment.id)).then(setFiles, (e) => setError(errText(e, "Couldn't read the Drive folder.")));
     } else {
       markRead(key);
       read();
@@ -132,7 +137,14 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
       {open && (
         <>
           {summary && <p className="tracker-subtitle">{summary}</p>}
-          {error && <div className="auth-error">{error}</div>}
+          {error && (
+            <div className="auth-error" role="alert">
+              {error}{" "}
+              <button type="button" className="link-btn" onClick={read} disabled={reading}>
+                Retry
+              </button>
+            </div>
+          )}
           <div className="folder-reader-filters">
             {FILTERS.map(([id, text]) => (
               <label key={id}>
@@ -142,7 +154,9 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
             ))}
           </div>
           {files === null ? (
-            <div className="tracker-empty">{reading ? "Reading the folder…" : "Loading…"}</div>
+            <div className="tracker-empty">
+              {reading ? "Reading the folder…" : error ? "The folder's files show here once it has been read." : "Loading…"}
+            </div>
           ) : shown.length === 0 ? (
             <div className="tracker-empty">
               {files.length === 0 ? "No PDFs in this folder." : "Nothing here — try another filter."}

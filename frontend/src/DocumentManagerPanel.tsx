@@ -190,6 +190,7 @@ export default function DocumentManagerPanel({
 
   const mandatory = checklist.filter((c) => c.required && !c.optional);
   const uploadedCount = mandatory.filter((c) => c.uploaded).length;
+  const optionalCount = checklist.filter((c) => c.required && c.optional).length;
 
   // --- several files from the shipment's own Drive folder, each marked as one of our documents ---
   const [picked, setPicked] = useState<{ files: { id: string; name: string }[]; accessToken: string } | null>(null);
@@ -237,7 +238,8 @@ export default function DocumentManagerPanel({
 
       {shipment.hs_code_id != null && (
         <p className="tracker-subtitle">
-          {uploadedCount} of {mandatory.length} required documents uploaded
+          Required {uploadedCount}/{mandatory.length}
+          {optionalCount > 0 && <span className="field-note"> · + {optionalCount} optional</span>}
         </p>
       )}
 

@@ -187,11 +187,6 @@ export default function ProformaPanel({
           ) : (
             <button onClick={() => handleNewVersion()}>+ New proforma</button>
           )}
-          {active?.status === "draft" && (
-            <button className="btn-secondary link-danger danger-apart" onClick={handleDeleteDraft}>
-              Delete draft
-            </button>
-          )}
         </div>
       </div>
 
@@ -262,6 +257,12 @@ export default function ProformaPanel({
         </div>
       )}
 
+      {/* last, quiet and red: deleting is rare and asks first */}
+      {active?.status === "draft" && (
+        <button type="button" className="btn-ghost-danger pf-delete-draft" onClick={handleDeleteDraft}>
+          Delete draft…
+        </button>
+      )}
     </>
   );
 
