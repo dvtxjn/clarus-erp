@@ -1,10 +1,10 @@
-import { fmtDay, fmtDayShort, fmtWhen } from "./dates";
+import { fmtDay, fmtDayShort, fmtWhen, MONTHS } from "./dates";
 import LoadError from "./LoadError";
 import { tabKeys } from "./tabKeys";
 import { copyText } from "./clipboard";
 import CustomsTimeline from "./CustomsTimeline";
 import { nextStep } from "./clearanceFlow";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useAuth, useReadOnly } from "./AuthContext";
 import { kgLooking } from "./weight";
@@ -439,6 +439,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
     // Shipment & movement across the page (with the notes and IGM & ICD details), containers under it
     // (client, 2026-10-08). Duty, CFS and Shipping line have their own tabs; billing settings are on Proforma.
     <div className="overview" ref={box}>
+        <CopyRows.Provider value={true}>
         <section className="detail-section ov-ship">
           <h3>Shipment &amp; movement</h3>
           <div className="field-grid">
@@ -477,14 +478,15 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
                   <Field
                     label="Gateway IGM"
                     value={[s.icegate.gateway_igm.no, s.icegate.gateway_igm.date].filter(Boolean).join(" · ") || null}
+                    copy={[{ label: "No.", text: s.icegate.gateway_igm.no }, { label: "Date", text: ddmmyyyy(s.icegate.gateway_igm.date) }]}
                     hint={`The sea IGM at the gateway port (${s.icegate.gateway_igm.port ?? "—"}). The ICD's own IGM is under FPOD ICD BL details.`}
                   />
                 ) : s.icegate?.fetched_at && s.igm ? (
-                  <Field label="IGM" value={[s.igm, fmtDate(s.igm_date)].filter(Boolean).join(" · ")} />
+                  <Field label="IGM" value={[s.igm, fmtDate(s.igm_date)].filter(Boolean).join(" · ")} copy={[{ label: "No.", text: s.igm }, { label: "Date", text: ddmmyyyy(s.igm_date) }]} />
                 ) : (
                   <>
                     <EditField label="IGM No" field="igm" s={s} onChange={onChange} />
-                    <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} />
+                    <EditField label="IGM Date" field="igm_date" kind="date" s={s} onChange={onChange} display={fmtDate(s.igm_date)} copy={[{ text: ddmmyyyy(s.igm_date) }]} />
                   </>
                 )}
                 <EditField label="Line No" field="line_no" s={s} onChange={onChange} />
@@ -502,8 +504,8 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
                 <>
                   <div className="amount-block-title detail-subhead">FPOD ICD BL details</div>
                   <div className="field-grid">
-                    <Field label="ICD IGM" value={[s.icegate.icd.icd_igm_no, s.icegate.icd.icd_igm_date].filter(Boolean).join(" · ") || null} />
-                    <Field label="SMTP" value={[s.icegate.icd.smtp_no, s.icegate.icd.smtp_date].filter(Boolean).join(" · ") || null} hint="Rail / road permit from the gateway to the ICD" />
+                    <Field label="ICD IGM" value={[s.icegate.icd.icd_igm_no, s.icegate.icd.icd_igm_date].filter(Boolean).join(" · ") || null} copy={[{ label: "No.", text: s.icegate.icd.icd_igm_no }, { label: "Date", text: ddmmyyyy(s.icegate.icd.icd_igm_date) }]} />
+                    <Field label="SMTP" value={[s.icegate.icd.smtp_no, s.icegate.icd.smtp_date].filter(Boolean).join(" · ") || null} copy={[{ label: "No.", text: s.icegate.icd.smtp_no }, { label: "Date", text: ddmmyyyy(s.icegate.icd.smtp_date) }]} hint="Rail / road permit from the gateway to the ICD" />
                     <Field label="Gateway port" value={s.icegate.icd.gateway_port ? formatPort(s.icegate.icd.gateway_port, ports) || s.icegate.icd.gateway_port : null} />
                     {Object.entries(s.icegate.icd)
                       .filter(([k]) => !["icd_igm_no", "icd_igm_date", "smtp_no", "smtp_date", "gateway_port", "be_location", "importer"].includes(k))
@@ -526,6 +528,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             </ul>
           )}
         </section>
+        </CopyRows.Provider>
       {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
           arrival at the FPOD; sea port: from the INW (client, 2026-09-30) */}
       {s.port && (
@@ -767,6 +770,59 @@ function CopyValue({ value, label }: { value: string | null | undefined; label: 
       {value}
       <span className="copy-value-tag" aria-live="polite">{copied}</span>
     </button>
+  );
+}
+
+/** Rows inside this get a copy button on the side (Shipment & movement: client, 2026-10-08). */
+const CopyRows = createContext(false);
+type CopyPart = { label?: string; text: string | null | undefined };
+
+/** "07-Sep-2026" / "2026-09-07" / "07 Sep 2026" -> "07/09/2026"; anything else as it is. */
+function ddmmyyyy(d: string | null | undefined): string | null {
+  if (!d) return null;
+  const t = d.trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  m = t.match(/^(\d{1,2})[-\s/]([A-Za-z]{3})[-\s/](\d{4})$/);
+  if (m) {
+    const mon = MONTHS.findIndex((x) => x.toLowerCase() === m![2].toLowerCase());
+    if (mon >= 0) return `${m[1].padStart(2, "0")}/${String(mon + 1).padStart(2, "0")}/${m[3]}`;
+  }
+  return t;
+}
+
+/** The copy button(s) at the end of a row: one copies the value as shown; IGM-style rows copy the number and the date apart. */
+function RowCopy({ label, parts }: { label: string; parts: CopyPart[] }) {
+  const [done, setDone] = useState<number | null>(null);
+  const [failed, setFailed] = useState(false);
+  const live = parts.filter((p): p is { label?: string; text: string } => !!p.text);
+  if (!live.length) return <span className="row-copy" />;
+  async function copy(i: number) {
+    const ok = await copyText(live[i].text);
+    setFailed(!ok);
+    setDone(i);
+    window.setTimeout(() => setDone(null), 1400);
+  }
+  return (
+    <span className="row-copy">
+      {live.map((p, i) => (
+        <button
+          key={i}
+          type="button"
+          className={`row-copy-btn${done === i ? " is-done" : ""}`}
+          onClick={() => copy(i)}
+          title={`Copy ${p.label ? `${label} ${p.label.toLowerCase()}` : label}: ${p.text}`}
+          aria-label={`Copy ${p.label ? `${label} ${p.label.toLowerCase()}` : label}`}
+        >
+          {done === i ? (failed ? "Couldn't" : "Copied") : p.label ?? (
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+              <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" />
+              <path d="M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2" />
+            </svg>
+          )}
+        </button>
+      ))}
+    </span>
   );
 }
 
@@ -1775,7 +1831,9 @@ function EditField({
   display,
   hint,
   multiline,
+  copy,
 }: {
+  copy?: CopyPart[];
   label: string;
   field: keyof Shipment;
   s: Shipment;
@@ -1788,6 +1846,7 @@ function EditField({
   const ports = usePorts();
   const saveShipment = useSaveShipment();
   const readOnly = !!useAuth().user?.read_only;
+  const copyRows = useContext(CopyRows);
   const raw = (s[field] as string | null | undefined) ?? "";
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(raw);
@@ -1879,17 +1938,20 @@ function EditField({
         </span>
       )}
       {err && <span className="auth-error">{err}</span>}
+      {copyRows && !editing && <RowCopy label={label} parts={copy ?? [{ text: shown }]} />}
     </div>
   );
 }
 
-function Field({ label, value, hint, strong, amount }: { label: string; value: string | null; hint?: string; strong?: boolean; amount?: boolean }) {
+function Field({ label, value, hint, strong, amount, copy }: { label: string; value: string | null; hint?: string; strong?: boolean; amount?: boolean; copy?: CopyPart[] }) {
+  const copyRows = useContext(CopyRows);
   return (
     <div className={`field-row${amount ? " field-amount" : ""}${strong ? " field-total" : ""}`} title={hint}>
       <span className="field-label">{label}</span>
       <span className={`field-value${strong ? " field-strong" : ""}${value == null ? " field-empty" : ""}`}>
         {value ?? "—"}
       </span>
+      {copyRows && <RowCopy label={label} parts={copy ?? [{ text: value }]} />}
     </div>
   );
 }

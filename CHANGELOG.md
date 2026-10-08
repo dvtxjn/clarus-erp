@@ -1,5 +1,10 @@
 # Release notes
 
+## v1.6.4 — 08 Oct 2026
+
+- Overview rows: the labels are bold and the values plain.
+- Shipment & movement: every row has a copy button on its right that copies the value as shown. Gateway IGM, IGM, ICD IGM and SMTP have two buttons, "No." and "Date"; the date copies as dd/mm/yyyy (e.g. 07/09/2026).
+
 ## v1.6.3 — 08 Oct 2026
 
 - Red alerts (backups) now show as a box in the sidebar, under the menu, instead of a strip across the top. The collapsed sidebar shows a red "!"; phones keep the top strip.

@@ -2690,3 +2690,19 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .detail-page.pf-wide > .detail-top { grid-column: 1 / -1; }
 .detail-page.pf-wide { row-gap: 0; }
 .detail-page.pf-wide > .detail-main, .detail-page.pf-wide > .pf-preview-col { margin-top: 0; }
+
+/* Overview rows: the label is bold, the value plain (client, 2026-10-08) */
+.overview .field-label { font-weight: 600; color: var(--color-text); }
+.overview .field-row > .field-value:not(.edit-value), .overview .edit-value { font-weight: 400; }
+/* Shipment & movement: a copy button at the end of each row; IGM-style rows copy No. and Date apart */
+.ov-ship .field-row { grid-template-columns: 120px minmax(0, 1fr) auto; }
+.row-copy { display: inline-flex; gap: 2px; justify-self: end; min-width: 24px; }
+.row-copy-btn {
+  all: unset; box-sizing: border-box; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px;
+  border-radius: 4px; font-size: 11px; font-weight: 500; color: var(--color-text-muted); cursor: copy;
+  opacity: .55; transition: opacity var(--dur-fast), background-color var(--dur-fast), color var(--dur-fast);
+}
+.field-row:hover .row-copy-btn, .row-copy-btn:focus-visible { opacity: 1; }
+.row-copy-btn:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text); }
+.row-copy-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+.row-copy-btn.is-done { opacity: 1; color: var(--ok-fg); background: var(--ok-bg); }
