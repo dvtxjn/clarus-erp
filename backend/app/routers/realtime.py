@@ -18,6 +18,10 @@ from app.models.user import User
 router = APIRouter(prefix="/realtime", tags=["live updates"])
 
 PING_SECONDS = 15
+# A stream ends itself after 10 minutes and the browser reconnects at once. An open stream keeps its
+# server instance alive, so without this an old version's instance (and its database connections)
+# lingered up to an hour after a deploy and the database ran out of connections (2026-10-08).
+STREAM_MAX_SECONDS = 600
 
 
 def _user_for_stream(authorization: Optional[str]) -> tuple[int, str, Optional[list[str]]]:
@@ -43,10 +47,14 @@ async def stream(request: Request, authorization: Optional[str] = Header(None)):
     sub = realtime.hub.subscribe(user_id, ports)
 
     async def events():
+        ends = asyncio.get_running_loop().time() + STREAM_MAX_SECONDS
         try:
             yield f"data: {json.dumps({'t': 'hello', 'uid': user_id, 'name': name})}\n\n"
             while True:
                 if await request.is_disconnected():
+                    break
+                if asyncio.get_running_loop().time() >= ends:
+                    yield f"data: {json.dumps({'t': 'bye'})}\n\n"  # reconnect now (lands on the newest version)
                     break
                 try:
                     msg = await asyncio.wait_for(sub.queue.get(), PING_SECONDS)

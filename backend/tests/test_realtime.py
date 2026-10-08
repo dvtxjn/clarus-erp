@@ -69,3 +69,13 @@ def test_port_scoped_streams_only_get_their_ports():
     assert sub.wants({"t": "s", "port": "INMUN1"}) and not sub.wants({"t": "s", "port": "INNSA1"})
     assert sub.wants({"t": "resync"})
     assert realtime.Subscriber(user_id=9, ports=None).wants({"t": "s", "port": "INNSA1"})
+
+
+def test_stream_ends_itself_with_bye(client, admin_headers, monkeypatch):
+    """A stream closes on its own (browser reconnects), so an old version's instance can't linger after a deploy."""
+    from app.routers import realtime as rt
+
+    monkeypatch.setattr(rt, "STREAM_MAX_SECONDS", 0)
+    with client.stream("GET", "/realtime/stream", headers=admin_headers) as r:
+        body = "".join(r.iter_text())
+    assert '"t": "hello"' in body and body.rstrip().endswith('data: {"t": "bye"}')

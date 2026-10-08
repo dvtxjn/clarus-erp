@@ -9,7 +9,8 @@ export type LiveEvent =
   | { t: "hello"; uid: number; name: string }
   | { t: "s"; id: number; port: string | null; v: number; del: boolean; by: string | null }
   | { t: "p"; uid: number; name: string; sid: number | null; f: string | null; edit: boolean; tab: string | null }
-  | { t: "resync" };
+  | { t: "resync" }
+  | { t: "bye" };
 
 /** Identifies this browser tab (two tabs of the same person are two "people" here). */
 export const TAB_ID = Math.random().toString(36).slice(2, 10);
@@ -22,6 +23,7 @@ export function connectLive(onEvent: (e: LiveEvent) => void, onStatus?: (live: b
 
   async function run() {
     while (!stopped) {
+      let bye = false; // the server ended the stream on purpose (every 10 min): reconnect at once, quietly
       controller = new AbortController();
       try {
         const res = await fetch(`${API_BASE_URL}/realtime/stream`, {
@@ -51,7 +53,12 @@ export function connectLive(onEvent: (e: LiveEvent) => void, onStatus?: (live: b
               .join("");
             if (!data) continue; // ": ping"
             try {
-              onEvent(JSON.parse(data) as LiveEvent);
+              const ev = JSON.parse(data) as LiveEvent;
+              if (ev.t === "bye") {
+                bye = true;
+                continue;
+              }
+              onEvent(ev);
             } catch {
               /* ignore a malformed event */
             }
@@ -60,8 +67,9 @@ export function connectLive(onEvent: (e: LiveEvent) => void, onStatus?: (live: b
       } catch {
         /* network / server restart: retry below */
       }
-      onStatus?.(false);
       if (stopped) break;
+      if (bye) continue;
+      onStatus?.(false);
       attempt += 1;
       await new Promise((r) => setTimeout(r, Math.min(15000, 1000 * 2 ** Math.min(attempt, 4))));
     }

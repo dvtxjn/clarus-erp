@@ -133,6 +133,7 @@ def _listen_forever() -> None:
 
     dsn = DATABASE_URL.replace("+psycopg2", "")
     while True:
+        conn = None
         try:
             conn = psycopg2.connect(dsn)
             conn.set_isolation_level(psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
@@ -150,6 +151,11 @@ def _listen_forever() -> None:
                         pass
         except Exception:  # database restart etc.: retry
             log.exception("realtime listener lost its connection; retrying")
+            if conn is not None:
+                try:
+                    conn.close()  # never leave a half-dead connection holding a slot
+                except Exception:
+                    pass
             time.sleep(2)
 
 

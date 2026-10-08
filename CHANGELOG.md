@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.4.9 — old versions let go of the database after a deploy
+- Each tab's live-update stream now reconnects by itself every 10 minutes, without a "Live" blink. An open stream used to keep the previous version's server running, with its database connections, for up to an hour after a deploy, so the database still ran out of connections after v1.4.8. Old versions now shut down within about 10 minutes.
+- The live-update listener closes a broken database connection before retrying.
+
 ## v1.4.8 — database connections
 - Fixed random "couldn't load" errors, the blank Cleared count and failed live-presence updates. The database (smallest Cloud SQL size, about 22 connections) was running out of connections: each app instance could open up to 16. Each instance now keeps at most 5 (plus 1 for live updates), checks a connection before using it, and the app runs at most 2 instances.
 
