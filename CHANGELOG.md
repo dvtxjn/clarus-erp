@@ -1,5 +1,11 @@
 # Release notes
 
+## v1.7.0 — 08 Oct 2026
+
+- Shipment page: Customs duty, CFS and Shipping line are now one tab, "Charges", stacked top to bottom in that order.
+- The Overview's status links (Duty "Details", CFS / Liner "Charges") open the Charges tab at that section.
+- Old links to the separate tabs still work and land on Charges.
+
 ## v1.6.7 — 08 Oct 2026
 
 - IGM & ICD details: the Vessel row (vessel code · IMO) is no longer shown. ICEGATE still reads it; it is just hidden.

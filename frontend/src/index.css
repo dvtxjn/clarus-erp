@@ -2710,3 +2710,5 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .row-copy-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .row-copy-btn.is-done { opacity: 1; color: var(--ok-fg); background: var(--ok-bg); }
 .ov-ship .field-row > .field-value { overflow-wrap: break-word; } /* wrap at " · ", not inside a date */
+.charges-tab { display: flex; flex-direction: column; gap: 16px; }
+.charges-tab > div { scroll-margin-top: 12px; }

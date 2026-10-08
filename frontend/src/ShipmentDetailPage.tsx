@@ -21,7 +21,7 @@ import ShipmentHistory from "./ShipmentHistory";
 import { formatPort, usePorts } from "./ports";
 import DateInput from "./DateInput";
 
-type Tab = "overview" | "duty" | "cfs" | "line" | "customs" | "documents" | "history" | "proforma";
+type Tab = "overview" | "charges" | "customs" | "documents" | "history" | "proforma";
 
 // sea ports: free days start at the POD inward; every other port is inland (ICD) — client, 2026-09-30
 const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
@@ -40,13 +40,16 @@ function fmtMoney(v: string | null): string | null {
 }
 
 
-const TABS: Tab[] = ["overview", "duty", "cfs", "line", "customs", "documents", "history", "proforma"];
+const TABS: Tab[] = ["overview", "charges", "customs", "documents", "history", "proforma"];
+/** old links (?tab=duty / cfs / line) land on the combined Charges tab */
+const OLD_TABS: Record<string, Tab> = { duty: "charges", cfs: "charges", line: "charges" };
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   // the open tab lives in the URL (?tab=proforma): links, Back and refresh land on it
   const [params, setParams] = useSearchParams();
-  const fromUrl = params.get("tab") as Tab | null;
+  const asked = params.get("tab");
+  const fromUrl = (asked && OLD_TABS[asked]) || (asked as Tab | null);
   const tab: Tab = fromUrl && TABS.includes(fromUrl) ? fromUrl : "overview";
   // switching tabs replaces the entry, so Back leaves the shipment instead of stepping through its tabs
   const setTab = (t: Tab) => setParams(t === "overview" ? {} : { tab: t }, { replace: true });
@@ -114,6 +117,17 @@ export function ShipmentDetail({
   const [localTab, setLocalTab] = useState<Tab>("overview"); // peek panel: no URL of its own
   const tab = tabProp ?? localTab;
   const setTab = onTab ?? setLocalTab;
+  // a status row on the Overview opens Charges at its own section
+  const [chargeFocus, setChargeFocus] = useState<"duty" | MoneyGroup | null>(null);
+  const openCharges = (g: "duty" | MoneyGroup) => {
+    setChargeFocus(g);
+    setTab("charges");
+  };
+  useEffect(() => {
+    if (tab !== "charges" || !chargeFocus) return;
+    document.getElementById(`charges-${chargeFocus}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setChargeFocus(null);
+  }, [tab, chargeFocus]);
   const isAdmin = useAuth().user?.role === "admin"; // invoicing is admin-only
 
   // the shipment's documents: the Money card and its charge drawer read them (cached per job: reopening draws at once)
@@ -289,15 +303,9 @@ export function ShipmentDetail({
           <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
             Overview
           </button>
-          {/* each payment has its own section (client, 2026-10-08) */}
-          <button role="tab" aria-selected={tab === "duty"} className={tab === "duty" ? "tab active" : "tab"} onClick={() => setTab("duty")}>
-            Customs duty
-          </button>
-          <button role="tab" aria-selected={tab === "cfs"} className={tab === "cfs" ? "tab active" : "tab"} onClick={() => setTab("cfs")}>
-            CFS
-          </button>
-          <button role="tab" aria-selected={tab === "line"} className={tab === "line" ? "tab active" : "tab"} onClick={() => setTab("line")}>
-            Shipping line
+          {/* customs duty, CFS and shipping line stacked in one tab (client, 2026-10-08) */}
+          <button role="tab" aria-selected={tab === "charges"} className={tab === "charges" ? "tab active" : "tab"} onClick={() => setTab("charges")}>
+            Charges
           </button>
           <button role="tab" aria-selected={tab === "customs"} className={tab === "customs" ? "tab active" : "tab"} onClick={() => setTab("customs")}>
             Customs timeline
@@ -332,8 +340,8 @@ export function ShipmentDetail({
         <MoneyCard
           s={shipment}
           docs={docs}
-          onOpen={setTab}
-          onDuty={() => setTab("duty")}
+          onOpen={openCharges}
+          onDuty={() => openCharges("duty")}
           onUpload={(t) => {
             setUploadType(t);
             setTab("documents");
@@ -354,22 +362,27 @@ export function ShipmentDetail({
 
       <div className="tab-body" key={tab}>
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={onSaved} />}
-      {tab === "duty" && <DutyTab shipment={shipment} onChange={onSaved} />}
-      {(tab === "cfs" || tab === "line") && (
-        <ChargeDrawer
-          key={tab}
-          inline
-          group={tab}
-          shipment={shipment}
-          docs={docs}
-          onChange={onSaved}
-          onSaved={reload}
-          onClose={() => {}}
-          onUpload={(t) => {
-            setUploadType(t);
-            setTab("documents");
-          }}
-        />
+      {tab === "charges" && (
+        <div className="charges-tab">
+          <div id="charges-duty"><DutyTab shipment={shipment} onChange={onSaved} /></div>
+          {(["cfs", "line"] as const).map((g) => (
+            <div id={`charges-${g}`} key={g}>
+              <ChargeDrawer
+                inline
+                group={g}
+                shipment={shipment}
+                docs={docs}
+                onChange={onSaved}
+                onSaved={reload}
+                onClose={() => {}}
+                onUpload={(t) => {
+                  setUploadType(t);
+                  setTab("documents");
+                }}
+              />
+            </div>
+          ))}
+        </div>
       )}
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} initialType={uploadType} />}
