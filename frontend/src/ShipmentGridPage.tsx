@@ -375,7 +375,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
   const removed = new Set(trackerCols.filter((c) => !c.is_custom && c.is_removed).map((c) => c.key));
   const all: ColDef<Shipment>[] = [
     {
-      headerName: "",
+      headerName: "↗",
+      headerTooltip: "Open job",
+      headerClass: "header-open",
       colId: "open",
       width: 44, // a whole-cell button: easy to hit (client, 2026-09-30)
       pinned: "left",
@@ -793,6 +795,10 @@ export default function ShipmentGridPage() {
   const moreRef = useRef<HTMLDivElement>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   useDismiss(moreRef, moreOpen, () => setMoreOpen(false));
+  // a panel or menu opening/closing moves the cells: drop any tooltip left over the old spot
+  useEffect(() => {
+    window.dispatchEvent(new Event("tips:hide"));
+  }, [peekId, peekFull, moreOpen, showColumns, toolsOpen, chipsOpen]);
   const chipFoldRef = useRef<HTMLDivElement>(null);
   useDismiss(chipFoldRef, chipsOpen, () => setChipsOpen(false));
   const [showIcegate, setShowIcegate] = useState(false);

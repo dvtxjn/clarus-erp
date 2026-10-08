@@ -1,5 +1,11 @@
 # Release notes
 
+## v1.4.5 — bagdu's pass on v1.4.4 (polish)
+- Tooltips: none is left floating after the peek, a menu or the Columns panel opens or closes, on scroll or on Esc. Grid tooltips don't show while a menu is open over the grid.
+- **More ▾** reads as a menu: plain text rows with a hover tint. Group by and the views stay on top, and **+ Add Shipment** is last, after a divider, still green.
+- Peek header: ✕ and "New tab ↗" stay in the same spot for every job.
+- Grid: the open-job column has a ↗ heading with the tooltip "Open job".
+
 ## v1.4.4 — tracker toolbar and page link
 - Tracker: **+ Add Shipment** stays a visible button. Only while the peek is open does it move into **More ▾**.
 - Page link: `?peek=` always matches the job showing in the peek, even after fast clicks or arrow keys. A slow load from the previous job can no longer overwrite the current one.

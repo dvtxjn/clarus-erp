@@ -2584,3 +2584,30 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 .more-add { display: none; }
 .tracker-page.has-peek .toolbar-add { display: none; }
 .tracker-page.has-peek .more-add { display: inline-flex; justify-content: center; }
+/* More ▾ reads as a menu: plain text rows with a hover tint; Group by + views on top, + Add last and green */
+@container tracker (max-width: 900px) {
+  .toolbar-more-list.is-open { gap: 0; padding: 6px; }
+  .toolbar-more-list.is-open > .group-by { padding: 4px 8px 6px; }
+  .toolbar-more-list.is-open > .view-switch { margin: 0 8px 6px; }
+  .toolbar-more-list.is-open > .btn-secondary:first-of-type { border-top: 1px solid var(--color-border); margin-top: 2px; padding-top: 2px; }
+  .toolbar-more-list.is-open > .btn-secondary,
+  .toolbar-more-list.is-open .columns-anchor > button,
+  .toolbar-more-list.is-open .tools-menu > summary {
+    width: 100%; justify-content: flex-start; text-align: left; height: 30px; padding: 0 8px;
+    background: none; border: 0; box-shadow: none; border-radius: var(--radius-sm); color: var(--color-text); font-weight: 400;
+  }
+  .toolbar-more-list.is-open > .btn-secondary:hover,
+  .toolbar-more-list.is-open .columns-anchor > button:hover,
+  .toolbar-more-list.is-open .tools-menu > summary:hover { background: var(--color-hover); }
+  .toolbar-more-list.is-open > .btn-secondary.is-on { color: var(--color-accent-text); font-weight: 500; }
+  .tracker-page.has-peek .toolbar-more-list.is-open > .more-add { margin-top: 6px; position: relative; justify-content: center; }
+  .tracker-page.has-peek .toolbar-more-list.is-open > .more-add::before {
+    content: ""; position: absolute; left: -6px; right: -6px; top: -4px; border-top: 1px solid var(--color-border);
+  }
+}
+/* no grid tooltip while a menu is open over the grid (it would sit on the wrong row) */
+body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fold > .filter-chips.is-open) .ag-tooltip { display: none; }
+.ag-header-cell.header-open .ag-header-cell-label { justify-content: center; color: var(--color-text-muted); }
+.ag-header-cell.header-open { padding: 0; }
+/* the peek's ✕ and New tab stay put whatever the job: the scrollbar's room is always kept */
+.peek-panel { scrollbar-gutter: stable; }

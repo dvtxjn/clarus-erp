@@ -12,13 +12,34 @@ export default function OverflowTip() {
   const [tip, setTip] = useState<{ text: string; top: number; left: number } | null>(null);
   const timer = useRef(0);
   useEffect(() => {
+    // the grid hides its own tooltip only when the mouse leaves the cell; if the cell moves away
+    // (peek opens/closes, a menu opens, scroll) that never happens, so tell the cell the mouse left
+    let gridCell: Element | null = null;
+    const dropGridTip = () => {
+      gridCell?.dispatchEvent(new MouseEvent("mouseleave"));
+      gridCell = null;
+      // a redrawn cell leaves its tooltip with no owner to hide it: hide what's still showing
+      document.querySelectorAll<HTMLElement>(".ag-tooltip").forEach((t) => (t.style.display = "none"));
+    };
     const hide = () => {
       window.clearTimeout(timer.current);
       setTip(null);
+      dropGridTip();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") hide();
+      else {
+        window.clearTimeout(timer.current);
+        setTip(null);
+      }
     };
     const show = (e: Event) => {
+      const cell = (e.target as Element | null)?.closest?.(".ag-cell") ?? null;
+      if (cell !== gridCell) dropGridTip();
+      if (e.type === "pointerover") gridCell = cell;
       const el = (e.target as Element | null)?.closest?.(TRUNCATES) as HTMLElement | null;
-      hide();
+      window.clearTimeout(timer.current);
+      setTip(null);
       if (!el || el.scrollWidth <= el.clientWidth + 1) return;
       const text = el.dataset.overflowTip || el.textContent?.trim();
       if (!text) return;
@@ -30,15 +51,17 @@ export default function OverflowTip() {
     document.addEventListener("pointerover", show);
     document.addEventListener("focusin", show);
     document.addEventListener("pointerdown", hide);
-    document.addEventListener("keydown", hide);
+    document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", hide, true);
+    window.addEventListener("tips:hide", hide);
     return () => {
       hide();
       document.removeEventListener("pointerover", show);
       document.removeEventListener("focusin", show);
       document.removeEventListener("pointerdown", hide);
-      document.removeEventListener("keydown", hide);
+      document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("tips:hide", hide);
     };
   }, []);
   if (!tip) return null;
