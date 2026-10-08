@@ -2167,28 +2167,15 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .overview > * { min-width: 0; }
 .ov-duty { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ov-ship { order: 1; } .ov-duty { order: 2; } .ov-billing { order: 3; } .overview > .fpod { order: 4; } .ov-notes { order: 5; }
+.ov-col { display: contents; } /* narrow: the stacks dissolve, so the order above applies */
+/* wide: shipment + IGM & ICD | duty, notes, billing — about the same height; each stack ends flush, containers full width under both (client, 2026-10-08) */
 @container (min-width: 1100px) {
-  .overview {
-    gap: 16px; grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-template-areas:
-      "ship ship ship ship ship ship ship duty duty duty duty duty"
-      "notes notes notes notes bill bill bill bill bill bill bill bill"
-      "cont cont cont cont cont cont cont cont cont cont cont cont";
-  }
+  .overview { gap: 16px; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: stretch; }
+  .ov-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .ov-col > * { order: 0; }
+  .ov-col > :last-child { flex: 1; } /* both stacks end on the same line */
   .ov-duty { gap: 16px; }
-  .ov-ship { grid-area: ship; } .ov-duty { grid-area: duty; } .ov-notes { grid-area: notes; }
-  .ov-billing { grid-area: bill; } .overview > .fpod { grid-area: cont; }
-}
-@container (min-width: 1600px) {
-  .overview {
-    /* Notes sits under Duty; cards keep their own height (no stretched card with an empty bottom) */
-    grid-template-rows: auto 1fr auto; align-items: start;
-    grid-template-areas:
-      "ship ship ship ship ship duty duty duty duty bill bill bill"
-      "ship ship ship ship ship notes notes notes notes bill bill bill"
-      "cont cont cont cont cont cont cont cont cont cont cont cont";
-  }
-  .ov-billing .bill-grid { grid-template-columns: minmax(0, 1fr); }
+  .overview > .fpod { grid-column: 1 / -1; order: 0; }
 }
 
 /* Tier 1: key strip, next step + stepper, money tiles */
@@ -2680,17 +2667,6 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
   .key-strip .key-cell:nth-child(n) { border-left: 1px solid var(--color-border-soft); }
   .key-strip .key-cell:nth-child(odd) { border-left: none; }
 }
-/* 1100–1599: Notes sits under Duty, beside the taller Shipment card; Billing gets the full row (client, 2026-10-08) */
-@container (min-width: 1100px) and (max-width: 1599px) {
-  .overview {
-    grid-template-rows: auto 1fr auto auto; align-items: start;
-    grid-template-areas:
-      "ship ship ship ship ship ship ship duty duty duty duty duty"
-      "ship ship ship ship ship ship ship notes notes notes notes notes"
-      "bill bill bill bill bill bill bill bill bill bill bill bill"
-      "cont cont cont cont cont cont cont cont cont cont cont cont";
-  }
-}
 .key-date { white-space: nowrap; } /* "18 Sep" never splits; wraps only at the arrow */
 /* Duty row: the shipment status pill beside the amount (client, 2026-10-08) */
 .money-value-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -2703,3 +2679,5 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
   .tier1.no-flow .money-row { border-top: none; border-left: 1px solid var(--color-border-soft); }
   .tier1.no-flow .money-row:first-child { border-left: none; }
 }
+/* "IGM & ICD details" toggle sits at the left of its bar; only Fetch goes to the right (client, 2026-10-08) */
+.icegate-bar .fold-toggle { margin-left: 0; padding: 0 6px 0 2px; font-size: 12.5px; }

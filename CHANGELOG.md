@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.5.11 — Overview: IGM & ICD details back, no empty holes
+- IGM & ICD details are open again at every screen width (they were folded shut below 1600px wide). The "IGM & ICD details" toggle sits at the left of its line, not in the middle. Fetch stays on the right.
+- Overview, wide screens: two columns that end on the same line. Left: Shipment & movement with the IGM & ICD details. Right: Customs duty, Notes and Billing settings. Containers run full width under both. No more empty block under a short card, and no full-width Billing settings with its controls spread across the page.
+
 ## v1.5.10 — ↗ (open job) locked at the far left
 - Tracker: the ↗ column that opens a job in the side pane is always the first column, at the far left of every table. It can't be dragged or unpinned, and no column can be dropped in front of it. A column layout saved earlier that had it elsewhere is put right on load.
 

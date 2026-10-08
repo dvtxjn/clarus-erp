@@ -395,7 +395,6 @@ type ToggleField = "cfs_paid_by_us" | "line_paid_by_us" | "tds_on_cfs";
  * CSS container queries on .detail-page: 1100 = the 12-column layout, 1600 = three columns.
  */
 const OVERVIEW_WIDE = 1100;
-const OVERVIEW_XWIDE = 1600;
 function useBoxWidth<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(0);
@@ -414,14 +413,15 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
   const ports = usePorts();
   const [box, width] = useBoxWidth<HTMLDivElement>();
   const wide = width >= OVERVIEW_WIDE;
-  // IGM details: open by default only where there's room for them (three columns)
+  // IGM & ICD details: open by default at every width
   const [igmUser, setIgmOpen] = useState<boolean | null>(null);
-  const igmOpen = igmUser ?? width >= OVERVIEW_XWIDE;
+  const igmOpen = igmUser ?? true; // always shown unless folded by hand (client, 2026-10-08)
   const inland = !!s.port && !SEA_PORTS.has(s.port);
   return (
-    // one 12-column grid (index.css): panel = one column; ≥1100 shipment | duty, notes | billing;
-    // ≥1600 shipment | duty | notes + billing; containers always full width
+    // two stacks side by side when wide (index.css): shipment (with IGM & ICD) | duty, notes, billing, so no card leaves a
+    // hole beside a taller one; containers full width under both. Narrow: one column (the stacks dissolve).
     <div className="overview" ref={box}>
+      <div className="ov-col ov-col-main">
         <section className="detail-section ov-ship">
           <h3>Shipment &amp; movement</h3>
           <div className="field-grid">
@@ -507,6 +507,8 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             </ul>
           )}
         </section>
+      </div>
+      <div className="ov-col ov-col-side">
       <div className="ov-duty">
         <section className="detail-section" id={`duty-${s.id}`}>
           <h3>Customs duty</h3>
@@ -521,12 +523,13 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
         <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
         <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
       </section>
+      <BillingSettings s={s} onChange={onChange} />
+      </div>
       {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
           arrival at the FPOD; sea port: from the INW (client, 2026-09-30) */}
       {s.port && (
         <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} wide={wide} />
       )}
-      <BillingSettings s={s} onChange={onChange} />
     </div>
   );
 }
