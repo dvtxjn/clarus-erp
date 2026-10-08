@@ -406,6 +406,7 @@ export interface InvoiceLine {
   gst_is_actual: boolean;
   is_manual: boolean;
   total: string;
+  section_fixed?: boolean; // bond / documentation / duty / stamp duty: section can't change
 }
 
 export interface InvoiceView {
@@ -634,3 +635,6 @@ export const DOCUMENT_SHORT_LABELS: Partial<Record<DocumentType, string>> = {
   hss_stamp_duty: "HSS & Stamp (old)",
 };
 export const docShort = (t: DocumentType) => DOCUMENT_SHORT_LABELS[t] ?? DOCUMENT_TYPE_LABELS[t];
+
+// Charges whose invoice section is fixed (client, 2026-10-09) — mirrors backend FIXED_SECTIONS
+export const FIXED_SECTION_CODES = new Set(["SBOND", "BONDC", "DC", "CD", "CDB", "SD"]);

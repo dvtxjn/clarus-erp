@@ -46,6 +46,21 @@ SECTION_TITLES = {
 ZERO = Decimal("0")
 GST_OUTPUT_RATE = Decimal("0.18")
 GST_DIFFERENCE_CODE = "GSTD"
+# Invoice section per charge, fixed by the client (2026-10-09): bond and documentation are
+# always taxable (Billed by Clarus); customs duty and stamp duty are always reimbursements.
+# CFS is not here: it's taxed on some shipments and not on others (the shipment's "CFS billed as").
+FIXED_SECTIONS = {
+    "SBOND": ChargeCategory.SERVICE, "BONDC": ChargeCategory.SERVICE, "DC": ChargeCategory.SERVICE,
+    "CD": ChargeCategory.REIMBURSEMENT, "CDB": ChargeCategory.REIMBURSEMENT, "SD": ChargeCategory.REIMBURSEMENT,
+}
+
+
+def section_problem(code: Optional[str], name: str, category) -> Optional[str]:
+    """Why a charge can't go in this section, or None."""
+    want = FIXED_SECTIONS.get(code or "")
+    if want is None or category is None or ChargeCategory(category) == want:
+        return None
+    return f"{name} always goes under {SECTION_TITLES[want]}."
 # totals the template rounds up to the rupee. Royalty is NOT rounded per line: the two
 # HSS copies split it differently, and only the grand total is rounded (round_off),
 # so both copies end on the same amount (client, 2026-09-28).
@@ -445,7 +460,7 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
                 "rate": _money(li.rate), "quantity": format(Decimal(li.quantity).normalize(), "f"),
                 "amount": _money(li.amount), "gst_rate": format(Decimal(li.gst_rate).normalize(), "f"),
                 "gst_amount": _money(li.gst_amount), "gst_is_actual": li.gst_is_actual, "is_manual": li.is_manual,
-                "total": _money(li.total),
+                "total": _money(li.total), "section_fixed": bool(li.charge and li.charge.code in FIXED_SECTIONS),
             } for li in rows],
             "subtotal": _money(subtotal),
             "amount_subtotal": _money(sum((Decimal(li.amount) for li in rows), ZERO)),  # before tax

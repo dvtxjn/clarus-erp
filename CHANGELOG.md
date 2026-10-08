@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.7.5 — 2026-10-09
+- **Fixed invoice sections.** Bond and documentation charges always go under Billed by Clarus (taxable). Customs duty and stamp duty always go under Reimbursement. CFS can still go either way per shipment. The section picker is greyed out for these charges on proformas and on the Rates screen.
+- The old "Bond Charges (Reimbursement)" charge is switched off; use Bond Charges. Existing proforma lines are not changed.
+
 ## v1.7.4 — 2026-10-09
 - Settings → Invoicing: **Read interest on older OOC copies**. One click reads the INT figure on OOC copies uploaded before v1.7.2 and takes the interest out of the customs duty. Hand corrections stay.
 - Fixed a test that failed after 6:30 pm IST: it stored a challan time in local time instead of UTC. The app itself was not affected.

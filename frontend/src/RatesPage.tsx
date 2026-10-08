@@ -22,6 +22,7 @@ import { useSearchParams } from "react-router-dom";
 import { useConfirm } from "./ConfirmDialog";
 import { useAuth } from "./AuthContext";
 import type { ChargeCategory, ChargeMasterEntry, Licence, LicenceRate, PricingRule, PricingRuleLine } from "./types";
+import { FIXED_SECTION_CODES } from "./types";
 
 const SECTIONS: Record<ChargeCategory, string> = {
   service: "Billed by Clarus",
@@ -191,7 +192,8 @@ export default function RatesPage() {
                   <td>
                     <select
                       value={c.category}
-                      disabled={!canEdit || c.code === "GSTD"}
+                      disabled={!canEdit || c.code === "GSTD" || FIXED_SECTION_CODES.has(c.code)}
+                      title={FIXED_SECTION_CODES.has(c.code) ? "Fixed: this charge always goes in this section" : undefined}
                       onChange={(e) => save(c, { category: e.target.value as ChargeCategory }, "section")}
                     >
                       {(Object.keys(SECTIONS) as ChargeCategory[]).map((k) => (

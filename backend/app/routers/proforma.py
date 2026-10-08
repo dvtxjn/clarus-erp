@@ -16,7 +16,7 @@ from app.invoice.final import fy_of
 from app.invoice.autofill import DERIVED_CODES, line_key, restore_line, sync_proforma
 from fastapi.encoders import jsonable_encoder
 
-from app.invoice.build import GST_DIFFERENCE_CODE, ooc_duty, clarus_total, match_total, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
+from app.invoice.build import GST_DIFFERENCE_CODE, section_problem, ooc_duty, clarus_total, match_total, round_off, be_importer_name, copy_for, documents_not_attached, build_invoice, invoice_filename, value_summary, weight_kgs
 from app.invoice.lines import container_count, new_line, recalc, sync_gst_difference
 from app.invoice.pdf import render_pdf
 from app.invoice.xlsx import render_xlsx
@@ -78,6 +78,8 @@ def update_charge(charge_id: int, payload: ChargeMasterUpdate, db: Session = Dep
     changes = payload.model_dump(exclude_unset=True)
     if charge.code in FIXED_CHARGES and set(changes) - {"name"}:
         raise HTTPException(status_code=400, detail=f"{charge.name} is worked out automatically")
+    if problem := section_problem(charge.code, charge.name, changes.get("category")):
+        raise HTTPException(status_code=400, detail=problem)
     for field, value in changes.items():
         if field != "default_rate" and value is None:
             continue
@@ -164,6 +166,9 @@ def _rule_payload(db: Session, payload: PricingRuleIn) -> dict:
     unknown = [ln.code for ln in payload.lines if ln.code not in codes]
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown charge code(s): {', '.join(unknown)}")
+    for ln in payload.lines:
+        if problem := section_problem(ln.code, ln.code, ln.category):
+            raise HTTPException(status_code=400, detail=problem)
     data = payload.model_dump(mode="json")
     data["lines"] = [{k: v for k, v in ln.items() if v not in (None, "0", 0)} | {"code": ln["code"]} for ln in data["lines"]]
     return data
@@ -301,6 +306,8 @@ def add_line_item(
         raise HTTPException(status_code=400, detail="GST Difference is worked out automatically — enter the Bill Rate instead.")
     if charge.code == "ROY" and not proforma.shipment.is_hss:
         raise HTTPException(status_code=400, detail="Royalty only applies to HSS shipments.")
+    if problem := section_problem(charge.code, charge.name, payload.category):
+        raise HTTPException(status_code=400, detail=problem)
     quantity = payload.quantity
     if quantity is None:
         if charge.calculation_basis == ChargeCalculationBasis.PER_KG:
@@ -379,6 +386,8 @@ def update_line_item(
     if li.charge and li.charge.code == "CD" and ooc_duty(li.proforma.shipment) is not None \
             and set(changes) - {"description"}:
         raise HTTPException(status_code=400, detail="Customs Duty is the OOC copy's total — it can't be changed by hand.")
+    if li.charge and (problem := section_problem(li.charge.code, li.charge.name, changes.get("category"))):
+        raise HTTPException(status_code=400, detail=problem)
     gst_given = "gst_amount" in changes
     gst_value = changes.pop("gst_amount", None)
     for field, value in changes.items():

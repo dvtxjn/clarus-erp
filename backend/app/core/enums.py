@@ -84,7 +84,7 @@ class ChargeCategory(str, enum.Enum):
     SERVICE = "Billed by Clarus" (our fees, our GST); REIMBURSEMENT = "at actuals"
     (paid on the client's behalf, carrying the actual GST paid); COST_INCLUSION =
     shown for reference (shipping line), not part of the total payable to Clarus.
-    Taxable-vs-pure-agent per charge still to be confirmed with the client's bills."""
+    Fixed per charge where the client said so: see invoice.build.FIXED_SECTIONS."""
     SERVICE = "service"
     REIMBURSEMENT = "reimbursement"
     ROYALTY = "royalty"  # HSS royalty: the seller pays it to the buyer, not a Clarus charge (client, 2026-09-28)

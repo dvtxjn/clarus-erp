@@ -26,6 +26,7 @@ import { OrganizationForm } from "./DailyUpdates";
 import FinalInvoicesPanel from "./FinalInvoicesPanel";
 import { useConfirm } from "./ConfirmDialog";
 import type { Proforma, ProformaSnapshot, ChargeMasterEntry, Shipment, ChargeCategory, InvoiceView, InvoiceLine, Organization } from "./types";
+import { FIXED_SECTION_CODES } from "./types";
 import { usePhone } from "./usePhone";
 
 export default function ProformaPanel({
@@ -473,6 +474,7 @@ function ProformaVersion({
   const [busy, setBusy] = useState(false);
 
   const selected = charges.find((c) => c.id === chargeId);
+  const sectionFixed = !!selected && FIXED_SECTION_CODES.has(selected.code);
   const perContainer = selected?.calculation_basis === "per_container";
   const perKg = selected?.calculation_basis === "per_kg";
   // GST Difference is worked out from the bill rate; Royalty only applies to HSS shipments
@@ -513,7 +515,7 @@ function ProformaVersion({
           charge_master_id: Number(chargeId),
           rate: Number(rate),
           quantity: Number(quantity) || 1,
-          ...(category ? { category } : {}),
+          ...(category && !sectionFixed ? { category } : {}),
         }),
       );
       setChargeId("");
@@ -667,7 +669,13 @@ function ProformaVersion({
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
               />
-              <select value={category} onChange={(e) => setCategory(e.target.value as ChargeCategory | "")} aria-label="Section">
+              <select
+                value={sectionFixed ? "" : category}
+                disabled={sectionFixed}
+                title={sectionFixed ? "This charge always goes in its own section" : undefined}
+                onChange={(e) => setCategory(e.target.value as ChargeCategory | "")}
+                aria-label="Section"
+              >
                 <option value="">Section: charge default</option>
                 {(Object.keys(SECTION_LABELS) as ChargeCategory[]).filter((c) => isHss || c !== "cost_inclusion").map((c) => (
                   <option key={c} value={c}>
@@ -1140,6 +1148,8 @@ function InvoiceSheet({
                       <select
                         value={sec.category}
                         aria-label="Move to section"
+                        disabled={li.section_fixed}
+                        title={li.section_fixed ? "This charge always goes in this section" : undefined}
                         onChange={(e) => onSave(li.id, { category: e.target.value as ChargeCategory }).catch(() => {})}
                       >
                         {(Object.keys(SECTION_LABELS) as ChargeCategory[]).filter((c) => inv.is_hss || c !== "cost_inclusion").map((c) => (

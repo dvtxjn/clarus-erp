@@ -87,8 +87,9 @@ NO_GST_CODES = {"GSTD"}
 # Invoice sections, following the template: our fees vs reimbursements at actuals vs
 # the shipping line "cost inclusion". Default mapping — client to confirm with bills.
 ROYALTY_CODES = {"ROY"}
-REIMBURSEMENT_CODES = {"GSTD", "CD", "CDB", "SD", "CFS", "INS", "BONDC", "DELIVERYCHARGE", "TC", "YARD", "LOLO"}
+REIMBURSEMENT_CODES = {"GSTD", "CD", "CDB", "SD", "CFS", "INS", "DELIVERYCHARGE", "TC", "YARD", "LOLO"}
 COST_INCLUSION_CODES = {"DO"}
+INACTIVE_CODES = {"BONDC"}  # bond is always taxable: use Bond Charges (SBOND) (client, 2026-10-09)
 SAC_CONTAINER_HANDLING = "996711"
 SAC_AGENCY = "996713"
 
@@ -152,7 +153,7 @@ def seed():
                           else ChargeCategory.REIMBURSEMENT if code in REIMBURSEMENT_CODES
                           else ChargeCategory.SERVICE),
                 default_rate=DEFAULT_RATES.get(code),
-                is_active=True,
+                is_active=code not in INACTIVE_CODES,
             ))
         print(f"Seeded {len(CHARGES)} charge master entries")
 
