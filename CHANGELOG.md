@@ -1,5 +1,10 @@
 # Release notes
 
+## v1.5.7 — client in the key strip; no gap beside Customs duty
+- Shipment page: the client is the first box in the key strip (next to BL, BE No, Port…), with the company name in bold and the contact under it. The line under the job now holds only the section tabs.
+- Overview, medium-wide screens: Notes sits under Customs duty, beside the taller Shipment card, and Billing settings takes the full row under them. No empty space beside Shipment & movement.
+- Key strip: "ETA → Inward" breaks only at the arrow, never inside a date.
+
 ## v1.5.6 — shipment header: tabs up beside the client
 - Shipment page: the job number and its status sit on the top line, with space between them. Under them, the client, then the section tabs (Overview · Customs timeline · Documents · History · Proforma & Billing) on the same line. This saves a row, and the tabs stay at the top.
 - Tabs have no boxes, only the underline on the open one. Where the line is too narrow (e.g. beside the invoice preview), the tabs move to their own line under the client.

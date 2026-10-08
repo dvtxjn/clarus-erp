@@ -289,11 +289,8 @@ export function ShipmentDetail({
             <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
           </span>
         </div>
-        {/* under the job: client, then the sections on the same line (client, 2026-10-08) */}
+        {/* under the job: the sections (the client is in the key strip) (client, 2026-10-08) */}
         <div className="detail-subrow">
-        <span className="detail-client">
-          {shipment.client ?? "—"} · {shipment.consignee ?? "—"}
-        </span>
         <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections" ref={tabsRef}>
           <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
             Overview
@@ -1471,7 +1468,9 @@ function KeyStrip({ s }: { s: Shipment }) {
   const portName = s.port ? ports.find((p) => p.code === s.port)?.name ?? s.port : null;
   const age = /^\d+$/.test(s.days) ? `Day ${s.days}` : s.days || "—";
   // BL / BE / container numbers are never cut: those cells wrap to a second line instead
-  const cells: { label: string; value: React.ReactNode; sub?: React.ReactNode; empty?: boolean; wide?: boolean; id?: boolean }[] = [
+  const cells: { label: string; value: React.ReactNode; sub?: React.ReactNode; empty?: boolean; wide?: boolean; id?: boolean; client?: boolean }[] = [
+    // the client is the first key, so the header under the job holds only the tabs (client, 2026-10-08)
+    { label: "Client", value: s.consignee || s.client || "—", sub: s.consignee && s.client ? s.client : null, empty: !s.consignee && !s.client, id: true, client: true },
     {
       label: s.hbl ? "BL (MBL / HBL)" : "BL",
       value: <CopyValue value={s.mbl} label="BL no" />,
@@ -1492,7 +1491,7 @@ function KeyStrip({ s }: { s: Shipment }) {
       label: "ETA → Inward",
       value: (
         <>
-          {shortDate(s.eta) ?? "—"} <span className="key-arrow">→</span> {s.inw ? shortDate(s.inw) : "—"}
+          <span className="key-date">{shortDate(s.eta) ?? "—"}</span> <span className="key-arrow">→</span> <span className="key-date">{s.inw ? shortDate(s.inw) : "—"}</span>
         </>
       ),
       sub: s.eta_is_deadline ? "ETA is a deadline" : null,
@@ -1503,7 +1502,7 @@ function KeyStrip({ s }: { s: Shipment }) {
   return (
     <div className="key-strip" role="group" aria-label="Shipment keys">
       {cells.map((c) => (
-        <div className={`key-cell${c.wide ? " key-cell-wide" : ""}`} key={c.label}>
+        <div className={`key-cell${c.wide ? " key-cell-wide" : ""}${c.client ? " key-cell-client" : ""}`} key={c.label}>
           <span className="key-label">{c.label}</span>
           <span className={`key-value${c.empty ? " is-empty" : ""}${c.id ? " is-id" : ""}`}>{c.value}</span>
           {c.sub && <span className="key-sub">{c.sub}</span>}
