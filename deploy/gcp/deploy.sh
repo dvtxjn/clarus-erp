@@ -38,7 +38,7 @@ gcloud run jobs execute erp-migrate --region "$REGION" --wait
 echo "== 3/3 deploy"
 gcloud run deploy "$SERVICE" --image "$TAG" --region "$REGION" --service-account "$RUNTIME_SA@$PROJECT.iam.gserviceaccount.com" \
   --add-cloudsql-instances "$CONN" --set-env-vars "$ENV" --set-secrets "$SECRETS" \
-  --memory 1Gi --cpu 1 --timeout 3600 --concurrency 80 --min-instances 1 --max-instances 3 \
+  --memory 1Gi --cpu 1 --timeout 3600 --concurrency 80 --min-instances 1 --max-instances 2 \
   --no-invoker-iam-check --quiet
 URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
 # ICEGATE read every 6 h (created once; later deploys leave it as is)

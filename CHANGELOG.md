@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.4.8 — database connections
+- Fixed random "couldn't load" errors, the blank Cleared count and failed live-presence updates. The database (smallest Cloud SQL size, about 22 connections) was running out of connections: each app instance could open up to 16. Each instance now keeps at most 5 (plus 1 for live updates), checks a connection before using it, and the app runs at most 2 instances.
+
 ## v1.4.7 — peek never shows the old job under a switch
 - Peek, switching to a job not opened yet: the old job fades to 40% at once and nothing on it can be clicked. A load that takes over 150 ms then shows the new job's header (job no · BL · client, from the row you clicked) with a spinner over a skeleton. Fast loads and jobs already opened swap straight in, with no flicker.
 
