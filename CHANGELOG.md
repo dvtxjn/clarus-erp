@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.5.2 — thinner cell outline
+- The selected cell's outline is a crisp 1px line again, like Excel. Text still doesn't move when a cell is selected.
+
 ## v1.5.1 — checklist chips stay inside their column
 - Ticking a chip (Duty / CFS Inv / Line / OOC / DO) no longer makes it wider. The ✓'s room is always kept, so a column fitted to unticked chips doesn't overflow once they're ticked.
 
