@@ -2398,8 +2398,8 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 
 /* ============================================================
    UI pass v2, part 4 (feel)
+   ============================================================ */
 /* grid focus: a crisp 1px inset ring, like Excel (client, 2026-10-08); drawn as a shadow, so text never shifts */
-/* grid focus: an inset ring plus a faint tint; the border goes transparent (not 0) so text never shifts */
 .ag-cell.ag-cell-focus, .ag-cell.ag-cell-range-single-cell {
   border-color: transparent !important; outline: none;
   box-shadow: inset 0 0 0 1px var(--color-accent);
