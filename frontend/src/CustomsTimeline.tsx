@@ -1,4 +1,5 @@
 import { fmtWhen } from "./dates";
+import { useReadOnly } from "./AuthContext";
 import LoadError from "./LoadError";
 import { useEffect, useState } from "react";
 import { resolveIcegateMail, shipmentIcegateMails, type IcegateMail } from "./api";
@@ -44,6 +45,7 @@ function BeStatusCard({ s }: { s: Shipment }) {
 }
 
 export default function CustomsTimeline({ shipmentId, shipment }: { shipmentId: number; shipment?: Shipment }) {
+  const ro = useReadOnly();
   const [rows, setRows] = useState<IcegateMail[] | null>(null);
   const [loadErr, setLoadErr] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -89,7 +91,7 @@ export default function CustomsTimeline({ shipmentId, shipment }: { shipmentId: 
                   {m.summary && m.summary !== m.label && <span className="customs-summary">{m.summary}</span>}
                   {!!m.notes?.length && <span className="customs-notes">{m.notes.join(" · ")}</span>}
                 </span>
-                {open && (
+                {open && !ro && (
                   <button type="button" className="btn-secondary customs-btn" onClick={() => done(m)}>
                     Mark done
                   </button>

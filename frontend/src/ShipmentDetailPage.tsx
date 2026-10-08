@@ -6,7 +6,9 @@ import CustomsTimeline from "./CustomsTimeline";
 import { nextStep } from "./clearanceFlow";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import axios from "axios";
-import { useAuth } from "./AuthContext";
+import { useAuth, useReadOnly } from "./AuthContext";
+import { kgLooking } from "./weight";
+import { docsCache, rememberShipment, shipmentCache } from "./detailCache";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import { correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, openDocumentFile, refreshIcegate, setCostInclusion } from "./api";
 import { useDismiss } from "./useDismiss";
@@ -37,10 +39,6 @@ function fmtMoney(v: string | null): string | null {
   return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** Documents per shipment, last loaded — shared by the Overview's CFS / shipping line blocks. */
-const docsCache = new Map<number, ShipmentDocument[]>();
-/** Jobs already opened this session: reopening draws at once from here while a fresh copy loads behind it. */
-const shipmentCache = new Map<number, Shipment>();
 
 const TABS: Tab[] = ["overview", "customs", "documents", "history", "proforma"];
 
@@ -99,6 +97,13 @@ export function ShipmentDetail({
 }) {
   const peek = !!onClose;
   const [shipment, setShipment] = useState<Shipment | null>(null);
+  // a save that lands after switching jobs must not paint the old job over the new one
+  const idRef = useRef(shipmentId);
+  idRef.current = shipmentId;
+  const onSaved = useCallback((x: Shipment) => {
+    if (x.id === idRef.current) setShipment(x);
+    else rememberShipment(x);
+  }, []);
   const [loading, setLoading] = useState(true);
   // why the load failed: 404 = gone; anything else (network, 500) gets a Retry, never "doesn't exist"
   const [loadErr, setLoadErr] = useState<"gone" | "failed" | null>(null);
@@ -234,7 +239,7 @@ export function ShipmentDetail({
         <KeyStrip s={shipment} />
         <section className="tier1-flow" aria-label="Clearance">
           <NextStepBar shipment={shipment} />
-          <ClearanceStepper s={shipment} onChange={setShipment} />
+          <ClearanceStepper s={shipment} onChange={onSaved} />
         </section>
         <MoneyCard
           s={shipment}
@@ -259,7 +264,7 @@ export function ShipmentDetail({
             group={drawer}
             shipment={shipment}
             docs={docs}
-            onChange={setShipment}
+            onChange={onSaved}
             onSaved={reload}
             onClose={() => setDrawer(null)}
           />
@@ -295,11 +300,11 @@ export function ShipmentDetail({
       </div>
 
       <div className="tab-body" key={tab}>
-      {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
+      {tab === "overview" && <OverviewTab shipment={shipment} onChange={onSaved} />}
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} initialType={uploadType} />}
-      {tab === "history" && <ShipmentHistory shipment={shipment} onChange={setShipment} />}
-      {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
+      {tab === "history" && <ShipmentHistory shipment={shipment} onChange={onSaved} />}
+      {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={onSaved} />}
       </div>
     </div>
   );
@@ -469,6 +474,7 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
  * says what the settings add up to — these move money, so it isn't left to tooltips alone.
  */
 function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const saveShipment = useSaveShipment();
   const [saving, setSaving] = useState<ToggleField | null>(null);
   async function toggle(field: ToggleField) {
@@ -508,6 +514,7 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
             </span>
             <select
               className="chip-select"
+              disabled={ro}
               value={s.cfs_billed_as}
               onChange={async (e) => onChange((await saveShipment(s, { cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })).shipment)}
             >
@@ -536,6 +543,7 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
  * preset — picking it goes back to following the client; picking the other overrides this shipment only.
  */
 function LineCostSelect({ s, disabled, onSave }: { s: Shipment; disabled?: boolean; onSave: (v: "include" | "exclude" | null) => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const clientDefault = s.line_client_excluded_by ? "exclude" : "include";
   const value = s.line_cost_inclusion ?? clientDefault;
   const tag = (v: "include" | "exclude") => (v === clientDefault ? " (client default)" : " (override)");
@@ -544,7 +552,7 @@ function LineCostSelect({ s, disabled, onSave }: { s: Shipment; disabled?: boole
       className="chip-select"
       aria-label="Shipping line in the cost inclusion"
       value={value}
-      disabled={disabled}
+      disabled={disabled || ro}
       title={s.line_client_excluded_by ? `Client default: left out (${s.line_client_excluded_by})` : "Client default: included"}
       onChange={(e) => {
         const v = e.target.value as "include" | "exclude";
@@ -559,13 +567,14 @@ function LineCostSelect({ s, disabled, onSave }: { s: Shipment; disabled?: boole
 
 /** An on/off billing setting: label, (i) for what it means, a switch. */
 function SwitchRow({ label, help, on, busy, onToggle }: { label: string; help?: string; on: boolean; busy?: boolean; onToggle: () => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   return (
     <div className="switch-row">
       <span className="switch-label">
         {label}
         {help && <InfoTip text={help} />}
       </span>
-      <button type="button" role="switch" aria-checked={on} aria-label={label} className="switch" disabled={busy} onClick={onToggle}>
+      <button type="button" role="switch" aria-checked={on} aria-label={label} className="switch" disabled={busy || ro} onClick={onToggle}>
         <span className="switch-knob" aria-hidden="true" />
       </button>
     </div>
@@ -588,6 +597,7 @@ const tdsPct = (s: Shipment) => (s.cfs_tds_rate == null ? "2" : String(Number(s.
  * then 1% / 2% / 10% or a typed rate (client, 2026-09-30).
  */
 function TdsRate({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const [editable, setEditable] = useState(false);
   const [custom, setCustom] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -627,7 +637,7 @@ function TdsRate({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: 
           <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
             <select
               value={custom !== null || !preset ? "custom" : pct}
-              disabled={busy}
+              disabled={busy || ro}
               onChange={(e) => (e.target.value === "custom" ? setCustom(preset ? "" : pct) : save(e.target.value))}
             >
               <option value="1">1%</option>
@@ -676,6 +686,7 @@ function CopyValue({ value, label }: { value: string | null | undefined; label: 
 
 /** HSS = consignee "SELLER - BUYER" (detected automatically); both parties editable. */
 function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const [editing, setEditing] = useState(false);
   const [seller, setSeller] = useState("");
   const [buyer, setBuyer] = useState("");
@@ -709,6 +720,7 @@ function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
             <button
               type="button"
               className="link-btn"
+              hidden={ro}
               onClick={() => {
                 setSeller(s.hss_seller ?? "");
                 setBuyer(s.hss_buyer ?? "");
@@ -729,7 +741,7 @@ function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || ro}
             onClick={() => save({ hss_seller: seller.trim() || null, hss_buyer: buyer.trim() || null })}
           >
             Save
@@ -749,6 +761,7 @@ const BE_FIELDS: [BeField, string][] = [
 
 /** BE figures (read from the Assessed / OOC copy) — "Edit" to correct a misread. */
 function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const saveShipment = useSaveShipment();
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState<Record<BeField, string>>({ assessable_value: "", igst_amount: "", duty_amount: "" });
@@ -786,7 +799,7 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
     <div className="amount-block">
       <div className="amount-block-head">
         <span className="amount-block-title">Bill of Entry</span>
-        {!editing && (
+        {!editing && !ro && (
           <button type="button" className="link-btn" onClick={start}>
             Edit
           </button>
@@ -944,10 +957,22 @@ function ChargeDrawer({
   onSaved: () => Promise<void>;
   onClose: () => void;
 }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const cfg = INVOICE_GROUPS[group];
   const saveShipment = useSaveShipment();
   const [busy, setBusy] = useState(false);
   useDismiss(null, true, onClose);
+  // focus moves to the drawer's heading on open and back to its Charges button on close
+  const headRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const head = headRef.current;
+    head?.focus({ preventScroll: true });
+    return () => {
+      const a = document.activeElement;
+      if (!a || a === document.body || head?.closest(".charge-drawer")?.contains(a) || !a.isConnected)
+        document.querySelector<HTMLButtonElement>(`[data-charges="${group}"]`)?.focus();
+    };
+  }, [group]);
   const { all, why, receipts } = groupDocs(group, docs);
   const paidField = group === "cfs" ? "cfs_paid_by_us" : "line_paid_by_us";
 
@@ -978,13 +1003,13 @@ function ChargeDrawer({
   return (
     <section className="charge-drawer" id="charge-drawer" aria-label={cfg.title}>
       <header className="charge-drawer-head">
-        <h3>{cfg.title}</h3>
+        <h3 ref={headRef} tabIndex={-1}>{cfg.title}</h3>
         <div className="charge-drawer-controls">
           <SwitchRow label="Paid by us" on={!!s[paidField]} busy={busy} onToggle={() => save({ [paidField]: !s[paidField] } as Partial<Shipment>)} />
           {group === "line" && !s.line_paid_by_us && (
             <label className="switch-row">
               <span className="switch-label">In cost inclusion</span>
-              <LineCostSelect s={s} disabled={busy} onSave={(v) => save({ line_cost_inclusion: v })} />
+              <LineCostSelect s={s} disabled={busy || ro} onSave={(v) => save({ line_cost_inclusion: v })} />
             </label>
           )}
           {group === "cfs" && s.cfs_paid_by_us && (
@@ -993,7 +1018,7 @@ function ChargeDrawer({
               <select
                 className="chip-select"
                 value={s.cfs_billed_as}
-                disabled={busy}
+                disabled={busy || ro}
                 onChange={(e) => save({ cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })}
               >
                 <option value="reimbursement">At actuals</option>
@@ -1051,6 +1076,7 @@ function InvoiceCard({
   notCounted: string | null;
   onSaved: () => Promise<void>;
 }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const fields = docFields(d);
   const charges = group === "line" ? chargesOf(d) : [];
   const excluded = new Set(d.cost_excluded ?? []);
@@ -1114,7 +1140,7 @@ function InvoiceCard({
             className="inv-tick"
             aria-label={`All charges of ${name} in the cost inclusion`}
             checked={kept === charges.length}
-            disabled={busy}
+            disabled={busy || ro}
             onChange={() => send({ excluded: kept === charges.length ? charges.map((_, i) => i) : [] })}
           />
         )}
@@ -1143,11 +1169,11 @@ function InvoiceCard({
             <div className="inv-edit">
               <label className="field-row">
                 <span className="field-label">Basic (before tax)</span>
-                <input className="amount-input" inputMode="decimal" value={before} onChange={(e) => setBefore(e.target.value)} />
+                <input className="amount-input" inputMode="decimal" value={before} onChange={(e) => setBefore(e.target.value)} onKeyDown={escCancel(() => setEditing(false))} />
               </label>
               <label className="field-row">
                 <span className="field-label">GST</span>
-                <input className="amount-input" inputMode="decimal" value={gst} onChange={(e) => setGst(e.target.value)} />
+                <input className="amount-input" inputMode="decimal" value={gst} onChange={(e) => setGst(e.target.value)} onKeyDown={escCancel(() => setEditing(false))} />
               </label>
               <Field label="Total (basic + GST)" value={fmtMoney(String(num(before) + num(gst)))} strong />
               <div className="amount-actions">
@@ -1156,7 +1182,7 @@ function InvoiceCard({
                 </button>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || ro}
                   onClick={() => {
                     const b = before.trim().replace(/,/g, ""), g = gst.trim().replace(/,/g, "");
                     if (!isAmount(b) || !isAmount(g)) return setError("Enter both amounts as numbers, e.g. 40000 and 7200");
@@ -1175,6 +1201,7 @@ function InvoiceCard({
               <button
                 type="button"
                 className="link-btn"
+                hidden={ro}
                 onClick={() => {
                   setBefore(d.amount_before_tax ?? "");
                   setGst(d.gst_amount ?? "");
@@ -1196,7 +1223,7 @@ function InvoiceCard({
                         <input
                           type="checkbox"
                           checked={!excluded.has(i)}
-                          disabled={busy}
+                          disabled={busy || ro}
                           onChange={() => {
                             const next = new Set(excluded);
                             if (next.has(i)) next.delete(i);
@@ -1225,11 +1252,11 @@ function InvoiceCard({
               )}
               {typing ? (
                 <div className="cost-inclusion-typing">
-                  <input className="amount-input" inputMode="decimal" placeholder="Before tax…" aria-label="Cost inclusion before tax" value={before} onChange={(e) => setBefore(e.target.value)} />
-                  <input className="amount-input" inputMode="decimal" placeholder="GST…" aria-label="Cost inclusion GST" value={gst} onChange={(e) => setGst(e.target.value)} />
+                  <input className="amount-input" inputMode="decimal" placeholder="Before tax…" aria-label="Cost inclusion before tax" value={before} onChange={(e) => setBefore(e.target.value)} onKeyDown={escCancel(() => setTyping(false))} />
+                  <input className="amount-input" inputMode="decimal" placeholder="GST…" aria-label="Cost inclusion GST" value={gst} onChange={(e) => setGst(e.target.value)} onKeyDown={escCancel(() => setTyping(false))} />
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || ro}
                     onClick={() => {
                       const b = before.replace(/,/g, "").trim(), g = gst.replace(/,/g, "").trim() || "0";
                       if (!isAmount(b) || !isAmount(g)) return setError("Enter amounts as numbers");
@@ -1250,6 +1277,7 @@ function InvoiceCard({
                   <button
                     type="button"
                     className="link-btn"
+                    hidden={ro}
                     onClick={() => {
                       setBefore(d.cost_before_tax ?? d.amount_before_tax ?? "");
                       setGst(d.cost_gst ?? d.gst_amount ?? "");
@@ -1260,7 +1288,7 @@ function InvoiceCard({
                     Type figure
                   </button>
                   {(partial || d.cost_manual) && (
-                    <button type="button" className="link-btn" disabled={busy} onClick={() => send({ reset: true })} title="Back to the rule: INR charges that aren't freight">
+                    <button type="button" className="link-btn" hidden={ro} disabled={busy} onClick={() => send({ reset: true })} title="Back to the rule: INR charges that aren't freight">
                       Reset
                     </button>
                   )}
@@ -1281,6 +1309,7 @@ function InvoiceCard({
 
 /** Receipts: what was actually paid (editable when misread). */
 function Receipts({ receipts, onSaved }: { receipts: ShipmentDocument[]; onSaved: () => Promise<void> }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const [editingId, setEditingId] = useState<number | null>(null);
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -1312,16 +1341,18 @@ function Receipts({ receipts, onSaved }: { receipts: ShipmentDocument[]; onSaved
           </span>
           {editingId === r.id ? (
             <span className="receipt-edit">
-              <input className="amount-input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+              <input className="amount-input" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={escCancel(() => setEditingId(null))} />
               <button type="button" onClick={() => save(r)}>Save</button>
               <button type="button" className="btn-secondary" onClick={() => setEditingId(null)}>Cancel</button>
             </span>
           ) : (
             <span className="receipt-amt">
               {r.amount_total ? fmtMoney(r.amount_total) : <span className="field-empty">not read</span>}
-              <button type="button" className="link-btn" onClick={() => { setEditingId(r.id); setValue(r.amount_total ?? ""); setError(null); }}>
-                Edit
-              </button>
+              {!ro && (
+                <button type="button" className="link-btn" onClick={() => { setEditingId(r.id); setValue(r.amount_total ?? ""); setError(null); }}>
+                  Edit
+                </button>
+              )}
             </span>
           )}
         </div>
@@ -1330,6 +1361,12 @@ function Receipts({ receipts, onSaved }: { receipts: ShipmentDocument[]; onSaved
     </div>
   );
 }
+
+const escCancel = (cancel: () => void) => (e: React.KeyboardEvent) => {
+  if (e.key !== "Escape") return;
+  e.preventDefault(); // cancels this edit only — the drawer and peek stay
+  cancel();
+};
 
 /** What the clearance is waiting on now: one line under the header (see clearanceFlow.ts). */
 function NextStepBar({ shipment }: { shipment: Shipment }) {
@@ -1402,6 +1439,7 @@ function KeyStrip({ s }: { s: Shipment }) {
  * the examination switch sit under it (they used to be the Status card).
  */
 function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment) => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const saveShipment = useSaveShipment();
   const [busy, setBusy] = useState(false);
   const q = s.icegate?.be_status;
@@ -1450,7 +1488,7 @@ function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment
           type="button"
           className={`chip-toggle${s.under_examination ? " is-on" : ""}`}
           aria-pressed={!!s.under_examination}
-          disabled={busy}
+          disabled={busy || ro}
           onClick={toggleExam}
           title={s.examination_at ? `Marked for examination: ${s.examination_at}` : "Normally read from the OOC copy — switch it here if needed"}
         >
@@ -1505,6 +1543,7 @@ function MoneyCard({
   onDuty: () => void;
   onUpload: (t: DocumentType) => void;
 }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const fd = s.final_duty;
   const dutyAmt = fd && fd.source !== "be" && (s.ooc || Number(fd.interest) > 0) ? fd.total : s.duty_amount;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -1516,12 +1555,13 @@ function MoneyCard({
       className="link-btn money-action"
       aria-expanded={open === g}
       aria-controls={open === g ? "charge-drawer" : undefined}
+      data-charges={g}
       onClick={() => onOpen(open === g ? null : g)}
     >
       Charges <span className={`money-caret${open === g ? " is-open" : ""}`} aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 3.75 5 6.25l2.5-2.5" /></svg></span>
     </button>
   );
-  const uploadBtn = (g: MoneyGroup) => (
+  const uploadBtn = (g: MoneyGroup) => ro ? null : (
     <button type="button" className="link-btn money-action" onClick={() => onUpload(INVOICE_GROUPS[g].uploadType)}>
       Upload
     </button>
@@ -1643,10 +1683,14 @@ function EditField({
     setErr(null);
     setEditing(true);
   };
-  const save = async (value = v) => {
+  const [askKg, setAskKg] = useState<{ typed: string; mts: string } | null>(null);
+  const save = async (value = v, sure = false) => {
     let next = value.trim() === "" ? null : value.trim();
     if (field === "gross_wt" && next && /^\d+(\.\d+)?$/.test(next)) next = `${next} MTS`; // like the tracker cell: weight is MTS
     if ((next ?? "") === (raw ?? "")) return setEditing(false);
+    const mts = field === "gross_wt" && !sure ? kgLooking(next) : null;
+    if (mts) return setAskKg({ typed: next!, mts }); // a plain number over 1000 is probably kg: ask first
+    setAskKg(null);
     setBusy(true);
     try {
       onChange((await saveShipment(s, { [field]: next } as Partial<Shipment>, label)).shipment);
@@ -1699,9 +1743,20 @@ function EditField({
           />
         )
       ) : (
-        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}${readOnly ? " is-readonly" : ""}`} onClick={start} aria-label={readOnly ? label : `Edit ${label}`} aria-disabled={readOnly || undefined}>
+        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}${readOnly ? " is-readonly" : ""}`} onClick={start} aria-label={`${label}: ${shown ?? "empty"}${readOnly ? "" : " — edit"}`} aria-disabled={readOnly || undefined}>
           {shown ?? "—"}
         </button>
+      )}
+      {askKg && (
+        <span className="kg-ask" role="alert">
+          Looks like kg — save as {askKg.mts} MTS?{" "}
+          <button type="button" className="btn-secondary btn-sm" disabled={busy} onClick={() => save(`${askKg.mts} MTS`, true)}>
+            Save as MTS
+          </button>{" "}
+          <button type="button" className="link-btn" disabled={busy} onClick={() => save(askKg.typed, true)}>
+            Keep as typed
+          </button>
+        </span>
       )}
       {err && <span className="auth-error">{err}</span>}
     </div>
@@ -1723,6 +1778,7 @@ function Field({ label, value, hint, strong, amount }: { label: string; value: s
 /** "IGM details" heading + the one button that reads ICEGATE for this shipment (sea IGM, and for inland
  *  shipments the ICD BL status too). Staff: the MBL must be the full one ICEGATE knows (HMM: HDMU…). */
 function IcegateBar({ s, onChange, open, onToggle }: { s: Shipment; onChange: (s: Shipment) => void; open: boolean; onToggle: () => void }) {
+  const ro = useReadOnly(); // view-only login: no edit controls
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   async function run() {
@@ -1773,7 +1829,7 @@ function IcegateBar({ s, onChange, open, onToggle }: { s: Shipment; onChange: (s
             {s.icegate?.final ? `· final, read ${at ?? "after clearance"}` : at ? `· read from ICEGATE ${at}` : s.igm ? "· not read from ICEGATE yet" : "· not read yet"}
           </span>
         </button>
-        {!s.icegate?.final && (
+        {!s.icegate?.final && !ro && (
           <button type="button" className="btn-secondary btn-sm" onClick={run} disabled={busy || !s.mbl}>
             {busy ? "Reading ICEGATE…" : "Fetch"}
           </button>

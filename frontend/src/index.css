@@ -45,7 +45,7 @@
   --overlay: rgba(22, 30, 26, .38);
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-accent) 30%, transparent);
   /* layers */
-  --z-sticky: 5; --z-popover: 50; --z-panel: 800; --z-tray: 900; --z-modal: 1000;
+  --z-sticky: 5; --z-popover: 50; --z-panel: 800; --z-tray: 900; --z-overlay: 950; --z-modal: 1000;
 
   color-scheme: light;
 }
@@ -2262,7 +2262,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .sdot-bad { background: #dc2626; }
 .sdot-info { background: #3f76ff; }
 .sdot-todo { box-shadow: inset 0 0 0 1.5px var(--color-text-muted); }
-.sdot-muted { background: var(--color-border); }
+.sdot-muted { background: var(--color-text-muted); opacity: .5; }
 
 /* the charge drawer under the Money card */
 .collapse { transition: height 180ms cubic-bezier(.2, 0, 0, 1), opacity 180ms cubic-bezier(.2, 0, 0, 1); }
@@ -2509,8 +2509,8 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .detail-tabs::after { background: var(--color-text); }
 /* popovers: fade + scale .95 → 1 in 150ms from the side of their trigger; above everything but dialogs, 6px off it */
 .mini-popover, .date-editor { transform-origin: top left; }
-.columns-panel { transform-origin: top right; z-index: 1000; }
-.mini-popover { z-index: 1000; }
+.columns-panel { transform-origin: top right; z-index: var(--z-overlay); }
+.mini-popover { z-index: var(--z-overlay); }
 @media (prefers-reduced-motion: no-preference) {
   .mini-popover, .date-editor, .columns-panel, .ag-popup-child:not(.ag-tooltip) { animation: pop-in 150ms cubic-bezier(.2, 0, 0, 1); }
   @keyframes pop-in { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
@@ -2521,7 +2521,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .overview .field-value:not(.edit-value):hover { background: none; }
 .edit-value.field-empty, .edit-value .field-empty { color: var(--color-text-muted); font-weight: 400; }
 .overflow-tip {
-  position: fixed; z-index: 1000; max-width: 360px; padding: 5px 8px; border-radius: 6px; pointer-events: none;
+  position: fixed; z-index: var(--z-overlay); max-width: 360px; padding: 5px 8px; border-radius: 6px; pointer-events: none;
   background: var(--color-text); color: var(--color-surface); font-size: 12px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere;
   box-shadow: var(--shadow-md); transform-origin: top left;
 }
@@ -2541,3 +2541,22 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 }
 .edit-value.is-readonly { cursor: default; }
 .edit-value.is-readonly:hover { background: none; }
+
+[hidden] { display: none !important; }
+.ro-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.kg-ask { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; grid-column: 1 / -1; font-size: 12.5px; color: var(--color-text); }
+.doc-group-count .muted { color: var(--color-text-muted); opacity: 0.8; }
+/* tracker toolbar: Column filters / Columns / Reset / Import / Admin tools fold into "More ▾" when narrow */
+.toolbar-more, .toolbar-more-list { display: contents; }
+.toolbar-more-btn { display: none; }
+@container tracker (max-width: 900px) {
+  .toolbar-more { display: block; position: relative; }
+  .toolbar-more-btn { display: inline-flex; }
+  .toolbar-more-list { display: none; }
+  .toolbar-more-list.is-open {
+    display: flex; flex-direction: column; align-items: stretch; gap: 6px; position: absolute; right: 0; top: calc(100% + 4px);
+    z-index: var(--z-popover); min-width: 220px; padding: 8px; background: var(--color-surface);
+    border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  }
+  .toolbar-more-list.is-open .columns-anchor > button, .toolbar-more-list.is-open .tools-menu > summary { width: 100%; justify-content: center; }
+}

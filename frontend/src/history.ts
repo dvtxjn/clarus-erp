@@ -1,7 +1,10 @@
 import { fmtDay, fmtWhen } from "./dates";
 /** How a recorded value reads on the page (the log keeps text: "True", "2026-09-29", "ShipmentStatus.OOC_DONE"). */
-export function historyValue(v: string | null): string {
+export function historyValue(v: string | null, field?: string): string {
   if (v == null || v === "" || v === "None") return "—";
+  // weight reads like the tracker: "270.033 MTS"
+  const w = field === "gross_wt" ? /^(\d+(?:\.\d+)?)(?:\s*MTS)?$/i.exec(v.trim()) : null;
+  if (w) return `${Number(w[1]).toFixed(3)} MTS`;
   if (v === "True") return "Yes";
   if (v === "False") return "No";
   const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
@@ -16,6 +19,5 @@ export function historyValue(v: string | null): string {
 export function historyTime(at: string, withYear = false): string {
   // the log stores UTC; a time without a zone is UTC too
   const d = new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(at) ? at : `${at}Z`);
-  if (withYear) return fmtWhen(d.toISOString(), true);
-  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "Asia/Kolkata" });
+  return fmtWhen(d.toISOString(), withYear);
 }

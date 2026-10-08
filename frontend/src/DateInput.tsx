@@ -10,7 +10,7 @@ export function fmtDayMonth(iso: string | null | undefined): string {
 
 /**
  * What staff type -> "YYYY-MM-DD", day first: "03 Sep 2026", "3 sep", "3-Sep-26", "3/9", "03/09/2026",
- * "2026-09-03". No year = this year. "" for empty; null when it can't be read.
+ * "2026-09-03". No year = the year nearest today. "" for empty; null when it can't be read.
  */
 export function parseDayMonth(text: string): string | null {
   const t = text.trim();
@@ -20,11 +20,20 @@ export function parseDayMonth(text: string): string | null {
   if (iso) {
     [y, mo, d] = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
   } else {
-    const m = /^(\d{1,2})[\s/.-]*([a-z]{3,9}|\d{1,2})(?:[\s/.,-]+(\d{2}|\d{4}))?$/i.exec(t);
+    // a numeric month needs a separator ("3/9"): "39" is not 03 Sep
+    const m = /^(\d{1,2})(?:[\s/.-]+(\d{1,2})|[\s/.-]*([a-z]{3,9}))(?:[\s/.,-]+(\d{2}|\d{4}))?$/i.exec(t);
     if (!m) return null;
     d = Number(m[1]);
-    mo = /^\d+$/.test(m[2]) ? Number(m[2]) : MONTHS.findIndex((x) => x.toLowerCase() === m[2].slice(0, 3).toLowerCase()) + 1;
-    y = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : new Date().getFullYear();
+    mo = m[2] ? Number(m[2]) : MONTHS.findIndex((x) => x.toLowerCase() === m[3].slice(0, 3).toLowerCase()) + 1;
+    if (m[4]) y = m[4].length === 2 ? 2000 + Number(m[4]) : Number(m[4]);
+    else {
+      // no year: the one that puts the date nearest today (8 Jan typed in December = next January)
+      const now = new Date();
+      const base = now.getFullYear();
+      y = [base - 1, base, base + 1].reduce((best, c) =>
+        Math.abs(Date.UTC(c, mo - 1, d) - now.getTime()) < Math.abs(Date.UTC(best, mo - 1, d) - now.getTime()) ? c : best,
+      );
+    }
   }
   const dt = new Date(Date.UTC(y!, mo - 1, d));
   if (!mo || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;

@@ -1,6 +1,6 @@
 import CustomsMailPage from "./CustomsMailPage";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "./AuthContext";
 import { ConfirmProvider } from "./ConfirmDialog";
 import LoginPage from "./LoginPage";
@@ -10,14 +10,16 @@ import ShipmentGridPage from "./ShipmentGridPage";
 import MobileShipmentList from "./MobileShipmentList";
 import { usePhone } from "./usePhone";
 import ShipmentDetailPage from "./ShipmentDetailPage";
-import RatesPage from "./RatesPage";
-import DeletedPage from "./DeletedPage";
-import HistoryPage from "./HistoryPage";
-import UsersPage from "./UsersPage";
-import InvoicesPage from "./InvoicesPage";
-import SettingsPage from "./SettingsPage";
 import NotFoundPage from "./NotFoundPage";
 import { UploadQueueProvider } from "./uploadQueue";
+
+// admin-only pages load on first visit, so staff logins never download them
+const InvoicesPage = lazy(() => import("./InvoicesPage"));
+const RatesPage = lazy(() => import("./RatesPage"));
+const UsersPage = lazy(() => import("./UsersPage"));
+const SettingsPage = lazy(() => import("./SettingsPage"));
+const HistoryPage = lazy(() => import("./HistoryPage"));
+const DeletedPage = lazy(() => import("./DeletedPage"));
 
 /** The tracker grid on a desk, shipment cards on a phone. */
 function ShipmentsRoute() {
@@ -35,7 +37,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
 function AdminRoute({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   if (user?.role !== "admin") return <Navigate to="/shipments" replace />;
-  return <>{children}</>;
+  return <Suspense fallback={<div className="tracker-empty">Loading…</div>}>{children}</Suspense>;
 }
 
 export default function App() {

@@ -265,6 +265,8 @@ def reader_connect(request: Request, login_hint: Optional[str] = None, user: Use
     """The Google sign-in link for the mailbox (read-only permission)."""
     if not gmail.client_id() or not os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"):
         raise HTTPException(status_code=400, detail="Google sign-in isn't set up on the server yet (see the setup steps)")
+    if getattr(user, "read_only", False):
+        raise HTTPException(status_code=403, detail="This login is view-only.")
     token = jwt.encode({"sub": str(user.id), "purpose": "gmail", "exp": int(_time.time()) + 600}, SECRET_KEY, algorithm=ALGORITHM)
     return {"url": gmail.auth_url(_backend_base(request) + CALLBACK, token, login_hint)}
 
@@ -278,7 +280,7 @@ def reader_callback(request: Request, code: str = "", state: str = "", error: st
         if claims.get("purpose") != "gmail":
             raise JWTError("wrong purpose")
         admin = db.get(User, int(claims["sub"]))
-        if admin is None or admin.role.value != "admin":
+        if admin is None or admin.role.value != "admin" or getattr(admin, "read_only", False):
             raise JWTError("not admin")
     except (JWTError, KeyError, ValueError):
         return RedirectResponse(back + "?mailbox=expired#mailbox")

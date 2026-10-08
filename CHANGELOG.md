@@ -1,5 +1,17 @@
 # Release notes
 
+## v1.4.1 — fixes from bagdu's review
+- Peek: clicking outside while typing saves the field and keeps the peek open. A second click closes it. It never closes mid-edit.
+- **Delete** leaves Job, MBL, HBL, BE No and BE date alone.
+- **Esc** in a box cancels only that box (invoice amounts, receipts). The next Esc closes the layer. The confirm dialog's Esc closes only the dialog.
+- View-only logins: the shipment page has no Edit, Upload, Fetch, Put back, tick-boxes or switches, and doesn't show as "on this page" to others.
+- Gross Wt: typing a number over 1000 asks "Looks like kg — save as … MTS?" first. History shows weights as "270.033 MTS".
+- Dates: one format everywhere ("27 Sep, 22:42", never "Sept"). A typed date with no year takes the year nearest today. "39" is no longer read as 3 Sep.
+- Drive folder reader: after 10 s it says "Drive is slow — still reading…" and shows files as they arrive. **Retry** appears only once the read has ended.
+- Documents: each group reads "required 3/4 + 1 optional".
+- Narrow tracker (peek open): Column filters, Columns, Reset, Import and Admin tools fold into **More ▾**.
+- Smaller fixes: the Charges drawer moves focus in and back, menus stack correctly, admin pages load on demand, and a view-only login can't connect the Gmail reader.
+
 ## v1.4.0 — Delete key, view-only logins
 - Tracker: **Delete** clears the focused cell, like Excel. **Ctrl/⌘+Z** puts it back. Tick-box and Billed columns are left alone.
 - View-only logins: the tracker and shipment page don't open editors, and Users hides passwords, roles and switches. A banner says the login is view-only. The server already refuses every change.

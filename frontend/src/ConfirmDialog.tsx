@@ -52,7 +52,12 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     // destructive: start on Cancel so a stray Enter can't delete
     (pending.danger ? cancelBtn : confirmBtn).current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close(false);
+      if (e.key === "Escape") {
+        // only the dialog closes — not the drawer or peek under it
+        e.preventDefault();
+        e.stopPropagation();
+        close(false);
+      }
       if (e.key === "Tab" && dialog.current) {
         // keep Tab inside the dialog
         const els = dialog.current.querySelectorAll<HTMLElement>("input, button");
@@ -67,8 +72,8 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         }
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
 

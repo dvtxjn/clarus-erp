@@ -104,3 +104,8 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+/** A view-only login: can look at everything its role allows, can't change anything (the server refuses too). */
+export function useReadOnly(): boolean {
+  return !!useAuth().user?.read_only;
+}

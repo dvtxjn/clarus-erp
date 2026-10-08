@@ -2,6 +2,7 @@ import LoadError from "./LoadError";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { editContainer, shipmentHistory, updateShipment, type HistoryEntry } from "./api";
 import { useConfirm } from "./ConfirmDialog";
+import { useReadOnly } from "./AuthContext";
 import { historyTime, historyValue } from "./history";
 import type { Shipment } from "./types";
 
@@ -24,6 +25,7 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const confirm = useConfirm();
+  const ro = useReadOnly();
 
   const load = useCallback(() => {
     shipmentHistory(shipment.id).then(
@@ -61,7 +63,7 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
     if (!x.undo) return;
     const ok = await confirm({
       title: `Put ${x.label}${x.about ? ` (${x.about})` : ""} back?`,
-      message: `${x.label} goes back from “${historyValue(x.new)}” to “${historyValue(x.old)}”. The change is recorded like any edit.`,
+      message: `${x.label} goes back from “${historyValue(x.new, x.field)}” to “${historyValue(x.old, x.field)}”. The change is recorded like any edit.`,
       confirmLabel: "Put back",
     });
     if (!ok) return;
@@ -70,7 +72,7 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
         const { container_id, ...body } = x.undo as { container_id: number } & Parameters<typeof editContainer>[2];
         await editContainer(shipment.id, container_id, body);
       } else onChange(await updateShipment(shipment.id, x.undo as Partial<Shipment>));
-      setMsg({ ok: true, text: `${x.label} put back to ${historyValue(x.old)}.` });
+      setMsg({ ok: true, text: `${x.label} put back to ${historyValue(x.old, x.field)}.` });
       load();
     } catch (e) {
       setMsg({ ok: false, text: errorText(e) });
@@ -158,10 +160,10 @@ export default function ShipmentHistory({ shipment, onChange }: { shipment: Ship
                       </span>
                     )}
                   </td>
-                  <td className="history-val">{historyValue(x.old)}</td>
-                  <td className="history-val">{historyValue(x.new)}</td>
+                  <td className="history-val">{historyValue(x.old, x.field)}</td>
+                  <td className="history-val">{historyValue(x.new, x.field)}</td>
                   <td>
-                    {x.undo && (
+                    {x.undo && !ro && (
                       <button type="button" className="btn-secondary" onClick={() => putBack(x)}>
                         Put back
                       </button>

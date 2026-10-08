@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { ShipmentConflictError, updateShipment, type ShipmentConflict } from "./api";
 import { useConfirm } from "./ConfirmDialog";
+import { rememberShipment } from "./detailCache";
 import type { Shipment } from "./types";
 
 /** The values `seen` had for the fields `changes` touches (sent as `base`). */
@@ -39,6 +40,14 @@ export function useSaveShipment() {
   const confirm = useConfirm();
   return useCallback(
     async (seen: Shipment, changes: Partial<Shipment>, label?: string): Promise<SaveOutcome> => {
+      const out = await save(seen, changes, label);
+      rememberShipment(out.shipment); // a reopened peek shows this save at once
+      return out;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- save is defined below and only reads confirm
+    [confirm],
+  );
+  async function save(seen: Shipment, changes: Partial<Shipment>, label?: string): Promise<SaveOutcome> {
       try {
         return { shipment: await updateShipment(seen.id, changes, baseFor(seen, changes)), kept: "saved" };
       } catch (e) {
@@ -53,7 +62,5 @@ export function useSaveShipment() {
         // Keep mine: save again against the values that are there now
         return { shipment: await updateShipment(seen.id, changes, baseFor(e.shipment, changes)), kept: "mine" };
       }
-    },
-    [confirm],
-  );
+  }
 }

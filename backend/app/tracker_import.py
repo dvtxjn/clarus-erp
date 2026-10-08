@@ -29,7 +29,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import text
@@ -311,7 +311,7 @@ def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:
     p = plan(db, rows, lock=True)
     by_row = {r["_row"]: r for r in rows}
     hs = db.query(HSCode).filter(HSCode.code == TYRE_HS_CODE).first()
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     for item in p["updated"]:
         s = db.get(Shipment, item["shipment_id"])

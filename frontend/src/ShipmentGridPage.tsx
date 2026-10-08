@@ -43,6 +43,8 @@ import {
   updateShipment,
 } from "./api";
 import { useAuth } from "./AuthContext";
+import { kgLooking } from "./weight";
+import { forgetShipment, rememberShipment } from "./detailCache";
 import TrackerImportPanel from "./TrackerImportPanel";
 import IcegateSettings from "./IcegateSettings";
 import LinkFoldersPanel from "./LinkFoldersPanel";
@@ -602,6 +604,7 @@ const defaultColDef: ColDef<Shipment> = {
       return true;
     }
     if (e.key !== " ") return false;
+    if ((e.target as Element | null)?.closest?.("button, a, input")) return false; // Space on a button in a cell presses it
     e.preventDefault();
     window.dispatchEvent(new CustomEvent("tracker:peek", { detail: p.data.id }));
     return true;
@@ -714,10 +717,17 @@ export default function ShipmentGridPage() {
       if (
         !t?.isConnected ||
         t.closest(
-          ".peek-panel, .ag-row, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, [role='dialog'], [role='menu'], [role='listbox']",
+          ".peek-panel, .ag-row, .ag-root-wrapper, .client-grid-stack, .grid-sticky-top, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, [role='dialog'], [role='menu'], [role='listbox']",
         )
       )
         return;
+      // typing in the panel: the first click outside saves the field, a second one closes
+      const a = document.activeElement as HTMLElement | null;
+      if (a?.closest(".peek-panel") && a.matches("input, textarea, select")) {
+        a.blur();
+        return;
+      }
+      if (document.querySelector(".peek-panel .is-editing, .peek-panel .inv-edit, .peek-panel .receipt-edit, .peek-panel .cost-inclusion-typing")) return;
       close();
     };
     // Esc closes only the topmost layer: a popover/menu/field that handled it calls preventDefault first
@@ -732,10 +742,12 @@ export default function ShipmentGridPage() {
       close();
     };
     window.addEventListener("tracker:peek", open);
+    window.addEventListener("tracker:peek-close", close);
     window.addEventListener("keydown", esc);
     document.addEventListener("pointerdown", away);
     return () => {
       window.removeEventListener("tracker:peek", open);
+      window.removeEventListener("tracker:peek-close", close);
       window.removeEventListener("keydown", esc);
       document.removeEventListener("pointerdown", away);
     };
@@ -756,6 +768,10 @@ export default function ShipmentGridPage() {
   useDismiss(toolsRef, toolsOpen, () => toolsRef.current?.removeAttribute("open"));
   const columnsRef = useRef<HTMLDivElement>(null);
   useDismiss(columnsRef, showColumns, () => setShowColumns(false));
+  // narrow tracker (peek open beside it): secondary buttons fold into "More ▾"
+  const moreRef = useRef<HTMLDivElement>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  useDismiss(moreRef, moreOpen, () => setMoreOpen(false));
   const chipFoldRef = useRef<HTMLDivElement>(null);
   useDismiss(chipFoldRef, chipsOpen, () => setChipsOpen(false));
   const [showIcegate, setShowIcegate] = useState(false);
@@ -924,6 +940,7 @@ export default function ShipmentGridPage() {
         }
         const local = shipmentsRef.current?.find((s) => s.id === ev.id);
         if (local && local.version >= ev.v) return; // my own save, already shown
+        forgetShipment(ev.id); // someone else changed it: the next peek loads fresh
         pendingIds.current.add(ev.id);
         window.clearTimeout(flushTimer.current);
         flushTimer.current = window.setTimeout(() => {
@@ -1313,6 +1330,7 @@ export default function ShipmentGridPage() {
     const wrap = (v: unknown) => (c.customKey ? { custom_fields: { [c.customKey]: v } } : { [c.field]: v });
     try {
       const saved = await updateShipment(c.id, wrap(value) as Partial<Shipment>, wrap(expected));
+      rememberShipment(saved);
       setShipments((prev) => prev?.map((x) => (x.id === c.id ? saved : x)) ?? prev);
       (direction === "undo" ? redoStack : undoStack).current.push(c);
       setMessage({ kind: "ok", text: `${direction === "undo" ? "Undone" : "Redone"}: ${c.label}` });
@@ -1366,6 +1384,7 @@ export default function ShipmentGridPage() {
     if (field === "is_billed") {
       try {
         const saved = e.newValue ? await billShipment(id) : await unbillShipment(id);
+        rememberShipment(saved);
         setShipments((prev) => prev?.map((s) => (s.id === id ? saved : s)) ?? prev);
         setMessage({ kind: "ok", text: e.newValue ? "Marked as billed" : "Bill cancelled — status restored" });
       } catch (err) {
@@ -1392,6 +1411,16 @@ export default function ShipmentGridPage() {
       return;
     }
     if (field === "job" && value === null) value = "";
+    const mts = field === "gross_wt" && typeof value === "string" ? kgLooking(value) : null;
+    if (mts) {
+      const asMts = await confirm({
+        title: "Looks like kg",
+        message: `${value} is ${value!.replace(/\s*MTS$/i, "")} tonnes. Gross Wt is in MTS — save it as ${mts} MTS?`,
+        confirmLabel: `Save as ${mts} MTS`,
+        cancelLabel: "Keep as typed",
+      });
+      if (asMts) value = `${mts} MTS`;
+    }
     try {
       const payload = customKey ? { custom_fields: { [customKey]: value } } : { [field]: value };
       // what the user saw before typing (AG Grid has already put the new value in e.data)
@@ -1422,7 +1451,7 @@ export default function ShipmentGridPage() {
       revert();
       setMessage({ kind: "error", text: `Couldn't save ${e.colDef.headerName} — ${saveErrorText(err)}` });
     }
-  }, [record, saveShipment]);
+  }, [record, saveShipment, confirm]);
 
   // Delete on a focused cell clears it, like Excel. Checkbox / Billed columns and read-only cells are left alone.
   useEffect(() => {
@@ -1431,12 +1460,17 @@ export default function ShipmentGridPage() {
       if (readOnly || !node?.data || !column.isCellEditable(node)) return;
       const def = column.getColDef();
       if (def.cellDataType === "boolean" || def.field === "is_billed") return;
-      const v = node.data[def.field as keyof Shipment];
-      if (def.field && (v == null || v === "")) return;
+      // the keys that find a shipment are never wiped by one keypress
+      const KEEP = new Set(["job", "mbl", "hbl", "be_no", "be_dt"]);
+      if (KEEP.has(def.field as string) || KEEP.has(column.getColId())) return;
+      const api = grids().find((g) => g.api?.getRowNode(String(node.data!.id)) === node)?.api;
+      const v = def.field ? node.data[def.field as keyof Shipment] : api?.getCellValue({ rowNode: node, colKey: column });
+      if (v == null || v === "") return;
       node.setDataValue(column, null); // the normal cell save (onCellValueChanged)
     };
     window.addEventListener("tracker:clear", clear);
     return () => window.removeEventListener("tracker:clear", clear);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- grids() reads refs
   }, [readOnly]);
 
   // Chip toggles in the Checklist column save like any other cell edit.
@@ -1456,6 +1490,7 @@ export default function ShipmentGridPage() {
   }, [record, saveShipment, readOnly]);
   // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
   const saveText = useCallback(async (row: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => {
+    if (readOnly) return setMessage({ kind: "error", text: "This login is view-only." });
     const left = readHScroll();
     try {
       const { shipment: saved, kept } = await saveShipment(row, { [field]: value } as Partial<Shipment>, label);
@@ -1731,6 +1766,14 @@ export default function ShipmentGridPage() {
             </button>
           ))}
         </div>
+        <div className="tracker-search">
+          <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
+        </div>
+        <div className="toolbar-more" ref={moreRef}>
+        <button type="button" className="btn-secondary toolbar-more-btn" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
+          More ▾
+        </button>
+        <div className={`toolbar-more-list${moreOpen ? " is-open" : ""}`}>
         <button
           className={`btn-secondary${showColFilters ? " is-on" : ""}`}
           onClick={() => setShowColFilters((x) => !x)}
@@ -1738,9 +1781,6 @@ export default function ShipmentGridPage() {
         >
           Column filters
         </button>
-        <div className="tracker-search">
-          <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
-        </div>
         <div className="columns-anchor" ref={columnsRef}>
           <button className="btn-secondary" onClick={() => { syncHidden(); setShowColumns((v) => !v); }}>
             Columns{hiddenCols.size > 0 ? ` (${hiddenCols.size} hidden)` : ""}
@@ -1786,6 +1826,8 @@ export default function ShipmentGridPage() {
             </div>
           </details>
         )}
+        </div>
+        </div>
         <button onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? "Cancel" : "+ Add Shipment"}</button>
       </div>
 
@@ -1998,7 +2040,7 @@ export default function ShipmentGridPage() {
           )}
         </SettledStack>
       )}
-      <PeekPanel id={peekId} full={peekFull} onClose={() => setPeek(null)} onFull={setPeekFull} />
+      <PeekPanel id={peekId} full={peekFull} onClose={() => window.dispatchEvent(new Event("tracker:peek-close"))} onFull={setPeekFull} />
     </div>
   );
 }

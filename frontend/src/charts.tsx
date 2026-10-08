@@ -1,4 +1,5 @@
 import type { MonthFigures } from "./types";
+import { MONTHS } from "./dates";
 
 /**
  * Small SVG charts for the dashboard (no chart library): monthly stacked bars by port and
@@ -16,7 +17,7 @@ export const fmtMetric = (v: number, m: Metric) =>
   m === "containers" ? v.toLocaleString("en-IN") : `${v.toLocaleString("en-IN", { maximumFractionDigits: 1 })} t`;
 
 const monthLabel = (ym: string) =>
-  new Date(`${ym}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+  `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
 
 export function MonthlyBars({
   data,

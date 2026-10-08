@@ -137,8 +137,8 @@ export default function HistoryPage() {
                     {x.label}
                     {x.kind !== "Shipment" && <span className="field-note"> · {x.kind} #{x.record_id}</span>}
                   </td>
-                  <td className="history-val">{historyValue(x.old)}</td>
-                  <td className="history-val">{historyValue(x.new)}</td>
+                  <td className="history-val">{historyValue(x.old, x.field)}</td>
+                  <td className="history-val">{historyValue(x.new, x.field)}</td>
                 </tr>
               ))}
             </tbody>

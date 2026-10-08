@@ -22,8 +22,11 @@ const FILTERS: [string, string, (f: FolderFile) => boolean][] = [
 
 const TYPES = (Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).filter((t) => !LEGACY_DOCUMENT_TYPES.includes(t));
 const label = (t: string | null) => (t ? (t in DOCUMENT_TYPE_LABELS ? docShort(t as DocumentType) : t) : "");
-/** Drive can hang: after 10s say so and offer Retry instead of "Reading…" forever (the read may still finish). */
+/** Drive can hang: after 10s say "Drive is slow" and show what has been read so far (polled every 5s, up to 60s).
+ *  Retry appears only once the read itself has finished or failed, so it never starts a second one alongside. */
 const READ_TIMEOUT_MS = 10_000;
+const POLL_MS = 5_000;
+const POLL_FOR_MS = 60_000;
 function within<T>(p: Promise<T>): Promise<T> {
   return Promise.race([p, new Promise<T>((_, no) => window.setTimeout(() => no(new Error("timeout")), READ_TIMEOUT_MS))]);
 }
@@ -63,6 +66,7 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false);
   const [filter, setFilter] = useState("needs");
   const [open, setOpen] = useState(true);
   const folderId = shipment.drive_folder_id;
@@ -73,8 +77,19 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
     busy.current = true;
     setReading(true);
     setError(null);
+    setSlow(false);
+    const id = shipment.id;
+    let poll = 0;
+    const started = Date.now();
+    const slowTimer = window.setTimeout(() => {
+      setSlow(true);
+      poll = window.setInterval(() => {
+        if (Date.now() - started > POLL_FOR_MS) return window.clearInterval(poll);
+        getFolderFiles(id).then(setFiles, () => {});
+      }, POLL_MS);
+    }, READ_TIMEOUT_MS);
     try {
-      const r = await within(syncFolder(shipment.id));
+      const r = await syncFolder(id);
       setFiles(r.files);
       const added = r.files.filter((f) => f.status === "added").length;
       setSummary(
@@ -89,7 +104,10 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
     } catch (e) {
       setError(errText(e, "Couldn't read the Drive folder."));
     } finally {
+      window.clearTimeout(slowTimer);
+      window.clearInterval(poll);
       busy.current = false;
+      setSlow(false);
       setReading(false);
     }
   }
@@ -137,6 +155,11 @@ export function FolderReader({ shipment, onChanged }: { shipment: Shipment; onCh
       {open && (
         <>
           {summary && <p className="tracker-subtitle">{summary}</p>}
+          {slow && (
+            <p className="tracker-subtitle" role="status">
+              Drive is slow — still reading…
+            </p>
+          )}
           {error && (
             <div className="auth-error" role="alert">
               {error}{" "}

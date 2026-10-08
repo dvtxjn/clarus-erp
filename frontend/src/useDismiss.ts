@@ -16,6 +16,9 @@ export function useDismiss(ref: RefObject<HTMLElement | null> | null, open: bool
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
+      // Esc in a field leaves the field (it keeps what's typed); the next Esc closes the layer
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, select")) return t.blur();
       closeRef.current();
     };
     if (ref) document.addEventListener("pointerdown", down);

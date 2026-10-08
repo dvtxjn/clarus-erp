@@ -22,19 +22,24 @@ function valid(y: number, m: number, d: number): Date | null {
   return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d ? dt : null;
 }
 
-/** Day first, like the sheet: "8/10" = 8 October. Missing year = this year. */
+/** Day first, like the sheet: "8/10" = 8 October. Missing year = nearest to today. */
 export function parseTypedDate(text: string, now = new Date()): Date | null {
   const t = text.trim().toLowerCase();
   if (!t) return null;
   const year = (y?: string) => (!y ? now.getFullYear() : y.length === 2 ? 2000 + Number(y) : Number(y));
   let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (m) return valid(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // no year typed: the year that puts the date nearest today (±6 months)
+  const near = (mon: number, day: number) =>
+    [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].reduce((b, c) =>
+      Math.abs(new Date(c, mon, day).getTime() - now.getTime()) < Math.abs(new Date(b, mon, day).getTime() - now.getTime()) ? c : b,
+    );
   m = t.match(/^(\d{1,2})[-/. ](\d{1,2})(?:[-/. ](\d{2}|\d{4}))?$/);
-  if (m) return valid(year(m[3]), Number(m[2]) - 1, Number(m[1]));
+  if (m) return valid(m[3] ? year(m[3]) : near(Number(m[2]) - 1, Number(m[1])), Number(m[2]) - 1, Number(m[1]));
   m = t.match(/^(\d{1,2})[-/. ]?([a-z]{3})[a-z]*(?:[-/. ,]+(\d{2}|\d{4}))?$/);
   if (m) {
     const mon = MONTHS.findIndex((x) => x.toLowerCase() === m![2]);
-    return mon < 0 ? null : valid(year(m[3]), mon, Number(m[1]));
+    return mon < 0 ? null : valid(m[3] ? year(m[3]) : near(mon, Number(m[1])), mon, Number(m[1]));
   }
   return null;
 }

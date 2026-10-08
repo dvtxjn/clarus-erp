@@ -10,16 +10,15 @@ import {
   uploadChallans,
 } from "./api";
 import type { ChallanUploadResult, DailyStatus, Organization, OrganizationInput } from "./types";
+import { fmtTime, fmtWhen, fmtWhenDay } from "./dates";
 
 const inr = (v: string | number | null | undefined) =>
   v == null ? "—" : `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function when(iso: string | null): string {
   if (!iso) return "never";
-  const d = new Date(iso);
-  const today = new Date().toDateString() === d.toDateString();
-  const time = d.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  return today ? `today ${time}` : `${d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" })} ${time}`;
+  const today = fmtWhenDay(iso, true) === fmtWhenDay(new Date().toISOString(), true);
+  return today ? `today ${fmtTime(iso)}` : fmtWhen(iso);
 }
 
 function errorText(e: unknown): string {

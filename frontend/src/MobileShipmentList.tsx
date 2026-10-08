@@ -5,9 +5,9 @@ import { clearedShipmentCount, listShipments } from "./api";
 import { useAuth } from "./AuthContext";
 import { formatPort, usePorts } from "./ports";
 import { SHIPMENT_STATUS_LABELS, type Shipment } from "./types";
+import { fmtDayShort } from "./dates";
 
-const fmt = (v: string | null) =>
-  v ? new Date(`${v}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "—";
+const fmt = (v: string | null) => fmtDayShort(v);
 
 /**
  * Shipments on a phone: search + one card per shipment (the tracker grid needs a desk).

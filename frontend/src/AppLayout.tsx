@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { getBackupHealth } from "./api";
 import { useAuth } from "./AuthContext";
+import { setPresenceEnabled } from "./live";
 import { ACCENTS, THEMES, savedAccent, savedTheme, setAccent, setTheme, type AccentId, type ThemeId } from "./accent";
 import { SidebarSlotContext } from "./sidebarSlot";
 import { useSandbox } from "./sandboxInfo";
@@ -47,6 +48,7 @@ const PAGE_TITLES: Record<string, string> = {
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  useEffect(() => setPresenceEnabled(!user?.read_only), [user?.read_only]);
   const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false); // phone: the "More" sheet
   useEffect(() => setMoreOpen(false), [pathname]);

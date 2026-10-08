@@ -1,4 +1,4 @@
-import { fmtWhen } from "./dates";
+import { fmtWhen, fmtWhenDay } from "./dates";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   addDocumentFromDrive,
@@ -243,6 +243,7 @@ export default function DocumentManagerPanel({
         </p>
       )}
 
+      {!user?.read_only && (
       <form className="add-shipment-form" onSubmit={handleUpload}>
         <select ref={typeSelect} aria-label="Document type" value={docType} onChange={(e) => setDocType(e.target.value as DocumentType)}>
           {DOCUMENT_GROUPS.map((g) => (
@@ -276,6 +277,7 @@ export default function DocumentManagerPanel({
           <DriveIcon /> Choose from Google Drive
         </button>
       </form>
+      )}
       {READ_ON_UPLOAD.includes(docType) && (
         <p className="tracker-subtitle">
           This document is read on upload — BE / duty / CFS details fill in automatically.
@@ -302,13 +304,17 @@ export default function DocumentManagerPanel({
                   .filter((r) => documentGroup(r.document_type).id === g.id)
                   .sort((a, b) => g.types.indexOf(a.document_type) - g.types.indexOf(b.document_type));
                 if (rows.length === 0) return null;
-                const done = rows.filter((r) => r.uploaded).length;
+                // "required x/y": optional papers counted apart, muted, so they don't look like gaps
+                const req = rows.filter((r) => r.required && !r.optional);
+                const done = req.filter((r) => r.uploaded).length;
+                const extra = rows.length - req.length;
                 return (
                   <section className="doc-group tracker-grid-wrap" key={g.id}>
                     <div className="doc-group-head">
                       <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {g.label}
                       <span className="doc-group-count">
-                        {done} of {rows.length}
+                        {req.length > 0 && `required ${done}/${req.length}`}
+                        {extra > 0 && <span className="muted"> + {extra} optional</span>}
                       </span>
                     </div>
                     <table className="tracker-grid doc-table">
@@ -397,7 +403,7 @@ export default function DocumentManagerPanel({
                         : row.documents.map((d) => (
                             <div key={d.id} className="doc-file-line">
                               <span title={fmtWhen(d.uploaded_at, true)}>
-                                {new Date(d.uploaded_at).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short" })}
+                                {fmtWhenDay(d.uploaded_at)}
                               </span>
                               {READ_ON_UPLOAD.includes(d.document_type) && (
                                 <>
@@ -406,6 +412,7 @@ export default function DocumentManagerPanel({
                                     type="button"
                                     className="link-btn"
                                     disabled={uploading}
+                                    hidden={!!user?.read_only}
                                     title="Re-read: read this document again and update the shipment"
                                     aria-label="Re-read"
                                     onClick={() => handleReread(d)}
@@ -414,7 +421,7 @@ export default function DocumentManagerPanel({
                                   </button>
                                 </>
                               )}
-                              {isAdmin && (
+                              {isAdmin && !user?.read_only && (
                                 <>
                                   {" "}
                                   <button
@@ -456,6 +463,7 @@ function DriveFolderBar({
   onChanged: () => void;
   onPickFiles: () => void;
 }) {
+  const ro = !!useAuth().user?.read_only;
   const saveShipment = useSaveShipment();
   const driveReady = useDriveReady();
   const [link, setLink] = useState("");
@@ -524,15 +532,16 @@ function DriveFolderBar({
         >
           Pick files from this folder
         </button>
-        <button type="button" className="link-btn" onClick={() => setEditing(true)}>
+        <button type="button" className="link-btn" hidden={ro} onClick={() => setEditing(true)}>
           Change
         </button>
-        <button type="button" className="link-btn" onClick={() => save(null, null)}>
+        <button type="button" className="link-btn" hidden={ro} onClick={() => save(null, null)}>
           Unlink
         </button>
       </div>
     );
   }
+  if (ro) return null;
   return (
     <div className="drive-folder-bar drive-folder-unlinked">
       <DriveIcon />

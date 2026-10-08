@@ -1,5 +1,5 @@
 import { tabKeys } from "./tabKeys";
-import { fmtDay } from "./dates";
+import { fmtDay, MONTHS } from "./dates";
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Receivables from "./Receivables";
@@ -44,7 +44,7 @@ function MonthSelect({ value, fy, onChange }: { value: string; fy?: string; onCh
   }
   if (value && !months.includes(value)) months.push(value);
   const label = (m: string) =>
-    new Date(`${m}-01T00:00:00`).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+    `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Month">
       <option value="">Any month</option>

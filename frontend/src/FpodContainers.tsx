@@ -1,4 +1,5 @@
-import { fmtDay, fmtDayShort } from "./dates";
+import { fmtDay, fmtDayShort, istToday } from "./dates";
+import { useReadOnly } from "./AuthContext";
 import LoadError from "./LoadError";
 import { useEffect, useState, type FormEvent } from "react";
 import axios from "axios";
@@ -43,6 +44,7 @@ export default function FpodContainers({
   /** full-page layout: the table shows (first 5 rows); narrow: folded behind the summary unless free days run out */
   wide?: boolean;
 }) {
+  const ro = useReadOnly();
   const shipmentId = shipment.id;
   const [rows, setRows] = useState<ShipmentContainer[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -193,10 +195,10 @@ export default function FpodContainers({
           <button type="button" className="btn-secondary" onClick={copyImage} disabled={!rows?.length}>
             Copy as image
           </button>
-          <button type="button" className="btn-secondary" onClick={fetchIcegate} disabled={busy}>
+          <button type="button" className="btn-secondary" onClick={fetchIcegate} disabled={busy} hidden={ro}>
             {busy ? "Asking ICEGATE…" : "Fetch from ICEGATE"}
           </button>
-          <button type="button" className="btn-secondary" onClick={() => setAdding((a) => !a)}>
+          <button type="button" className="btn-secondary" onClick={() => setAdding((a) => !a)} hidden={ro}>
             + Add container
           </button>
         </span>
@@ -266,6 +268,7 @@ export default function FpodContainers({
         <p className="field-note">No containers yet: Fetch from ICEGATE (reads the IGM with the MBL), or add them by hand.</p>
       ) : !open ? null : (
         <div className="fpod-scroll">
+        <fieldset className="ro-fieldset" disabled={ro}>
         <table className="tracker-grid fpod-table">
           <thead>
             <tr>
@@ -360,6 +363,7 @@ export default function FpodContainers({
             ))}
           </tbody>
         </table>
+        </fieldset>
         {rows.length > PREVIEW && (
           <button type="button" className="link-button fpod-more" onClick={() => setShowAll((v) => !v)} aria-expanded={showAll}>
             {showAll
@@ -394,7 +398,7 @@ function tableImage(s: Shipment, portLabel: string, rows: ShipmentContainer[], i
   const cellPad = 16; // 8 each side
   const font = (w: number, size: number) => `${w} ${size}px Inter, -apple-system, "Segoe UI", Roboto, sans-serif`;
   const who = [s.job ? `Job ${s.job}` : null, s.consignee || s.client].filter(Boolean).join(" · ");
-  const asOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  const asOn = fmtDay(istToday());
   const title = `Container tracking · ${portLabel}${who ? ` · ${who}` : ""}`;
   const sub = `BL ${s.mbl || "—"} · BE ${s.be_no || "not filed"} · as on ${asOn}`;
 

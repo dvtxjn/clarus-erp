@@ -73,7 +73,14 @@ export function connectLive(onEvent: (e: LiveEvent) => void, onStatus?: (live: b
   };
 }
 
+let presenceOn = true;
+/** A view-only login doesn't announce where it is (the server refuses its POSTs anyway). */
+export function setPresenceEnabled(on: boolean): void {
+  presenceOn = on;
+}
+
 export function sendPresence(shipmentId: number | null, field: string | null, editing = false): void {
+  if (!presenceOn) return;
   fetch(`${API_BASE_URL}/realtime/presence`, {
     method: "POST",
     headers: {
