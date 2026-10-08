@@ -543,6 +543,7 @@ function DutyTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: 
   const inland = !!s.port && !SEA_PORTS.has(s.port);
   return (
     <div className="overview duty-tab">
+      <CopyRows.Provider value={true}>
       <section className="detail-section" id={`duty-${s.id}`}>
         <h3>Customs duty</h3>
         <EditField label="License" field="license" s={s} onChange={onChange} />
@@ -550,6 +551,7 @@ function DutyTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: 
         {inland && s.icegate?.icd?.importer && <Field label="Importer (ICD)" value={s.icegate.icd.importer} hint="From the ICD BL status" />}
         <BeAmounts shipment={s} onChange={onChange} />
       </section>
+      </CopyRows.Provider>
     </div>
   );
 }
@@ -898,7 +900,7 @@ type BeField = "assessable_value" | "igst_amount" | "duty_amount";
 const BE_FIELDS: [BeField, string][] = [
   ["assessable_value", "Assessable Value"],
   ["igst_amount", "IGST"],
-  ["duty_amount", "Duty Amount"],
+  ["duty_amount", "Duty (without interest)"],
 ];
 
 /** BE figures (read from the Assessed / OOC copy) — "Edit" to correct a misread. */
@@ -912,6 +914,8 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
   const fd = s.final_duty;
   const final = fd && fd.source !== "be" && (s.ooc || Number(fd.interest) > 0) ? fd : null;
   const finalHint = final?.source === "ooc" ? "From the OOC copy's total (the amount paid)" : "BE duty + interest from the duty challan";
+  const interest = final ? final.interest || "0" : s.duty_amount ? "0" : null;
+  const withInterest = final ? final.total : s.duty_amount ?? null;
 
   function start() {
     setValues({
@@ -959,18 +963,14 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
             />
           </label>
         ) : (
-          <Field key={f} label={label} value={fmtMoney(s[f])} strong={f === "duty_amount" && !final} hint="From the Assessed / OOC BE" />
+          <Field key={f} label={label} value={fmtMoney(s[f])} hint="From the Assessed / OOC BE" copy={[{ text: s[f] }]} />
         ),
       )}
-      {!editing && final && (
+      {/* duty without interest, the interest, then duty with interest (client, 2026-10-08) — display only */}
+      {!editing && (
         <>
-          {/* one line: "₹3,97,810 (incl. interest ₹3,564)" — display only */}
-          <Field
-            label={s.ooc ? "Final Duty" : "Duty due"}
-            value={Number(final.interest) > 0 ? `${fmtMoney(final.total)} (incl. interest ${fmtMoney(final.interest)})` : fmtMoney(final.total)}
-            strong
-            hint={finalHint}
-          />
+          <Field label="Interest" value={fmtMoney(interest)} hint={final ? finalHint : "No interest on a challan yet"} copy={[{ text: interest }]} />
+          <Field label="Duty (with interest)" value={fmtMoney(withInterest)} strong hint={final ? finalHint : "BE duty, no interest yet"} copy={[{ text: withInterest }]} />
         </>
       )}
       {editing && (

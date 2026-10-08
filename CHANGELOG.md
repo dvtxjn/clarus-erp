@@ -1,5 +1,10 @@
 # Release notes
 
+## v1.6.5 — 08 Oct 2026
+
+- Customs duty tab: every row has the same copy button as Shipment & movement. Amounts copy as plain numbers (e.g. 189979.00), ready to paste.
+- Customs duty tab: the duty shows in three rows, in order: Duty (without interest), Interest, Duty (with interest).
+
 ## v1.6.4 — 08 Oct 2026
 
 - Overview rows: the labels are bold and the values plain.

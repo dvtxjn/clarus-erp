@@ -2696,6 +2696,7 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .overview .field-row > .field-value:not(.edit-value), .overview .edit-value { font-weight: 400; }
 /* Shipment & movement: a copy button at the end of each row; IGM-style rows copy No. and Date apart */
 .ov-ship .field-row { grid-template-columns: 120px minmax(0, 1fr) auto; }
+.overview.duty-tab .field-row { grid-template-columns: 170px minmax(0, 1fr) auto; }
 .row-copy { display: inline-flex; gap: 2px; justify-self: end; min-width: 24px; }
 .row-copy-btn {
   all: unset; box-sizing: border-box; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 5px;
