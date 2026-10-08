@@ -46,6 +46,19 @@ export default function UpdateCheck() {
       const theirs = await serverBuild();
       if (theirs && theirs !== mine) setStale(true);
     };
+    // a fresh page load that still got the old build (just after a deploy, the old server copy can
+    // answer for a few seconds): load the new one straight away, once — the banner is for tabs left open
+    void serverBuild().then((theirs) => {
+      if (!theirs || theirs === mine) return;
+      try {
+        const at = Number(sessionStorage.getItem("clarus.freshReload") || 0);
+        if (Date.now() - at < 60_000) return setStale(true); // already tried: fall back to the banner
+        sessionStorage.setItem("clarus.freshReload", String(Date.now()));
+      } catch {
+        return setStale(true);
+      }
+      window.location.reload();
+    });
     const timer = window.setInterval(check, 5 * 60_000);
     document.addEventListener("visibilitychange", check);
     window.addEventListener("focus", check);

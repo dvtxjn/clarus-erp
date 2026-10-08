@@ -79,8 +79,9 @@ export function setPresenceEnabled(on: boolean): void {
   presenceOn = on;
 }
 
+let presencePauseUntil = 0;
 export function sendPresence(shipmentId: number | null, field: string | null, editing = false): void {
-  if (!presenceOn) return;
+  if (!presenceOn || Date.now() < presencePauseUntil) return;
   fetch(`${API_BASE_URL}/realtime/presence`, {
     method: "POST",
     headers: {
@@ -89,9 +90,14 @@ export function sendPresence(shipmentId: number | null, field: string | null, ed
     },
     body: JSON.stringify({ shipment_id: shipmentId, field, editing, tab: TAB_ID }),
     keepalive: true, // still sent when the tab is closing
-  }).catch(() => {
-    /* presence is best-effort */
-  });
+  })
+    .then((r) => {
+      if (r.status === 403) presenceOn = false; // a view-only login: the server refuses it, stop asking
+      else if (!r.ok) presencePauseUntil = Date.now() + 30_000;
+    })
+    .catch(() => {
+      presencePauseUntil = Date.now() + 30_000; // presence is best-effort: wait out a blip (deploy, network)
+    });
 }
 
 export const PRESENCE_COLORS = ["#2563EB", "#16A34A", "#9333EA", "#DB2777", "#0891B2", "#CA8A04", "#DC2626", "#4F46E5"];

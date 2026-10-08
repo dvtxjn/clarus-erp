@@ -26,6 +26,19 @@ export default function OverflowTip() {
       setTip(null);
       dropGridTip();
     };
+    // after a panel or menu opens/closes, the rows slide under a still mouse: no grid tooltip for
+    // 0.5 s and until the mouse moves, and whatever popped up meanwhile is dropped
+    let quietSince = 0;
+    const quiet = () => {
+      hide();
+      quietSince = Date.now();
+      document.body.classList.add("grid-tips-quiet");
+    };
+    const wake = () => {
+      if (!document.body.classList.contains("grid-tips-quiet") || Date.now() - quietSince < 500) return;
+      document.querySelectorAll<HTMLElement>(".ag-tooltip").forEach((t) => (t.style.display = "none"));
+      document.body.classList.remove("grid-tips-quiet");
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") hide();
       else {
@@ -53,7 +66,8 @@ export default function OverflowTip() {
     document.addEventListener("pointerdown", hide);
     document.addEventListener("keydown", onKey);
     window.addEventListener("scroll", hide, true);
-    window.addEventListener("tips:hide", hide);
+    window.addEventListener("tips:hide", quiet);
+    document.addEventListener("pointermove", wake);
     return () => {
       hide();
       document.removeEventListener("pointerover", show);
@@ -61,7 +75,8 @@ export default function OverflowTip() {
       document.removeEventListener("pointerdown", hide);
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", hide, true);
-      window.removeEventListener("tips:hide", hide);
+      window.removeEventListener("tips:hide", quiet);
+      document.removeEventListener("pointermove", wake);
     };
   }, []);
   if (!tip) return null;

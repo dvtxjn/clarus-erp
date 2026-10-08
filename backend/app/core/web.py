@@ -53,7 +53,7 @@ class SpaFallback(BaseHTTPMiddleware):
                                     if "/assets/" in path else None)
             wants_page = "text/html" in request.headers.get("accept", "")
             if wants_page and not path.startswith(("/docs", "/redoc", "/openapi.json", "/oauth/")):
-                return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})
+                return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-store"})
         return await call_next(request)
 
 

@@ -39,7 +39,16 @@ client.interceptors.request.use((config) => {
   return config;
 });
 // the login ran out (12 h) or was revoked: back to the login page, not a screen where saves quietly fail
-client.interceptors.response.use(undefined, (err) => {
+client.interceptors.response.use(undefined, async (err) => {
+  // a load that hit a network blip or a server switching over (deploy): try once more, quietly
+  const cfg = axios.isAxiosError(err) ? (err.config as (typeof err.config & { _retried?: boolean }) | undefined) : undefined;
+  const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+  if (cfg && !cfg._retried && (cfg.method ?? "get").toLowerCase() === "get" && !axios.isCancel(err)
+      && (status === undefined || status === 502 || status === 503 || status === 504)) {
+    cfg._retried = true;
+    await new Promise((r) => setTimeout(r, 800));
+    return client.request(cfg);
+  }
   if (axios.isAxiosError(err) && err.response?.status === 401 && !String(err.config?.url ?? "").includes("/auth/login")
       && localStorage.getItem("access_token")) {
     window.dispatchEvent(new CustomEvent("auth:ended", { detail: "Your login has expired — please log in again." }));

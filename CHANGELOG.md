@@ -1,5 +1,12 @@
 # Release notes
 
+## v1.4.6 — bagdu's pass on v1.4.5
+- After a deploy, a normal refresh opens the new version. If the first load still gets the old copy, the page reloads itself once. The "new version" banner is only for tabs left open.
+- Grid: hovering the ↗ heading shows "Open job".
+- Opening or closing the peek or a menu: no grid tooltip for half a second, and none until the mouse moves, so nothing pops up over a neighbouring row.
+- A load that hits a network blip or a server switching over (e.g. during a deploy) retries once by itself before showing "Couldn't load · Retry".
+- Live presence: after a failed update it waits 30 s instead of retrying every few seconds. A view-only login stops sending updates.
+
 ## v1.4.5 — bagdu's pass on v1.4.4 (polish)
 - Tooltips: none is left floating after the peek, a menu or the Columns panel opens or closes, on scroll or on Esc. Grid tooltips don't show while a menu is open over the grid.
 - **More ▾** reads as a menu: plain text rows with a hover tint. Group by and the views stay on top, and **+ Add Shipment** is last, after a divider, still green.

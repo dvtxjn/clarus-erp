@@ -375,8 +375,13 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
   const removed = new Set(trackerCols.filter((c) => !c.is_custom && c.is_removed).map((c) => c.key));
   const all: ColDef<Shipment>[] = [
     {
-      headerName: "↗",
-      headerTooltip: "Open job",
+      headerName: "Open job",
+      // the grid only shows tooltips for cut-off text, so the ↗ carries its own
+      headerComponent: () => (
+        <span className="header-open-label" title="Open job">
+          ↗
+        </span>
+      ),
       headerClass: "header-open",
       colId: "open",
       width: 44, // a whole-cell button: easy to hit (client, 2026-09-30)

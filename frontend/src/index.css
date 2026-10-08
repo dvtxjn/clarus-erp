@@ -2611,3 +2611,6 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .ag-header-cell.header-open { padding: 0; }
 /* the peek's ✕ and New tab stay put whatever the job: the scrollbar's room is always kept */
 .peek-panel { scrollbar-gutter: stable; }
+/* no grid tooltip for a moment after a panel/menu opens (until the mouse moves) */
+.grid-tips-quiet .ag-tooltip { display: none; }
+.header-open-label { display: grid; place-items: center; width: 100%; height: 100%; cursor: default; color: var(--color-text-muted); }
