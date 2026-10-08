@@ -293,6 +293,11 @@ export default function AppLayout() {
         </div>
       )}
       <main className="app-main" id="main" tabIndex={-1}>
+        {user?.read_only && (
+          <div className="readonly-banner" role="status">
+            View-only login — you can look at everything, but changes are switched off.
+          </div>
+        )}
         {sandbox.sandbox && (
           <div className="sandbox-banner" role="note">
             <strong>Sandbox</strong> — sample data to try the ERP. Nothing here is real; changes stay in the sandbox.

@@ -20,6 +20,7 @@ import {
   type GridApi,
   type ICellRendererParams,
   type IRowNode,
+  type Column,
   type RowClassParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
@@ -593,7 +594,14 @@ const defaultColDef: ColDef<Shipment> = {
   // Excel keys: Enter / F2 / typing edit, Enter again saves and moves down, Esc cancels; Space opens the job
   suppressKeyboardEvent: (p) => {
     const e = p.event;
-    if (e.type !== "keydown" || p.editing || e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || !p.data) return false;
+    if (e.type !== "keydown" || p.editing || e.ctrlKey || e.metaKey || e.altKey || !p.data) return false;
+    if (e.key === "Delete") {
+      // Delete clears the cell (a normal save, so Ctrl/⌘+Z puts it back)
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent("tracker:clear", { detail: { node: p.node, column: p.column } }));
+      return true;
+    }
+    if (e.key !== " ") return false;
     e.preventDefault();
     window.dispatchEvent(new CustomEvent("tracker:peek", { detail: p.data.id }));
     return true;
@@ -737,6 +745,7 @@ export default function ShipmentGridPage() {
   const confirm = useConfirm();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const readOnly = !!user?.read_only; // view-only login: every edit key is a no-op (the server refuses changes too)
   const driveReady = useDriveReady();
   const [trackerCols, setTrackerCols] = useState<TrackerColumn[]>([]);
   const [showColumns, setShowColumns] = useState(false);
@@ -766,8 +775,8 @@ export default function ShipmentGridPage() {
       withSavedState(
         buildColumnDefs(ports, tab, trackerCols, tab === "ongoing" && view === "client"),
         `${COLUMN_STATE_KEY}.${tab}`,
-      ),
-    [ports, tab, trackerCols, view],
+      ).map((c) => (readOnly ? { ...c, editable: false } : c)),
+    [ports, tab, trackerCols, view, readOnly],
   );
 
   // Only the open tab's rows are loaded: Cleared (the long history) is fetched when it's clicked.
@@ -1402,15 +1411,37 @@ export default function ShipmentGridPage() {
       if (typeof old === "string" && old.trim() === "") old = null;
       if (field === "job" && old === null) old = "";
       record({ id, field: String(field), customKey: customKey ?? null, oldValue: old, newValue: value, label: `${e.colDef.headerName ?? field}` });
-      setMessage({ kind: "ok", text: `Saved ${e.colDef.headerName}${statusNote(e.data.status, saved.status)}` });
+      setMessage({
+        kind: "ok",
+        text:
+          value === null && old !== null
+            ? `Cleared ${e.colDef.headerName} · Ctrl/⌘+Z puts it back`
+            : `Saved ${e.colDef.headerName}${statusNote(e.data.status, saved.status)}`,
+      });
     } catch (err) {
       revert();
       setMessage({ kind: "error", text: `Couldn't save ${e.colDef.headerName} — ${saveErrorText(err)}` });
     }
   }, [record, saveShipment]);
 
+  // Delete on a focused cell clears it, like Excel. Checkbox / Billed columns and read-only cells are left alone.
+  useEffect(() => {
+    const clear = (ev: Event) => {
+      const { node, column } = (ev as CustomEvent<{ node: IRowNode<Shipment>; column: Column }>).detail;
+      if (readOnly || !node?.data || !column.isCellEditable(node)) return;
+      const def = column.getColDef();
+      if (def.cellDataType === "boolean" || def.field === "is_billed") return;
+      const v = node.data[def.field as keyof Shipment];
+      if (def.field && (v == null || v === "")) return;
+      node.setDataValue(column, null); // the normal cell save (onCellValueChanged)
+    };
+    window.addEventListener("tracker:clear", clear);
+    return () => window.removeEventListener("tracker:clear", clear);
+  }, [readOnly]);
+
   // Chip toggles in the Checklist column save like any other cell edit.
   const toggleFlag = useCallback(async (row: Shipment, field: FlagField) => {
+    if (readOnly) return setMessage({ kind: "error", text: "This login is view-only." });
     const left = readHScroll();
     try {
       const { shipment: saved, kept } = await saveShipment(row, { [field]: !row[field] } as Partial<Shipment>, FLAG_LABELS[field]);
@@ -1422,7 +1453,7 @@ export default function ShipmentGridPage() {
     } catch (err) {
       setMessage({ kind: "error", text: `Couldn't save — ${saveErrorText(err)}` });
     }
-  }, [record, saveShipment]);
+  }, [record, saveShipment, readOnly]);
   // HBL / FTA from the small buttons on the MBL: saved like any other cell edit (undo too)
   const saveText = useCallback(async (row: Shipment, field: MiniField | "eta_is_deadline", value: string | boolean | null, label: string) => {
     const left = readHScroll();

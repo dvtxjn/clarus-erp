@@ -1630,6 +1630,7 @@ function EditField({
 }) {
   const ports = usePorts();
   const saveShipment = useSaveShipment();
+  const readOnly = !!useAuth().user?.read_only;
   const raw = (s[field] as string | null | undefined) ?? "";
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(raw);
@@ -1637,12 +1638,14 @@ function EditField({
   const [err, setErr] = useState<string | null>(null);
 
   const start = () => {
+    if (readOnly) return; // view-only login
     setV(raw);
     setErr(null);
     setEditing(true);
   };
   const save = async (value = v) => {
-    const next = value.trim() === "" ? null : value.trim();
+    let next = value.trim() === "" ? null : value.trim();
+    if (field === "gross_wt" && next && /^\d+(\.\d+)?$/.test(next)) next = `${next} MTS`; // like the tracker cell: weight is MTS
     if ((next ?? "") === (raw ?? "")) return setEditing(false);
     setBusy(true);
     try {
@@ -1696,7 +1699,7 @@ function EditField({
           />
         )
       ) : (
-        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}`} onClick={start} aria-label={`Edit ${label}`}>
+        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}${readOnly ? " is-readonly" : ""}`} onClick={start} aria-label={readOnly ? label : `Edit ${label}`} aria-disabled={readOnly || undefined}>
           {shown ?? "—"}
         </button>
       )}

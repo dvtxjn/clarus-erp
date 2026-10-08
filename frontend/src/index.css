@@ -2533,3 +2533,11 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 /* documents: one column in the half peek (and any narrow detail) — two only with real room */
 .detail-peek .doc-columns { grid-template-columns: minmax(0, 1fr); }
 @container (max-width: 1100px) { .doc-columns { grid-template-columns: minmax(0, 1fr); } }
+
+/* View-only login */
+.readonly-banner {
+  margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--color-surface, var(--color-bg)); color: var(--color-text-muted); font-size: 13px;
+}
+.edit-value.is-readonly { cursor: default; }
+.edit-value.is-readonly:hover { background: none; }

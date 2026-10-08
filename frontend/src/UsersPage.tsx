@@ -87,7 +87,7 @@ export default function UsersPage() {
             a request. Passwords: at least 12 characters.
           </p>
         </div>
-        <button onClick={() => setAdding((a) => !a)}>{adding ? "Cancel" : "+ Add user"}</button>
+        {!me?.read_only && <button onClick={() => setAdding((a) => !a)}>{adding ? "Cancel" : "+ Add user"}</button>}
       </div>
       {msg && <div role="status" className={`grid-toast grid-toast-${msg.kind}`}>{msg.text}</div>}
       {requests.length > 0 && (
@@ -136,7 +136,7 @@ export default function UsersPage() {
                 <td>{u.full_name}{u.id === me?.id && <span className="tracker-subtitle"> (you)</span>}</td>
                 <td>{u.email}</td>
                 <td>
-                  <select value={u.role} disabled={u.id === me?.id} onChange={(e) => change(u, { role: e.target.value as UserRole })}>
+                  <select value={u.role} disabled={u.id === me?.id || me?.read_only} onChange={(e) => change(u, { role: e.target.value as UserRole })}>
                     {Object.entries(ROLES).map(([k, v]) => (
                       <option key={k} value={k}>{v}</option>
                     ))}
@@ -147,7 +147,7 @@ export default function UsersPage() {
                   {!u.is_active ? "Switched off" : u.password_reset_requested_at ? <span className="exception-badge">Reset requested</span> : u.read_only ? "View-only" : "Active"}
                 </td>
                 <td className="num">
-                  {resetting?.id === u.id ? (
+                  {me?.read_only ? null : resetting?.id === u.id ? (
                     <>
                       <input value={resetting.password} minLength={12} onChange={(e) => setResetting({ id: u.id, password: e.target.value })} />{" "}
                       <button onClick={savePassword}>Save</button>{" "}

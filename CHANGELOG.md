@@ -1,5 +1,10 @@
 # Release notes
 
+## v1.4.0 — Delete key, view-only logins
+- Tracker: **Delete** clears the focused cell, like Excel. **Ctrl/⌘+Z** puts it back. Tick-box and Billed columns are left alone.
+- View-only logins: the tracker and shipment page don't open editors, and Users hides passwords, roles and switches. A banner says the login is view-only. The server already refuses every change.
+- Gross Wt on the shipment page: typing a plain number saves it as MTS, the same as the tracker cell.
+
 ## v1.3.1 — small fixes
 - Documents tab: the count reads "Required 4/6 · + 2 optional", so optional papers don't look like gaps.
 - Drive folder reader: stops waiting after 10 s and shows **Retry** instead of spinning forever.
