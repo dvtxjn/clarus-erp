@@ -1,5 +1,14 @@
 # Release notes
 
+## v1.4.3 — bagdu's pass on v1.4.2
+- Tracker with the peek open: the toolbar is one row (Live · search · **More ▾** · + Add). Group by, the column views and the other buttons are in More. **More ▾** opens on top and the peek stays open.
+- Grid: only one cell is ever outlined, across all client tables.
+- Rows with no job number: the Job cell shows a muted "—". The cell bar reads "Job (none yet) · BL 275469216".
+- Billing settings: "Line cost" stays on one line, with the select beside it or under it. "Line paid by us" now reads "Shipping line paid by us".
+- History: package counts are plain numbers (no ₹). IGM GW reads "141.715 MTS". Examination time reads "06 Oct 2026, 18:22".
+- Documents: each group reads "Required 5/5 · + 4 optional".
+- Key strip: "ETA → Inward" wraps instead of being cut.
+
 ## v1.4.2 — bagdu's live pass
 - Peek: moving to a cell in another row (click or arrows) switches the peek to that job. Dragging a grid scrollbar or header no longer selects text across the page.
 - Line cost: the Billing card and the Charges drawer now read the same setting. A value that matches the client is "client default", not "overridden". The select is wide enough for "Include (client default)".

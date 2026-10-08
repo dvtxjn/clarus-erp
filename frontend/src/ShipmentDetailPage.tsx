@@ -505,7 +505,7 @@ function BillingSettings({ s, onChange }: { s: Shipment; onChange: (s: Shipment)
         {sw("cfs_paid_by_us", "CFS paid by us", "We pay the CFS and bill it on")}
         {s.cfs_paid_by_us && sw("tds_on_cfs", "TDS on CFS", "TDS is cut when we pay the CFS")}
         {s.cfs_paid_by_us && s.tds_on_cfs && <TdsRate shipment={s} onChange={onChange} />}
-        {sw("line_paid_by_us", "Line paid by us", "We pay the shipping line and bill it as a reimbursement")}
+        {sw("line_paid_by_us", "Shipping line paid by us", "We pay the shipping line and bill it as a reimbursement")}
         {s.cfs_paid_by_us && (
           <label className="switch-row">
             <span className="switch-label">
@@ -1424,6 +1424,7 @@ function KeyStrip({ s }: { s: Shipment }) {
         </>
       ),
       sub: s.eta_is_deadline ? "ETA is a deadline" : null,
+      id: true, // both dates always show in full: wraps under a narrow peek
     },
     { label: "Age", value: age, sub: /^\d+$/.test(s.days) ? "since inward" : null, empty: !/^\d+$/.test(s.days) },
   ];

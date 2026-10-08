@@ -313,8 +313,8 @@ export default function DocumentManagerPanel({
                     <div className="doc-group-head">
                       <span className={`doc-marker doc-marker-${g.id}`}>{g.marker}</span> {g.label}
                       <span className="doc-group-count">
-                        {req.length > 0 && `required ${done}/${req.length}`}
-                        {extra > 0 && <span className="muted"> + {extra} optional</span>}
+                        {req.length > 0 && `Required ${done}/${req.length}`}
+                        {extra > 0 && <span className="muted">{req.length > 0 ? " · " : ""}+ {extra} optional</span>}
                       </span>
                     </div>
                     <table className="tracker-grid doc-table">

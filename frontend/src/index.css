@@ -2550,13 +2550,22 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 /* tracker toolbar: Column filters / Columns / Reset / Import / Admin tools fold into "More ▾" when narrow */
 .toolbar-more, .toolbar-more-list { display: contents; }
 .toolbar-more-btn { display: none; }
+/* wide: Group by + view tabs still sit before the search, as before */
+.tracker-toolbar > .live-bar { order: -2; }
+.toolbar-more-list > .group-by, .toolbar-more-list > .view-switch { order: -1; }
 @container tracker (max-width: 900px) {
-  .toolbar-more { display: block; position: relative; }
+  /* one row: Live · search · More ▾ · + Add; everything else is in More */
+  .tracker-toolbar { flex-wrap: nowrap; gap: 8px; }
+  .tracker-toolbar .live-person { display: none; }
+  .tracker-search { min-width: 0; }
+  .toolbar-more { display: block; position: relative; flex: none; }
+  .tracker-toolbar > button:last-child { flex: none; white-space: nowrap; }
+  .toolbar-more-list.is-open .view-switch { flex-wrap: wrap; }
   .toolbar-more-btn { display: inline-flex; }
   .toolbar-more-list { display: none; }
   .toolbar-more-list.is-open {
     display: flex; flex-direction: column; align-items: stretch; gap: 6px; position: absolute; right: 0; top: calc(100% + 4px);
-    z-index: var(--z-popover); min-width: 220px; padding: 8px; background: var(--color-surface);
+    z-index: var(--z-overlay); min-width: 240px; padding: 8px; background: var(--color-surface);
     border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
   }
   .toolbar-more-list.is-open .columns-anchor > button, .toolbar-more-list.is-open .tools-menu > summary { width: 100%; justify-content: center; }
@@ -2567,3 +2576,7 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 @container (min-width: 761px) { .key-strip { grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)); } }
 .key-value.is-id { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .key-cell:has(.is-id) .key-sub { white-space: normal; overflow-wrap: anywhere; }
+.cell-none { color: var(--color-text-muted); }
+/* Line cost: label on one line, the select beside it or under it when the card is narrow */
+.bill-grid .switch-row:has(.line-cost-select) { grid-column: 1 / -1; flex-wrap: wrap; row-gap: 6px; padding-block: 4px; }
+.switch-row:has(.line-cost-select) .switch-label { flex: none; white-space: nowrap; }

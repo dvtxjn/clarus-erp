@@ -404,7 +404,13 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
           </Link>
         ) : null,
     },
-    { ...text("job", "Job", 56), pinned: "left" },
+    {
+      ...text("job", "Job", 56),
+      pinned: "left",
+      // no job number yet: a muted dash, so the cell doesn't look broken
+      cellRenderer: (p: ICellRendererParams<Shipment>) =>
+        p.value ? p.value : <span className="cell-none" title="No job number yet">—</span>,
+    },
     {
       ...text("mbl", "MBL", 212),
       minWidth: 150, // the number + the HBL / FTA buttons
@@ -717,7 +723,7 @@ export default function ShipmentGridPage() {
       if (
         !t?.isConnected ||
         t.closest(
-          ".peek-panel, .ag-row, .ag-root-wrapper, .client-grid-stack, .grid-sticky-top, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, [role='dialog'], [role='menu'], [role='listbox']",
+          ".peek-panel, .toolbar-more, .chip-fold, .ag-row, .ag-root-wrapper, .client-grid-stack, .grid-sticky-top, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, [role='dialog'], [role='menu'], [role='listbox']",
         )
       )
         return;
@@ -1753,6 +1759,14 @@ export default function ShipmentGridPage() {
             );
           })}
         </div>
+        <div className="tracker-search">
+          <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
+        </div>
+        <div className="toolbar-more" ref={moreRef}>
+        <button type="button" className="btn-secondary toolbar-more-btn" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
+          More ▾
+        </button>
+        <div className={`toolbar-more-list${moreOpen ? " is-open" : ""}`}>
         {tab === "ongoing" && (
           <label className="group-by" title="Split the list into sections, e.g. one per client">
             <span>Group by</span>
@@ -1779,14 +1793,6 @@ export default function ShipmentGridPage() {
             </button>
           ))}
         </div>
-        <div className="tracker-search">
-          <input placeholder="Search all columns…" value={quickFilter} onChange={(e) => setQuickFilter(e.target.value)} />
-        </div>
-        <div className="toolbar-more" ref={moreRef}>
-        <button type="button" className="btn-secondary toolbar-more-btn" aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
-          More ▾
-        </button>
-        <div className={`toolbar-more-list${moreOpen ? " is-open" : ""}`}>
         <button
           className={`btn-secondary${showColFilters ? " is-on" : ""}`}
           onClick={() => setShowColFilters((x) => !x)}
@@ -2033,6 +2039,9 @@ export default function ShipmentGridPage() {
                   if (!row) return;
                   announce(row.id, e.column.getColId(), false);
                   setFx({ client, rowId: row.id, colId: e.column.getColId() });
+                  // one outlined cell across all the client tables: the others let go of theirs
+                  const here = e.api.getGridId();
+                  grids().forEach((g) => g.api && g.api.getGridId() !== here && g.api.getFocusedCell() && g.api.clearFocusedCell());
                   // peek open: moving to another row's cell shows that row's job
                   if (peekRef.current && peekRef.current !== row.id) setPeek(row.id);
                 }}
@@ -2461,9 +2470,10 @@ function formulaCell(api: GridApi<Shipment> | undefined, rowId: number, colId: s
   // plain text cells only: dates / numbers / ticks keep their own editors (a typed string would be wrong there)
   const textCell = def.cellDataType === "text" || (def.cellDataType == null && (raw == null || typeof raw === "string"));
   const editable = col.isCellEditable(node) && !def.cellEditor && textCell;
-  const job = node.data.job ? `Job ${node.data.job}` : node.data.mbl;
+  const name = def.headerName ?? colId;
   return {
-    label: `${job} · ${def.headerName ?? colId}`,
+    // a row without a job number names itself by its BL: "Job (none yet) · BL 275469216"
+    label: node.data.job ? `Job ${node.data.job} · ${name}` : `${colId === "job" ? "Job (none yet)" : name} · BL ${node.data.mbl}`,
     text,
     editable,
     save: (value) => node.setDataValue(colId, value), // runs the normal cell save (onCellValueChanged)
