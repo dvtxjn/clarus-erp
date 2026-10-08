@@ -477,7 +477,6 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
                 <EditField label="GW (IGM)" field="gw" s={s} onChange={onChange} />
                 <EditField label="Total Pkg" field="total_pkg" s={s} onChange={onChange} />
                 <EditField label="Pkg Code" field="pkg_code" s={s} onChange={onChange} />
-                {s.icegate?.vessel?.vessel_code && <Field label="Vessel" value={`${s.icegate.vessel.vessel_code}${s.icegate.vessel.imo_no ? ` · IMO ${s.icegate.vessel.imo_no}` : ""}`} />}
               </div>
               {/* inland: what the ICD BL status adds on top of the IGM details (repeats left out) */}
               {inland && s.icegate?.icd && (

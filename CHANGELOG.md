@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.6.7 — 08 Oct 2026
+
+- IGM & ICD details: the Vessel row (vessel code · IMO) is no longer shown. ICEGATE still reads it; it is just hidden.
+
 ## v1.6.6 — 08 Oct 2026
 
 - Containers: the table is open by default everywhere, including the half-view panel from the tracker (it was folded there).
