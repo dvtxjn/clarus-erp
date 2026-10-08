@@ -2158,7 +2158,7 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 /*
  * Overview body. Sized by the Overview's own box (the .detail-page container), not the window: the half peek stays
  * one column. Panel order: shipment, duty, billing, containers, notes. ≥1100: shipment | duty, notes | billing,
- * containers. ≥1600: shipment | duty | notes over billing, containers.
+ * containers. ≥1600: shipment | duty over notes | billing, containers.
  */
 .overview { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; }
 .overview > * { min-width: 0; }
@@ -2178,10 +2178,11 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 }
 @container (min-width: 1600px) {
   .overview {
+    /* Notes sits under Duty (Duty is short: it left a hole beside Notes + Billing); Notes takes the rest of the column */
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
-      "ship ship ship ship ship duty duty duty duty notes notes notes"
       "ship ship ship ship ship duty duty duty duty bill bill bill"
+      "ship ship ship ship ship notes notes notes notes bill bill bill"
       "cont cont cont cont cont cont cont cont cont cont cont cont";
   }
   .ov-billing .bill-grid { grid-template-columns: minmax(0, 1fr); }

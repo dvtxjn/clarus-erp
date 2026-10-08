@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.5.3 — no gap in the Overview on wide screens
+- Shipment Overview, wide screens: Notes sits under Customs duty in the middle column, and Billing settings has the right column to itself. The short Duty card no longer leaves an empty space.
+
 ## v1.5.2 — thinner cell outline
 - The selected cell's outline is a crisp 1px line again, like Excel. Text still doesn't move when a cell is selected.
 
