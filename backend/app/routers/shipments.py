@@ -539,6 +539,9 @@ def _with_final_duty(db: Session, shipment: Shipment) -> Shipment:
     duty = customs_duty(shipment, latest_challan(db, shipment.be_no, shipment.be_dt)) if shipment.be_no else None
     shipment.final_duty = None if duty is None else {
         "total": str(duty["total"]), "interest": str(duty["interest"]), "source": duty["source"]}
+    # why the shipping line stays off the cost inclusion (read only; the Overview's Money card says "Left out")
+    from app.invoice.autofill import line_excluded_by
+    shipment.line_excluded_by = None if shipment.line_paid_by_us else line_excluded_by(db, shipment)
     return shipment
 
 

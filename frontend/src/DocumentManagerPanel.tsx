@@ -1,5 +1,5 @@
 import { fmtWhen } from "./dates";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   addDocumentFromDrive,
   getDocumentChecklist,
@@ -59,13 +59,23 @@ const READ_ON_UPLOAD: DocumentType[] = [
 export default function DocumentManagerPanel({
   shipment,
   onShipmentChanged,
+  initialType,
 }: {
   shipment: Shipment;
   onShipmentChanged: () => void;
+  /** Money card → Upload: the slot to pick (e.g. the CFS tax invoice) */
+  initialType?: DocumentType;
 }) {
   const [checklist, setChecklist] = useState<DocumentChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [docType, setDocType] = useState<DocumentType>("bl_copy");
+  const [docType, setDocType] = useState<DocumentType>(initialType ?? "bl_copy");
+  const typeSelect = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (!initialType) return;
+    setDocType(initialType);
+    typeSelect.current?.scrollIntoView({ block: "center" });
+    typeSelect.current?.focus({ preventScroll: true });
+  }, [initialType]);
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [uploading, setUploading] = useState(false);
@@ -232,7 +242,7 @@ export default function DocumentManagerPanel({
       )}
 
       <form className="add-shipment-form" onSubmit={handleUpload}>
-        <select value={docType} onChange={(e) => setDocType(e.target.value as DocumentType)}>
+        <select ref={typeSelect} aria-label="Document type" value={docType} onChange={(e) => setDocType(e.target.value as DocumentType)}>
           {DOCUMENT_GROUPS.map((g) => (
             <optgroup key={g.id} label={g.label}>
               {g.types.filter((t) => UPLOAD_TYPES.includes(t)).map((t) => (

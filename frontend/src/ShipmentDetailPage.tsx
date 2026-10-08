@@ -8,9 +8,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
-import { correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, refreshIcegate, setCostInclusion } from "./api";
+import { correctInvoiceAmounts, getPublicSettings, getShipment, listDocuments, openDocumentFile, refreshIcegate, setCostInclusion } from "./api";
+import { useDismiss } from "./useDismiss";
 import { useSaveShipment } from "./useSaveShipment";
-import { SHIPMENT_STATUS_LABELS, docShort, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
+import { SHIPMENT_STATUS_LABELS, docShort, type DocumentType, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
 import ProformaPanel from "./ProformaPanel";
 import FpodContainers from "./FpodContainers";
@@ -105,14 +106,33 @@ export function ShipmentDetail({
   const setTab = onTab ?? setLocalTab;
   const isAdmin = useAuth().user?.role === "admin"; // invoicing is admin-only
 
-  const reload = useCallback(() => getShipment(shipmentId).then(setShipment), [shipmentId]);
+  // the shipment's documents: the Money card and its charge drawer read them (cached per job: reopening draws at once)
+  const [docs, setDocs] = useState<ShipmentDocument[]>(() => docsCache.get(shipmentId) ?? []);
+  const [drawer, setDrawer] = useState<MoneyGroup | null>(null);
+  const [uploadType, setUploadType] = useState<DocumentType | undefined>();
+  const loadDocs = useCallback(
+    () =>
+      listDocuments(shipmentId).then((all) => {
+        docsCache.set(shipmentId, all);
+        setDocs(all);
+      }),
+    [shipmentId],
+  );
+  const reload = useCallback(() => Promise.all([getShipment(shipmentId).then(setShipment), loadDocs()]).then(() => {}), [shipmentId, loadDocs]);
 
   useEffect(() => {
     // switching jobs in the peek: the old job stays (dimmed) until the new one has arrived — no blank flash
     let live = true;
     setLoading(true);
     // documents come with the first load, so the Overview draws complete (no late push-down)
-    const docs = listDocuments(shipmentId).then((all) => void docsCache.set(shipmentId, all)).catch(() => {});
+    setDocs(docsCache.get(shipmentId) ?? []);
+    setDrawer(null);
+    const docsLoad = listDocuments(shipmentId)
+      .then((all) => {
+        docsCache.set(shipmentId, all);
+        if (live) setDocs(all);
+      })
+      .catch(() => {});
     const one = getShipment(shipmentId).then(
       (s) => {
         if (!live) return;
@@ -125,7 +145,7 @@ export function ShipmentDetail({
         setLoadErr(axios.isAxiosError(e) && e.response?.status === 404 ? "gone" : "failed");
       },
     );
-    Promise.all([one, docs]).finally(() => live && setLoading(false));
+    Promise.all([one, docsLoad]).finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
@@ -207,8 +227,35 @@ export function ShipmentDetail({
           <NextStepBar shipment={shipment} />
           <ClearanceStepper s={shipment} onChange={setShipment} />
         </section>
-        <PaymentTiles s={shipment} />
+        <MoneyCard
+          s={shipment}
+          docs={docs}
+          open={drawer}
+          onOpen={setDrawer}
+          onDuty={() => {
+            setTab("overview");
+            window.setTimeout(() =>
+              document.getElementById(`duty-${shipment.id}`)?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" }),
+            );
+          }}
+          onUpload={(t) => {
+            setUploadType(t);
+            setTab("documents");
+          }}
+        />
       </div>
+      <Collapse open={drawer != null} className="charge-drawer-wrap">
+        {drawer && (
+          <ChargeDrawer
+            group={drawer}
+            shipment={shipment}
+            docs={docs}
+            onChange={setShipment}
+            onSaved={reload}
+            onClose={() => setDrawer(null)}
+          />
+        )}
+      </Collapse>
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -241,7 +288,7 @@ export function ShipmentDetail({
       <div className="tab-body" key={tab}>
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={setShipment} />}
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
-      {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} />}
+      {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} initialType={uploadType} />}
       {tab === "history" && <ShipmentHistory shipment={shipment} onChange={setShipment} />}
       {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={setShipment} />}
       </div>
@@ -384,31 +431,12 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
           )}
         </section>
       <div className="ov-duty">
-        <section className="detail-section">
+        <section className="detail-section" id={`duty-${s.id}`}>
           <h3>Customs duty</h3>
           <EditField label="License" field="license" s={s} onChange={onChange} />
           {inland && s.icegate?.icd?.be_location && <Field label="BE location" value={s.icegate.icd.be_location} hint="From the ICD BL status" />}
           {inland && s.icegate?.icd?.importer && <Field label="Importer (ICD)" value={s.icegate.icd.importer} hint="From the ICD BL status" />}
           <BeAmounts shipment={s} onChange={onChange} />
-        </section>
-        <section className="detail-section">
-          <h3>CFS</h3>
-          <InvoiceGroup group="cfs" shipment={s} onChange={onChange} />
-          {s.cfs_paid_by_us && (
-            <>
-              <Field
-                label={`TDS @ ${tdsPct(s)}%`}
-                value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
-                hint={`${tdsPct(s)}% of the CFS basic value (before GST)`}
-                amount
-              />
-              <Field label="After TDS" value={fmtMoney(s.cfs_payment_after_tds)} hint={`Basic + GST − ${tdsPct(s)}% of basic`} strong amount />
-            </>
-          )}
-        </section>
-        <section className="detail-section">
-          <h3>Shipping line · destination charges</h3>
-          <InvoiceGroup group="line" shipment={s} onChange={onChange} />
         </section>
       </div>
       <section className="detail-section ov-notes">
@@ -777,126 +805,326 @@ function BeAmounts({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
 
 const INVOICE_GROUPS = {
   cfs: {
-    title: "CFS",
+    title: "CFS charges",
     types: ["cfs_tax_invoice", "cfs_proforma_invoice"],
     taxType: "cfs_tax_invoice",
     receiptType: "cfs_receipt",
-    empty: "No CFS invoice uploaded yet — upload it in the Documents tab.",
-    totals: [
-      ["cfs_amount_before_tax", "CFS (before tax)"],
-      ["cfs_gst_amount", "CFS GST"],
-      ["cfs_amount_total", "CFS Total"],
-    ],
+    uploadType: "cfs_tax_invoice",
   },
   line: {
-    title: "Shipping line (destination charges)",
+    title: "Shipping line · destination charges",
     types: ["shipping_line_invoice", "shipping_line_proforma"],
     taxType: "shipping_line_invoice",
     receiptType: "shipping_line_receipt",
-    empty: "No shipping line destination charges invoice yet — upload it in the Documents tab.",
-    totals: [
-      ["line_amount_before_tax", "Cost inclusion (before tax)"],
-      ["line_gst_amount", "Cost inclusion GST"],
-      ["line_amount_total", "Cost inclusion Total"],
-    ],
+    uploadType: "shipping_line_invoice",
   },
 } as const;
+type MoneyGroup = keyof typeof INVOICE_GROUPS;
+
+type DocFields = { charges?: InvoiceCharge[]; charges_complete?: boolean; carrier?: string; invoice_no?: string; bl_mismatch?: boolean };
+const docFields = (d: ShipmentDocument) => (d.extraction?.fields ?? {}) as DocFields;
+/** Charge lines read from the invoice ([] when they didn't add up) — same as the backend's invoice_charges. */
+const chargesOf = (d: ShipmentDocument) => (docFields(d).charges_complete ? docFields(d).charges ?? [] : []);
 
 /**
- * Every invoice of a group with its own figures (each correctable).
- * CFS totals = sum of the tax invoices, or of the proformas until a tax invoice
- * arrives. Shipping line totals = sum of all its destination-charges invoices.
+ * The group's invoices and which of them count — mirrors cfs_totals.py: tax invoices, else proformas,
+ * each invoice once; a line invoice whose BL isn't this shipment's doesn't count.
  */
-function InvoiceGroup({
+function groupDocs(group: MoneyGroup, docs: ShipmentDocument[]) {
+  const cfg = INVOICE_GROUPS[group];
+  const all = docs.filter((d) => (cfg.types as readonly string[]).includes(d.document_type));
+  const eligible = all.filter((d) => !(group === "line" && docFields(d).bl_mismatch === true));
+  const tax = eligible.filter((d) => d.document_type === cfg.taxType);
+  const counted = (tax.length ? tax : eligible).filter((d) => d.extraction?.duplicate_of == null);
+  const why = (d: ShipmentDocument): string | null => {
+    if (counted.includes(d)) return null;
+    if (d.extraction?.duplicate_of != null) return "duplicate — counted once";
+    if (group === "line" && docFields(d).bl_mismatch === true) return "BL ≠ shipment — not counted";
+    return "not counted (tax invoice received)";
+  };
+  const receipts = docs.filter((d) => d.document_type === cfg.receiptType);
+  return { all, counted, why, receipts };
+}
+
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Opens / closes its content to the measured height (180ms, height + opacity), then lets it size itself
+ * so a sticky footer inside still sticks. Reduced motion: no animation.
+ */
+function Collapse({ open, children, className, id }: { open: boolean; children: React.ReactNode; className?: string; id?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(open);
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    if (open && !mounted) return setMounted(true);
+    const el = box.current;
+    if (!el) return;
+    const skip = first.current && open; // already open on the first draw: no animation
+    first.current = false;
+    if (skip) return;
+    let timer = 0;
+    const end = () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("transitionend", onEnd);
+      if (open) {
+        el.style.height = "";
+        el.style.overflow = "";
+      } else setMounted(false);
+    };
+    const onEnd = (e: TransitionEvent) => e.target === el && e.propertyName === "height" && end();
+    if (reducedMotion()) {
+      end();
+      return;
+    }
+    const full = el.scrollHeight;
+    el.style.overflow = "hidden";
+    el.style.height = open ? "0px" : `${full}px`;
+    el.style.opacity = open ? "0" : "1";
+    void el.offsetHeight; // start from there
+    el.style.height = open ? `${full}px` : "0px";
+    el.style.opacity = open ? "1" : "0";
+    el.addEventListener("transitionend", onEnd);
+    timer = window.setTimeout(end, 260); // in case transitionend never comes
+    return () => {
+      window.clearTimeout(timer);
+      el.removeEventListener("transitionend", onEnd);
+    };
+  }, [open, mounted]);
+  if (!mounted) return null;
+  return (
+    <div ref={box} id={id} className={`collapse${className ? ` ${className}` : ""}`}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * CFS / shipping line charges, under the Money card: every invoice with its figures and charge lines
+ * (tick what goes in the cost inclusion), receipts, and the totals in a footer that stays in view.
+ * Esc, × or the row's Charges button closes it.
+ */
+function ChargeDrawer({
   group,
   shipment: s,
+  docs,
   onChange,
+  onSaved,
+  onClose,
 }: {
-  group: keyof typeof INVOICE_GROUPS;
+  group: MoneyGroup;
   shipment: Shipment;
+  docs: ShipmentDocument[];
   onChange: (s: Shipment) => void;
+  onSaved: () => Promise<void>;
+  onClose: () => void;
 }) {
   const cfg = INVOICE_GROUPS[group];
-  // start from the documents already loaded for this shipment: the block draws complete instead of
-  // appearing empty and then pushing the page down (the "twitch", client 2026-09-30)
-  const cached = docsCache.get(s.id);
-  const [docs, setDocs] = useState<ShipmentDocument[]>(() => (cached ?? []).filter((d) => (cfg.types as readonly string[]).includes(d.document_type)));
-  const [receipts, setReceipts] = useState<ShipmentDocument[]>(() => (cached ?? []).filter((d) => d.document_type === cfg.receiptType));
-  const [loaded, setLoaded] = useState(!!cached);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [before, setBefore] = useState("");
-  const [gst, setGst] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const saveShipment = useSaveShipment();
+  const [busy, setBusy] = useState(false);
+  useDismiss(null, true, onClose);
+  const { all, why, receipts } = groupDocs(group, docs);
+  const paidField = group === "cfs" ? "cfs_paid_by_us" : "line_paid_by_us";
 
-  const load = useCallback(
-    () =>
-      listDocuments(s.id).then((all) => {
-        docsCache.set(s.id, all);
-        setDocs(all.filter((d) => (cfg.types as readonly string[]).includes(d.document_type)));
-        setReceipts(all.filter((d) => d.document_type === cfg.receiptType));
-        setLoaded(true);
-      }),
-    [s.id, cfg],
-  );
-  useEffect(() => {
-    load();
-  }, [load, s.cfs_amount_total, s.line_amount_total]);
-
-  // tax invoices count; proformas only until one arrives
-  const tax = docs.filter((d) => d.document_type === cfg.taxType);
-  const counted = new Set((tax.length ? tax : docs).map((d) => d.id));
-  const num = (v: string) => Number(v.replace(/,/g, "")) || 0;
-
-  function start(d: ShipmentDocument) {
-    setEditingId(d.id);
-    setBefore(d.amount_before_tax ?? "");
-    setGst(d.gst_amount ?? "");
-    setError(null);
-  }
-  async function save(d: ShipmentDocument) {
-    const b = before.trim().replace(/,/g, "");
-    const g = gst.trim().replace(/,/g, "");
-    if (!/^\d+(\.\d{1,2})?$/.test(b) || !/^\d+(\.\d{1,2})?$/.test(g))
-      return setError("Enter both amounts as numbers, e.g. 40000 and 7200");
+  async function save(patch: Partial<Shipment>) {
+    setBusy(true);
     try {
-      await correctInvoiceAmounts(s.id, d.id, b, g);
-      setEditingId(null);
-      onChange(await getShipment(s.id));
-      load();
-    } catch {
-      setError("Couldn't save.");
+      onChange((await saveShipment(s, patch)).shipment);
+    } finally {
+      setBusy(false);
     }
   }
 
+  const totals =
+    group === "cfs"
+      ? [s.cfs_amount_before_tax, s.cfs_gst_amount, s.cfs_amount_total]
+      : [s.line_amount_before_tax, s.line_gst_amount, s.line_amount_total];
+  const note =
+    group === "line"
+      ? s.line_paid_by_us
+        ? "Billed on the proforma as a reimbursement"
+        : s.line_excluded_by
+          ? `Left off the proforma (${s.line_excluded_by})`
+          : "Shown on proforma as Cost inclusion, not in the total"
+      : s.cfs_paid_by_us
+        ? `Billed on the proforma ${s.cfs_billed_as === "taxable" ? "as taxable + 18% GST" : "at actuals"}`
+        : "Paid by the client — we pass the invoice on";
+
   return (
-    <div className="amount-block">
-      {/* the card's heading already names the group; this line only says what is counted */}
-      {docs.length > 0 && (
-        <div className="amount-block-head">
-          <span className="field-note">
-            {tax.length ? `${tax.length} tax invoice${tax.length > 1 ? "s" : ""}` : `${docs.length} proforma${docs.length > 1 ? "s" : ""}`} counted
-          </span>
+    <section className="charge-drawer" id="charge-drawer" aria-label={cfg.title}>
+      <header className="charge-drawer-head">
+        <h3>{cfg.title}</h3>
+        <div className="charge-drawer-controls">
+          <SwitchRow label="Paid by us" on={!!s[paidField]} busy={busy} onToggle={() => save({ [paidField]: !s[paidField] } as Partial<Shipment>)} />
+          {group === "line" && !s.line_paid_by_us && (
+            <label className="switch-row">
+              <span className="switch-label">In cost inclusion</span>
+              <select
+                className="chip-select"
+                value={s.line_cost_inclusion ?? "auto"}
+                disabled={busy}
+                onChange={(e) => save({ line_cost_inclusion: e.target.value === "auto" ? null : (e.target.value as "include" | "exclude") })}
+              >
+                <option value="auto">Client's setting</option>
+                <option value="include">Include</option>
+                <option value="exclude">Leave out</option>
+              </select>
+            </label>
+          )}
+          {group === "cfs" && s.cfs_paid_by_us && (
+            <label className="switch-row">
+              <span className="switch-label">CFS on proforma</span>
+              <select
+                className="chip-select"
+                value={s.cfs_billed_as}
+                disabled={busy}
+                onChange={(e) => save({ cfs_billed_as: e.target.value as Shipment["cfs_billed_as"] })}
+              >
+                <option value="reimbursement">At actuals</option>
+                <option value="taxable">Taxable + 18% GST</option>
+              </select>
+            </label>
+          )}
+          <button type="button" className="charge-drawer-close" onClick={onClose} aria-label="Close charges" title="Close (Esc)">
+            ✕
+          </button>
         </div>
-      )}
-      {docs.length === 0 && <p className="field-note">{loaded ? cfg.empty : "Loading invoices…"}</p>}
-      {/* several invoices scroll inside the box instead of stretching it */}
-      <div className="invoice-list">
-      {docs.map((d) => (
-        <div key={d.id} className={`invoice-row${counted.has(d.id) ? "" : " invoice-not-counted"}`}>
-          <div className="invoice-row-head">
-            <span title={d.generated_filename}>
-              {docShort(d.document_type)}
-              {!counted.has(d.id) && <span className="field-note"> · not counted (tax invoice received)</span>}
-              {d.amounts_edited && <span className="edited-tag">corrected</span>}
-            </span>
-            {editingId !== d.id && (
-              <button type="button" className="link-btn" onClick={() => start(d)}>
-                Edit
-              </button>
-            )}
+      </header>
+      <div className="charge-drawer-body">
+        {all.map((d) => (
+          <InvoiceCard key={d.id} group={group} doc={d} notCounted={why(d)} onSaved={onSaved} />
+        ))}
+        {receipts.length > 0 && <Receipts receipts={receipts} onSaved={onSaved} />}
+        {group === "cfs" && s.cfs_paid_by_us && (
+          <div className="charge-tds">
+            <Field
+              label={`TDS @ ${tdsPct(s)}%`}
+              value={s.tds_on_cfs ? fmtMoney(s.cfs_tds_amount) : "Not cut"}
+              hint={`${tdsPct(s)}% of the CFS basic value (before GST)`}
+              amount
+            />
+            <Field label="After TDS" value={fmtMoney(s.cfs_payment_after_tds)} hint={`Basic + GST − ${tdsPct(s)}% of basic`} strong amount />
           </div>
-          {editingId === d.id ? (
-            <>
+        )}
+      </div>
+      <footer className="charge-drawer-foot">
+        <span className="charge-foot-figs">
+          <span>Before tax <strong>{fmtMoney(totals[0]) ?? "—"}</strong></span>
+          <span>GST <strong>{fmtMoney(totals[1]) ?? "—"}</strong></span>
+          <span>Total <strong>{fmtMoney(totals[2]) ?? "—"}</strong></span>
+        </span>
+        <span className="charge-foot-note">{note}</span>
+      </footer>
+    </section>
+  );
+}
+
+/**
+ * One invoice in the charge drawer: a header line (tick-all, name, amount, View PDF) that folds open to its
+ * figures (correctable) and — shipping line — the charge lines that make its cost inclusion.
+ * Starts open when it has more than one charge.
+ */
+function InvoiceCard({
+  group,
+  doc: d,
+  notCounted,
+  onSaved,
+}: {
+  group: MoneyGroup;
+  doc: ShipmentDocument;
+  notCounted: string | null;
+  onSaved: () => Promise<void>;
+}) {
+  const fields = docFields(d);
+  const charges = group === "line" ? chargesOf(d) : [];
+  const excluded = new Set(d.cost_excluded ?? []);
+  const [open, setOpen] = useState(charges.length > 1);
+  const [editing, setEditing] = useState(false); // basic / GST correction
+  const [typing, setTyping] = useState(false); // cost inclusion typed by hand
+  const [before, setBefore] = useState("");
+  const [gst, setGst] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tick = useRef<HTMLInputElement>(null);
+  const num = (v: string) => Number(v.replace(/,/g, "")) || 0;
+  const isAmount = (v: string) => /^\d+(\.\d{1,2})?$/.test(v);
+
+  const kept = charges.filter((_, i) => !excluded.has(i)).length;
+  const canTick = charges.length > 0 && !d.cost_manual;
+  useEffect(() => {
+    if (tick.current) tick.current.indeterminate = kept > 0 && kept < charges.length;
+  }, [kept, charges.length]);
+
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      setEditing(false);
+      setTyping(false);
+      await onSaved();
+    } catch {
+      setError("Couldn't save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const send = (body: Parameters<typeof setCostInclusion>[2]) => run(() => setCostInclusion(d.shipment_id, d.id, body));
+
+  // what this invoice adds: the cost inclusion part (line), the whole invoice (CFS)
+  const partial = d.cost_before_tax != null;
+  const amount =
+    group === "line" && partial ? String(num(d.cost_before_tax ?? "") + num(d.cost_gst ?? "")) : d.amount_total;
+  const name = [docShort(d.document_type), fields.invoice_no].filter(Boolean).join(" · ");
+  const bodyId = `inv-${d.id}`;
+
+  return (
+    <div className={`inv-card${notCounted ? " is-not-counted" : ""}`}>
+      <div className="inv-card-head">
+        <button
+          type="button"
+          className="inv-caret"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          aria-label={`${open ? "Fold" : "Open"} ${name}`}
+          onClick={() => setOpen(!open)}
+        >
+          <span aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 3.75 5 6.25l2.5-2.5" /></svg></span>
+        </button>
+        {canTick && (
+          <input
+            ref={tick}
+            type="checkbox"
+            className="inv-tick"
+            aria-label={`All charges of ${name} in the cost inclusion`}
+            checked={kept === charges.length}
+            disabled={busy}
+            onChange={() => send({ excluded: kept === charges.length ? charges.map((_, i) => i) : [] })}
+          />
+        )}
+        <span className="inv-name" title={d.generated_filename}>
+          {name}
+          {fields.carrier && <span className="inv-carrier"> · {fields.carrier}</span>}
+        </span>
+        <span className="inv-tags">
+          {notCounted && <span className="field-note">{notCounted}</span>}
+          {d.amounts_edited && <span className="edited-tag">corrected</span>}
+          {d.cost_manual && <span className="edited-tag">typed by hand</span>}
+          {canTick && (
+            <span className="field-note">
+              {kept} of {charges.length}
+            </span>
+          )}
+        </span>
+        <strong className="inv-amt">{fmtMoney(amount) ?? "—"}</strong>
+        <button type="button" className="link-btn" onClick={() => openDocumentFile(d.shipment_id, d.id)}>
+          View PDF
+        </button>
+      </div>
+      <Collapse open={open} id={bodyId}>
+        <div className="inv-card-body">
+          {editing ? (
+            <div className="inv-edit">
               <label className="field-row">
                 <span className="field-label">Basic (before tax)</span>
                 <input className="amount-input" inputMode="decimal" value={before} onChange={(e) => setBefore(e.target.value)} />
@@ -907,39 +1135,130 @@ function InvoiceGroup({
               </label>
               <Field label="Total (basic + GST)" value={fmtMoney(String(num(before) + num(gst)))} strong />
               <div className="amount-actions">
-                {error && <span className="auth-error">{error}</span>}
-                <button type="button" className="btn-secondary" onClick={() => setEditingId(null)}>
+                <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>
                   Cancel
                 </button>
-                <button type="button" onClick={() => save(d)}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    const b = before.trim().replace(/,/g, ""), g = gst.trim().replace(/,/g, "");
+                    if (!isAmount(b) || !isAmount(g)) return setError("Enter both amounts as numbers, e.g. 40000 and 7200");
+                    run(() => correctInvoiceAmounts(d.shipment_id, d.id, b, g));
+                  }}
+                >
                   Save
                 </button>
               </div>
-            </>
+            </div>
           ) : (
             <div className="invoice-figures">
               <span>Basic {fmtMoney(d.amount_before_tax) ?? "—"}</span>
               <span>GST {fmtMoney(d.gst_amount) ?? "—"}</span>
-              <strong>{fmtMoney(d.amount_total) ?? "—"}</strong>
+              <strong>Invoice {fmtMoney(d.amount_total) ?? "—"}</strong>
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  setBefore(d.amount_before_tax ?? "");
+                  setGst(d.gst_amount ?? "");
+                  setError(null);
+                  setEditing(true);
+                }}
+              >
+                Edit
+              </button>
             </div>
           )}
-          {group === "line" && editingId !== d.id && (
-            <CostInclusion
-              doc={d}
-              onSaved={async () => {
-                onChange(await getShipment(s.id));
-                load();
-              }}
-            />
+          {group === "line" && (
+            <>
+              {canTick ? (
+                <ul className="charge-lines">
+                  {charges.map((c, i) => (
+                    <li key={i} className={excluded.has(i) ? "charge-out" : undefined}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={!excluded.has(i)}
+                          disabled={busy}
+                          onChange={() => {
+                            const next = new Set(excluded);
+                            if (next.has(i)) next.delete(i);
+                            else next.add(i);
+                            send({ excluded: [...next] });
+                          }}
+                        />
+                        <span className="charge-desc">
+                          {c.description}
+                          {c.currency !== "INR" && <span className="charge-tag">{c.currency}</span>}
+                          {c.review && (
+                            <span className="charge-tag charge-review" title="Billed in INR but named like freight — left out; tick if it's a destination charge">
+                              check
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                      <span className="charge-amt">{fmtMoney(String(c.amount ?? ""))}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                !d.cost_manual && (
+                  <p className="field-note">Charge lines couldn't be read from this invoice — the whole invoice counts. Use “Type figure” to change it.</p>
+                )
+              )}
+              {typing ? (
+                <div className="cost-inclusion-typing">
+                  <input className="amount-input" inputMode="decimal" placeholder="Before tax…" aria-label="Cost inclusion before tax" value={before} onChange={(e) => setBefore(e.target.value)} />
+                  <input className="amount-input" inputMode="decimal" placeholder="GST…" aria-label="Cost inclusion GST" value={gst} onChange={(e) => setGst(e.target.value)} />
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      const b = before.replace(/,/g, "").trim(), g = gst.replace(/,/g, "").trim() || "0";
+                      if (!isAmount(b) || !isAmount(g)) return setError("Enter amounts as numbers");
+                      send({ before_tax: b, gst: g });
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setTyping(false)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="cost-inclusion-actions">
+                  <span className="field-note">
+                    Cost inclusion: {partial ? `${fmtMoney(d.cost_before_tax)} + GST ${fmtMoney(d.cost_gst)}` : "whole invoice"}
+                  </span>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setBefore(d.cost_before_tax ?? d.amount_before_tax ?? "");
+                      setGst(d.cost_gst ?? d.gst_amount ?? "");
+                      setError(null);
+                      setTyping(true);
+                    }}
+                  >
+                    Type figure
+                  </button>
+                  {(partial || d.cost_manual) && (
+                    <button type="button" className="link-btn" disabled={busy} onClick={() => send({ reset: true })} title="Back to the rule: INR charges that aren't freight">
+                      Reset
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          {error && (
+            <span className="auth-error" role="alert">
+              {error}
+            </span>
           )}
         </div>
-      ))}
-      </div>
-      {receipts.length > 0 && <Receipts receipts={receipts} onSaved={async () => { onChange(await getShipment(s.id)); load(); }} />}
-      {docs.length > 0 &&
-        cfg.totals.map(([field, label], i) => (
-          <Field key={field} label={label} value={fmtMoney(s[field])} strong={i === cfg.totals.length - 1} />
-        ))}
+      </Collapse>
     </div>
   );
 }
@@ -991,165 +1310,6 @@ function Receipts({ receipts, onSaved }: { receipts: ShipmentDocument[]; onSaved
           )}
         </div>
       ))}
-      {error && <span className="auth-error">{error}</span>}
-    </div>
-  );
-}
-
-/**
- * Which part of a shipping line invoice is the proforma's cost inclusion.
- * Rule: charges billed in INR whose head isn't freight. Lines can be ticked
- * in/out, or the figure typed by hand (e.g. when the lines couldn't be read).
- */
-function CostInclusion({ doc, onSaved }: { doc: ShipmentDocument; onSaved: () => Promise<void> }) {
-  const fields = (doc.extraction?.fields ?? {}) as { charges?: InvoiceCharge[]; charges_complete?: boolean; carrier?: string; invoice_no?: string };
-  const charges = fields.charges_complete ? fields.charges ?? [] : [];
-  const excluded = new Set(doc.cost_excluded ?? []);
-  const [typing, setTyping] = useState(false);
-  const [open, setOpen] = useState<{ top: number; left: number } | null>(null); // charge lines: an overlay
-  const popover = useRef<HTMLDivElement>(null);
-  const [before, setBefore] = useState("");
-  const [gst, setGst] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function send(body: Parameters<typeof setCostInclusion>[2]) {
-    setBusy(true);
-    setError(null);
-    try {
-      await setCostInclusion(doc.shipment_id, doc.id, body);
-      setTyping(false);
-      await onSaved();
-    } catch {
-      setError("Couldn't save.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (popover.current && !popover.current.contains(e.target as Node)) setOpen(null);
-    };
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault(); // the picker only — the peek stays
-      setOpen(null);
-    };
-    const scrolled = (e: Event) => {
-      if (!(e.target instanceof Node && popover.current?.contains(e.target))) setOpen(null);
-    };
-    document.addEventListener("mousedown", away);
-    document.addEventListener("keydown", esc);
-    window.addEventListener("scroll", scrolled, true);
-    return () => {
-      document.removeEventListener("mousedown", away);
-      document.removeEventListener("keydown", esc);
-      window.removeEventListener("scroll", scrolled, true);
-    };
-  }, [open]);
-
-  const partial = doc.cost_before_tax != null;
-  const leftOut = charges.filter((_, i) => excluded.has(i)).length;
-  return (
-    <div className="cost-inclusion" ref={popover}>
-      <div className="cost-inclusion-head">
-        <span>
-          {[fields.carrier, fields.invoice_no].filter(Boolean).join(" · ")}
-          {(fields.carrier || fields.invoice_no) && " — "}
-          Cost inclusion:{" "}
-          <strong>
-            {partial
-              ? `${fmtMoney(doc.cost_before_tax)} + GST ${fmtMoney(doc.cost_gst)}`
-              : "whole invoice"}
-          </strong>
-          {doc.cost_manual && <span className="edited-tag">typed by hand</span>}
-        </span>
-        <span className="cost-inclusion-actions">
-          {!typing && (
-            <button type="button" className="link-btn" onClick={() => {
-              setBefore(doc.cost_before_tax ?? doc.amount_before_tax ?? "");
-              setGst(doc.cost_gst ?? doc.gst_amount ?? "");
-              setTyping(true);
-            }}>
-              Type figure
-            </button>
-          )}
-          {(partial || doc.cost_manual) && (
-            <button type="button" className="link-btn" disabled={busy} onClick={() => send({ reset: true })}
-              title="Back to the rule: INR charges that aren't freight">
-              Reset
-            </button>
-          )}
-        </span>
-      </div>
-      {typing && (
-        <div className="cost-inclusion-typing">
-          <input className="amount-input" inputMode="decimal" placeholder="Before tax" value={before} onChange={(e) => setBefore(e.target.value)} />
-          <input className="amount-input" inputMode="decimal" placeholder="GST" value={gst} onChange={(e) => setGst(e.target.value)} />
-          <button type="button" disabled={busy} onClick={() => {
-            const b = before.replace(/,/g, "").trim(), g = (gst.replace(/,/g, "").trim() || "0");
-            if (!/^\d+(\.\d{1,2})?$/.test(b) || !/^\d+(\.\d{1,2})?$/.test(g)) return setError("Enter amounts as numbers");
-            send({ before_tax: b, gst: g });
-          }}>
-            Save
-          </button>
-          <button type="button" className="btn-secondary" onClick={() => setTyping(false)}>
-            Cancel
-          </button>
-        </div>
-      )}
-      {charges.length > 0 && !doc.cost_manual && (
-        <>
-          <button
-            type="button"
-            className="charge-toggle"
-            aria-expanded={!!open}
-            onClick={(e) => {
-              if (open) return setOpen(null);
-              const r = e.currentTarget.getBoundingClientRect();
-              setOpen({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - 460)) });
-            }}
-          >
-            {charges.length} charge{charges.length === 1 ? "" : "s"}
-            {leftOut > 0 && ` · ${leftOut} left out`} — choose {open ? "▴" : "▾"}
-          </button>
-          {open && (
-            <div className="charge-popover" style={open} role="dialog" aria-label="Charges in the cost inclusion">
-              <div className="charge-popover-head">Tick the charges that go in the cost inclusion</div>
-            <ul className="charge-lines">
-              {charges.map((c, i) => (
-                <li key={i} className={excluded.has(i) ? "charge-out" : undefined}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={!excluded.has(i)}
-                      disabled={busy}
-                      onChange={() => {
-                        const next = new Set(excluded);
-                        if (next.has(i)) next.delete(i);
-                        else next.add(i);
-                        send({ excluded: [...next] });
-                      }}
-                    />
-                    <span className="charge-desc">
-                      {c.description}
-                      {c.currency !== "INR" && <span className="charge-tag">{c.currency}</span>}
-                      {c.review && <span className="charge-tag charge-review" title="Billed in INR but named like freight — left out; tick if it's a destination charge">check</span>}
-                    </span>
-                  </label>
-                  <span className="charge-amt">{fmtMoney(String(c.amount ?? ""))}</span>
-                </li>
-              ))}
-            </ul>
-            </div>
-          )}
-        </>
-      )}
-      {charges.length === 0 && !doc.cost_manual && (
-        <p className="field-note">Charge lines couldn't be read from this invoice — the whole invoice counts. Use "Type figure" to change it.</p>
-      )}
       {error && <span className="auth-error">{error}</span>}
     </div>
   );
@@ -1283,43 +1443,119 @@ function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment
   );
 }
 
-/** Duty / CFS / Line in words: what's known, what's paid, what's still not attached. */
-function PaymentTiles({ s }: { s: Shipment }) {
+/**
+ * Money: Duty / CFS / Line, one fixed-height row each — the amount, its state in words, one action.
+ * CFS and Line open the charge drawer under it; nothing attached = Upload.
+ */
+function MoneyCard({
+  s,
+  docs,
+  open,
+  onOpen,
+  onDuty,
+  onUpload,
+}: {
+  s: Shipment;
+  docs: ShipmentDocument[];
+  open: MoneyGroup | null;
+  onOpen: (g: MoneyGroup | null) => void;
+  onDuty: () => void;
+  onUpload: (t: DocumentType) => void;
+}) {
   const fd = s.final_duty;
   const dutyAmt = fd && fd.source !== "be" && (s.ooc || Number(fd.interest) > 0) ? fd.total : s.duty_amount;
-  const tiles: { label: string; done: boolean; value: string; sub: string }[] = [
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  type Row = { key: string; label: string; dot: "ok" | "warn" | "todo" | "muted"; value: string; words?: boolean; meta: string; action: React.ReactNode };
+
+  const drawerBtn = (g: MoneyGroup) => (
+    <button
+      type="button"
+      className="link-btn money-action"
+      aria-expanded={open === g}
+      aria-controls={open === g ? "charge-drawer" : undefined}
+      onClick={() => onOpen(open === g ? null : g)}
+    >
+      Charges <span className={`money-caret${open === g ? " is-open" : ""}`} aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 3.75 5 6.25l2.5-2.5" /></svg></span>
+    </button>
+  );
+  const uploadBtn = (g: MoneyGroup) => (
+    <button type="button" className="link-btn money-action" onClick={() => onUpload(INVOICE_GROUPS[g].uploadType)}>
+      Upload
+    </button>
+  );
+
+  const cfs = groupDocs("cfs", docs).counted;
+  const line = groupDocs("line", docs).counted;
+  const by = (us: boolean) => (us ? "Paid by us" : "Paid by client");
+
+  const cfsRow: Row = cfs.length
+    ? {
+        key: "cfs",
+        label: "CFS",
+        dot: s.cfs_inv_received ? "ok" : "warn",
+        value: fmtMoney(s.cfs_amount_total) ?? "—",
+        meta: `${by(s.cfs_paid_by_us)} · ${plural(cfs.length, "invoice")}`,
+        action: drawerBtn("cfs"),
+      }
+    : {
+        key: "cfs",
+        label: "CFS",
+        dot: s.cfs_inv_received ? "ok" : "todo",
+        value: "Not attached",
+        words: true,
+        // ticked as received / paid, but the invoice itself isn't in the ERP yet
+        meta: s.cfs_inv_received ? "CFS paid ✓ · invoice not attached" : by(s.cfs_paid_by_us),
+        action: uploadBtn("cfs"),
+      };
+
+  let lineRow: Row;
+  if (!line.length) {
+    lineRow = { key: "line", label: "Line", dot: s.line_paid ? "ok" : "todo", value: "Not attached", words: true, meta: by(s.line_paid_by_us), action: uploadBtn("line") };
+  } else if (s.line_paid_by_us) {
+    lineRow = { key: "line", label: "Line", dot: s.line_paid ? "ok" : "warn", value: fmtMoney(s.line_amount_total) ?? "—", meta: `Paid by us · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
+  } else if (s.line_excluded_by) {
+    lineRow = { key: "line", label: "Line", dot: "muted", value: "Left out", words: true, meta: `${plural(line.length, "invoice")} · ${s.line_excluded_by}`, action: drawerBtn("line") };
+  } else if (!Number(s.line_amount_total)) {
+    lineRow = { key: "line", label: "Line", dot: "warn", value: "Pick charges", words: true, meta: `Cost inclusion · ${plural(line.length, "invoice")}`, action: drawerBtn("line") };
+  } else {
+    const all = line.flatMap((d) => chargesOf(d).map((_, i) => !(d.cost_excluded ?? []).includes(i)));
+    const picked = all.length ? ` · ${all.filter(Boolean).length} of ${all.length} charges` : "";
+    lineRow = { key: "line", label: "Line", dot: "ok", value: fmtMoney(s.line_amount_total)!, meta: `Cost inclusion · ${plural(line.length, "invoice")}${picked}`, action: drawerBtn("line") };
+  }
+
+  const rows: Row[] = [
     {
+      key: "duty",
       label: "Duty",
-      done: s.duty_paid,
+      dot: s.duty_paid ? "ok" : dutyAmt == null ? "todo" : "warn",
       value: dutyAmt == null ? "Not assessed" : fmtMoney(dutyAmt)!,
-      sub: s.duty_paid ? "Paid" : dutyAmt == null ? "Waiting for the assessed BE" : "Not paid yet",
+      words: dutyAmt == null,
+      meta: s.duty_paid ? "Paid" : dutyAmt == null ? "Waiting for the assessed BE" : "Not paid yet",
+      action: (
+        <button type="button" className="link-btn money-action" onClick={onDuty}>
+          Details
+        </button>
+      ),
     },
-    {
-      label: "CFS",
-      done: s.cfs_inv_received,
-      value: s.cfs_amount_total ? fmtMoney(s.cfs_amount_total)! : "Not attached",
-      sub: `${s.cfs_inv_received ? "Invoice received" : "Invoice pending"} · ${s.cfs_paid_by_us ? "paid by us" : "paid by client"}`,
-    },
-    {
-      label: "Line",
-      done: s.line_paid,
-      value: s.line_amount_total ? fmtMoney(s.line_amount_total)! : "Not attached",
-      sub: `${s.line_paid ? "Paid" : "Not paid yet"} · ${s.line_paid_by_us ? "by us" : "by client"}`,
-    },
+    cfsRow,
+    lineRow,
   ];
+  const dotWord = { ok: "done", warn: "needs attention", todo: "pending", muted: "left out" } as const;
+
   return (
-    <div className="pay-tiles">
-      {tiles.map((t) => (
-        <div className="pay-tile" key={t.label}>
-          <span className="pay-label">
-            <span className={`dot ${t.done ? "dot-ok" : "dot-todo"}`} aria-hidden="true" />
-            {t.label}
+    <section className="money-card" aria-label="Money">
+      {rows.map((r) => (
+        <div className="money-row" key={r.key}>
+          <span className="money-label">
+            <span className={`sdot sdot-${r.dot}`} role="img" aria-label={dotWord[r.dot]} />
+            {r.label}
           </span>
-          <span className={`pay-value${t.value.startsWith("₹") ? "" : " is-words"}`}>{t.value}</span>
-          <span className="pay-sub">{t.sub}</span>
+          <span className={`money-value${r.words ? " is-words" : ""}${r.dot === "muted" ? " is-muted" : ""}`}>{r.value}</span>
+          <span className="money-meta">{r.meta}</span>
+          {r.action}
         </div>
       ))}
-    </div>
+    </section>
   );
 }
 

@@ -381,6 +381,7 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
       filter: false,
       resizable: false,
       suppressMovable: true,
+      cellClass: "cell-open",
       cellRenderer: (p: ICellRendererParams<Shipment>) =>
         p.data ? (
           <Link
@@ -394,7 +395,9 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
               window.dispatchEvent(new CustomEvent("tracker:peek", { detail: p.data!.id }));
             }}
           >
-            ↗
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 2.5h5.5V8M9.5 2.5 2.5 9.5" />
+            </svg>
           </Link>
         ) : null,
     },
