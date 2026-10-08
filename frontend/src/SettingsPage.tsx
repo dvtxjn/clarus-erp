@@ -1,7 +1,7 @@
 import { fmtWhen } from "./dates";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
+import { backfillOocInterest, getSettings, getSystemStatus, setSetting, type AppSettings, type CompanySettings, type SystemStatus } from "./api";
 import { EInvoicing, InvoiceNumbering, TdsRateSwitch } from "./RatesPage";
 import SheetsMirrorSettings from "./SheetsMirrorSettings";
 import MailboxSettings from "./MailboxSettings";
@@ -81,6 +81,40 @@ function useSave<T>(key: keyof AppSettings, initial: T | undefined, onSaved: (s:
   return { value, setValue, dirty, save, busy, msg };
 }
 
+/** One-off: OOC copies read before 08-Oct-2026 don't have their interest (INT) yet. */
+function OocInterest() {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  async function run() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await backfillOocInterest();
+      setMsg({
+        ok: true,
+        text: r.checked
+          ? `Read ${r.checked} OOC cop${r.checked === 1 ? "y" : "ies"}: ${r.with_interest} with interest, duty corrected on ${r.duty_fixed}${r.failed ? ` · ${r.failed} couldn't be opened` : ""}.`
+          : r.failed
+            ? `${r.failed} OOC cop${r.failed === 1 ? "y" : "ies"} couldn't be opened — try again later.`
+            : "All OOC copies already have their interest.",
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="settings-save">
+      <button className="btn-secondary" disabled={busy} onClick={run}>
+        {busy ? "Reading OOC copies…" : "Read interest on older OOC copies"}
+      </button>
+      <span className="field-note">Reads only the INT figure; your corrections stay.</span>
+      {msg && <span role="status" className={msg.ok ? "settings-ok" : "auth-error"}>{msg.text}</span>}
+    </div>
+  );
+}
+
 function SaveBar({ dirty, busy, msg, onSave, onReset }: { dirty: boolean; busy: boolean; msg: { ok: boolean; text: string } | null; onSave: () => void; onReset: () => void }) {
   return (
     <div className={`settings-save${dirty ? " is-dirty" : ""}`}>
@@ -122,6 +156,7 @@ export default function SettingsPage() {
         <EInvoicing canEdit />
         <InvoiceNumbering canEdit />
         <TdsRateSwitch canEdit />
+        <OocInterest />
         <p className="field-note">
           Standard rates, licences and HSS rules: <Link to="/rates">Rates</Link>.
         </p>

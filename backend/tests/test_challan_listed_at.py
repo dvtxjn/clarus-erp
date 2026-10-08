@@ -49,3 +49,4 @@ def test_yesterdays_list_is_not_today(client, admin_headers):
     finally:
         db.close()
     assert client.get("/daily-updates", headers=h).json()["challans_updated_today"] is True
+

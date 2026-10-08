@@ -111,8 +111,8 @@ def test_icegate_challans_follow_the_be_date(client, admin_headers):
             for d, n, amt in (("20.09.2025", 111, 5000.0), ("20.09.2026", 222, 7000.0))]
     db = SessionLocal()
     try:
-        assert sync.apply_challans(db, rows, datetime.now())["added"] == 2
-        assert sync.apply_challans(db, rows, datetime.now())["added"] == 0  # each year compared with its own row
+        assert sync.apply_challans(db, rows, datetime.now(timezone.utc))["added"] == 2
+        assert sync.apply_challans(db, rows, datetime.now(timezone.utc))["added"] == 0  # each year compared with its own row
         assert latest_challan(db, be, date(2025, 9, 20)).challan_no == "111"
         assert latest_challan(db, be, date(2026, 9, 20)).challan_no == "222"
         db.commit()

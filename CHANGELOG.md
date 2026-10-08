@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.7.4 — 2026-10-09
+- Settings → Invoicing: **Read interest on older OOC copies**. One click reads the INT figure on OOC copies uploaded before v1.7.2 and takes the interest out of the customs duty. Hand corrections stay.
+- Fixed a test that failed after 6:30 pm IST: it stored a challan time in local time instead of UTC. The app itself was not affected.
+
 ## v1.7.3 — 08 Oct 2026
 
 - Deploy: instant rollback. `bash deploy/gcp/rollback.sh` sends the ERP back to the previous version in seconds, with no rebuild. Every deploy now ends by printing which version is on standby and the exact rollback command.

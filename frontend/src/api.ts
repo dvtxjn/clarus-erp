@@ -774,6 +774,12 @@ export interface SystemStatus {
   environment: string;
   public_url: string | null;
 }
+/** Admin: read the interest (INT) on OOC copies uploaded before it was read (one-off, safe to repeat). */
+export async function backfillOocInterest(): Promise<{ checked: number; with_interest: number; duty_fixed: number; failed: number }> {
+  const { data } = await client.post("/settings/ooc-interest");
+  return data;
+}
+
 export async function getSystemStatus(): Promise<SystemStatus> {
   const { data } = await client.get("/settings/system");
   return data;

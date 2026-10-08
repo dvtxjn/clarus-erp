@@ -164,3 +164,12 @@ def put_auto_rules(body: dict[str, Any], db: Session = Depends(get_db), admin: U
     db.commit()
     return auto_rules.describe(db)
 
+
+
+@router.post("/settings/ooc-interest")
+def ooc_interest_backfill(db: Session = Depends(get_db), user: User = Depends(require_admin)):
+    """Admin, one click: read the interest (INT) on OOC copies uploaded before it was read; fixes the duty
+    without interest where it's still the OOC total. See app/extraction/ooc_interest.py."""
+    from app.extraction.ooc_interest import backfill_ooc_interest
+
+    return backfill_ooc_interest(db, user.id)

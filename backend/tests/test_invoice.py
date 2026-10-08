@@ -374,3 +374,30 @@ def test_ooc_interest_read_from_int_column():
     out = extract_duty_summary(f"{row}\n189434 545 0 0 189979\n")
     assert (out["tot_amount"], out["interest"]) == ("189979", "545")
     assert extract_duty_summary(f"{row}\n0 0 61500.00\n")["interest"] is None  # short row: no INT read
+
+
+def test_ooc_interest_backfill(client, admin_headers):
+    """OOC copies read before INT was read: one admin click reads it, splits the duty, and is idempotent."""
+    from app.core.database import SessionLocal
+    from app.models.document import ShipmentDocument
+    from app.models.shipment import Shipment
+
+    h = admin_headers
+    row = [(40, 300, "9.SG 10.SAED 11.GSIA 12.TTA 13.HEALTH 14.TOTAL DUTY 15.INT 16.PNLTY 17.FINE 19.TOT. AMOUNT"),
+           (40, 312, "189434 545 0 0 189979")]
+    sid = client.post("/shipments", json={"mbl": "OOCINT0000001"}, headers=h).json()["id"]
+    client.post(f"/shipments/{sid}/documents", data={"document_type": "ooc_bill_of_entry"},
+                files={"file": ("ooc.pdf", be_pdf(be_no="7770999", mawb="OOCINT0000001", extra=row), "application/pdf")},
+                headers=h)
+    with SessionLocal() as db:  # make it look like an old read: no interest, duty = the OOC total
+        doc = db.query(ShipmentDocument).filter(ShipmentDocument.shipment_id == sid).one()
+        fields = dict(doc.extraction["fields"])
+        fields.pop("interest", None)
+        fields["tot_amount"] = "189979"
+        doc.extraction = {**doc.extraction, "fields": fields}
+        db.get(Shipment, sid).duty_amount = Decimal("189979")
+        db.commit()
+    r = client.post("/settings/ooc-interest", headers=h).json()
+    assert r["with_interest"] >= 1 and r["duty_fixed"] >= 1
+    assert float(client.get(f"/shipments/{sid}", headers=h).json()["duty_amount"]) == 189434.0
+    assert client.post("/settings/ooc-interest", headers=h).json()["checked"] == 0  # nothing left to read
