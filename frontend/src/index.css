@@ -2696,3 +2696,10 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .money-value-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .money-value-line .money-value { min-width: 0; }
 .money-value-line .status-pill { flex: none; margin: 0; font-size: 11px; padding: 1px 8px; }
+/* Proforma tab: no progress card; the money card takes the row, its three rows side by side when there's room (client, 2026-10-08) */
+@container (min-width: 1100px) { .tier1.no-flow > .money-card { grid-column: 1 / -1; } }
+@container (min-width: 700px) {
+  .tier1.no-flow > .money-card { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tier1.no-flow .money-row { border-top: none; border-left: 1px solid var(--color-border-soft); }
+  .tier1.no-flow .money-row:first-child { border-left: none; }
+}

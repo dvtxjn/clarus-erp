@@ -309,12 +309,15 @@ export function ShipmentDetail({
       </header>
 
       {/* tier 1: the keys, what's next, where the clearance stands, and the three payments — at a glance */}
-      <div className="tier1">
+      <div className={`tier1${tab === "proforma" ? " no-flow" : ""}`}>
         <KeyStrip s={shipment} />
-        <section className="tier1-flow" aria-label="Clearance">
-          <NextStepBar shipment={shipment} />
-          <ClearanceStepper s={shipment} onChange={onSaved} />
-        </section>
+        {/* the clearance progress isn't needed while billing (client, 2026-10-08) */}
+        {tab !== "proforma" && (
+          <section className="tier1-flow" aria-label="Clearance">
+            <NextStepBar shipment={shipment} />
+            <ClearanceStepper s={shipment} onChange={onSaved} />
+          </section>
+        )}
         <MoneyCard
           s={shipment}
           docs={docs}

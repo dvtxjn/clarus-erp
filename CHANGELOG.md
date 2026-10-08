@@ -1,5 +1,8 @@
 # Release notes
 
+## v1.5.9 — no progress chart on Proforma & Billing
+- Proforma & Billing tab: the "Next" step and the clearance progress chart are hidden, so the invoice controls start higher. The key strip and the Duty / CFS / Shipping line box stay. The other tabs are unchanged.
+
 ## v1.5.8 — job in the key strip, status beside Duty
 - Shipment page and peek: the job number is the first box of the key strip (Job · Client · BL · BE No…). The top of the page is now just the back link and the section tabs.
 - The shipment's status (e.g. "OOC Done") sits beside the duty amount in the Duty row.
