@@ -2580,7 +2580,7 @@ button.btn-ghost-danger:hover:not(:disabled) { background: var(--bad-bg); }
 .grid-dragging .tracker-page { user-select: none; -webkit-user-select: none; }
 .switch-row .chip-select.line-cost-select, .chip-select.line-cost-select { min-width: 25ch; max-width: none; flex: none; }
 /* key strip: identifiers wrap, never "…"; the BL cell gets the extra room */
-@container (min-width: 761px) { .key-strip { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)); } }
+@container (min-width: 761px) { .key-strip { grid-template-columns: minmax(0, .7fr) minmax(0, 1.4fr) minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)); } }
 .key-value.is-id { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .key-cell:has(.is-id) .key-sub { white-space: normal; overflow-wrap: anywhere; }
 .cell-none { color: var(--color-text-muted); }
@@ -2668,16 +2668,17 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .detail-tabs .tab, .detail-tabs .tab:hover { box-shadow: none; background: none; }
 .detail-main > .tab-body { margin-top: 4px; }
 
-/* key strip with the client first: on narrow screens the client takes the whole first row (client, 2026-10-08) */
+/* key strip starts Job, Client: on narrow screens they share the first row (client, 2026-10-08) */
 @container (max-width: 760px) {
-  .key-cell-client { grid-column: 1 / -1; }
-  .key-strip .key-cell:nth-child(n) { border-left: 1px solid var(--color-border-soft); }
-  .key-strip .key-cell:nth-child(3n+2), .key-strip .key-cell-client { border-left: none; }
-  .key-strip .key-cell:nth-child(n+2) { border-top: 1px solid var(--color-border-soft); }
+  .key-cell-client { grid-column: span 2; }
+  .key-strip .key-cell:nth-child(n) { border-left: 1px solid var(--color-border-soft); border-top: none; }
+  .key-strip .key-cell:nth-child(1), .key-strip .key-cell:nth-child(3n) { border-left: none; }
+  .key-strip .key-cell:nth-child(n+3) { border-top: 1px solid var(--color-border-soft); }
 }
 @container (max-width: 520px) {
+  .key-cell-client { grid-column: auto; }
   .key-strip .key-cell:nth-child(n) { border-left: 1px solid var(--color-border-soft); }
-  .key-strip .key-cell:nth-child(even), .key-strip .key-cell-client { border-left: none; }
+  .key-strip .key-cell:nth-child(odd) { border-left: none; }
 }
 /* 1100–1599: Notes sits under Duty, beside the taller Shipment card; Billing gets the full row (client, 2026-10-08) */
 @container (min-width: 1100px) and (max-width: 1599px) {
@@ -2691,3 +2692,7 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
   }
 }
 .key-date { white-space: nowrap; } /* "18 Sep" never splits; wraps only at the arrow */
+/* Duty row: the shipment status pill beside the amount (client, 2026-10-08) */
+.money-value-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.money-value-line .money-value { min-width: 0; }
+.money-value-line .status-pill { flex: none; margin: 0; font-size: 11px; padding: 1px 8px; }

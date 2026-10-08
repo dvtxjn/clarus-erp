@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.5.8 — job in the key strip, status beside Duty
+- Shipment page and peek: the job number is the first box of the key strip (Job · Client · BL · BE No…). The top of the page is now just the back link and the section tabs.
+- The shipment's status (e.g. "OOC Done") sits beside the duty amount in the Duty row.
+
 ## v1.5.7 — client in the key strip; no gap beside Customs duty
 - Shipment page: the client is the first box in the key strip (next to BL, BE No, Port…), with the company name in bold and the contact under it. The line under the job now holds only the section tabs.
 - Overview, medium-wide screens: Notes sits under Customs duty, beside the taller Shipment card, and Billing settings takes the full row under them. No empty space beside Shipment & movement.

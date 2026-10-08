@@ -283,13 +283,8 @@ export function ShipmentDetail({
       )}
 
       <header className="detail-header">
-        <div className="detail-title">
-          <span className="detail-job">
-            {shipment.job ? `Job ${shipment.job}` : "No job number yet"}
-            <span className={`status-pill status-${shipment.status}`}>{SHIPMENT_STATUS_LABELS[shipment.status]}</span>
-          </span>
-        </div>
-        {/* under the job: the sections (the client is in the key strip) (client, 2026-10-08) */}
+        {/* the job is the first box of the key strip and the status sits beside Duty; the header holds only the sections (client, 2026-10-08) */}
+        <h1 className="sr-only">{shipment.job ? `Job ${shipment.job}` : "No job number yet"}</h1>
         <div className="detail-subrow">
         <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections" ref={tabsRef}>
           <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
@@ -1469,6 +1464,7 @@ function KeyStrip({ s }: { s: Shipment }) {
   const age = /^\d+$/.test(s.days) ? `Day ${s.days}` : s.days || "—";
   // BL / BE / container numbers are never cut: those cells wrap to a second line instead
   const cells: { label: string; value: React.ReactNode; sub?: React.ReactNode; empty?: boolean; wide?: boolean; id?: boolean; client?: boolean }[] = [
+    { label: "Job", value: s.job || "No number yet", empty: !s.job, id: true },
     // the client is the first key, so the header under the job holds only the tabs (client, 2026-10-08)
     { label: "Client", value: s.consignee || s.client || "—", sub: s.consignee && s.client ? s.client : null, empty: !s.consignee && !s.client, id: true, client: true },
     {
@@ -1626,7 +1622,7 @@ function MoneyCard({
   const fd = s.final_duty;
   const dutyAmt = fd && fd.source !== "be" && (s.ooc || Number(fd.interest) > 0) ? fd.total : s.duty_amount;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-  type Row = { key: string; label: string; dot: "ok" | "warn" | "todo" | "muted"; value: string; words?: boolean; meta: string; action: React.ReactNode };
+  type Row = { key: string; label: string; dot: "ok" | "warn" | "todo" | "muted"; value: string; words?: boolean; meta: string; action: React.ReactNode; badge?: React.ReactNode };
 
   const drawerBtn = (g: MoneyGroup) => (
     <button
@@ -1692,6 +1688,8 @@ function MoneyCard({
       dot: s.duty_paid ? "ok" : dutyAmt == null ? "todo" : "warn",
       value: dutyAmt == null ? "Not assessed" : fmtMoney(dutyAmt)!,
       words: dutyAmt == null,
+      // the shipment's status sits beside the duty (client, 2026-10-08)
+      badge: <span className={`status-pill status-${s.status}`}>{SHIPMENT_STATUS_LABELS[s.status]}</span>,
       meta: [
         s.duty_paid ? "Paid" : dutyAmt == null ? "Waiting for the assessed BE" : "Not paid yet",
         dutyAmt != null && dutyAmt === fd?.total && Number(fd?.interest) > 0 ? `incl. interest ${fmtMoney(fd!.interest)}` : "",
@@ -1715,7 +1713,10 @@ function MoneyCard({
             <span className={`sdot sdot-${r.dot}`} role="img" aria-label={dotWord[r.dot]} />
             {r.label}
           </span>
-          <span className={`money-value${r.words ? " is-words" : ""}${r.dot === "muted" ? " is-muted" : ""}`}>{r.value}</span>
+          <span className="money-value-line">
+            <span className={`money-value${r.words ? " is-words" : ""}${r.dot === "muted" ? " is-muted" : ""}`}>{r.value}</span>
+            {r.badge}
+          </span>
           <span className="money-meta">{r.meta}</span>
           {r.action}
         </div>
