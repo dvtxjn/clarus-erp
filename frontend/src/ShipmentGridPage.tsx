@@ -590,9 +590,17 @@ const defaultColDef: ColDef<Shipment> = {
   // value shows on hover. Column widths get tuned later.
   wrapText: false,
   autoHeight: false,
+  // Excel keys: Enter / F2 / typing edit, Enter again saves and moves down, Esc cancels; Space opens the job
+  suppressKeyboardEvent: (p) => {
+    const e = p.event;
+    if (e.type !== "keydown" || p.editing || e.key !== " " || e.ctrlKey || e.metaKey || e.altKey || !p.data) return false;
+    e.preventDefault();
+    window.dispatchEvent(new CustomEvent("tracker:peek", { detail: p.data.id }));
+    return true;
+  },
   tooltipValueGetter: (p) => {
     const v = p.valueFormatted ?? p.value;
-    return typeof v === "string" && v.length > 12 ? v : undefined;
+    return v == null || v === "" ? undefined : String(v); // shown only when the cell cuts it off (tooltipShowMode)
   },
 };
 // Client/month sections have no visible header row
@@ -668,8 +676,42 @@ export default function ShipmentGridPage() {
       ),
     [setSearchParams],
   );
+  const peekRef = useRef(peekId);
+  peekRef.current = peekId;
+  const grids = () => [headerRef.current, ...[...sectionRefs.current.values()].map((r) => r.current)].filter(Boolean) as AgGridReact<Shipment>[];
   useEffect(() => {
-    const open = (e: Event) => setPeek((e as CustomEvent<number>).detail);
+    // opening a job saves the cell being typed in first, so nothing is left half edited behind the panel
+    const open = (e: Event) => {
+      grids().forEach((g) => g.api?.stopEditing());
+      setPeek((e as CustomEvent<number>).detail);
+    };
+    // closing hands the keyboard back to the job's row, so arrows / Space carry on from there
+    const close = () => {
+      const id = peekRef.current;
+      setPeek(null);
+      if (!id) return;
+      for (const g of grids()) {
+        const node = g.api?.getRowNode(String(id));
+        if (node?.rowIndex != null) {
+          g.api.ensureIndexVisible(node.rowIndex);
+          g.api.setFocusedCell(node.rowIndex, "job");
+          break;
+        }
+      }
+    };
+    // a press outside the panel closes it — except on the grid's rows (switch job), menus, popovers and dialogs
+    const away = (e: PointerEvent) => {
+      if (!peekRef.current) return;
+      const t = e.target as Element | null;
+      if (
+        !t?.isConnected ||
+        t.closest(
+          ".peek-panel, .ag-row, .ag-popup, .ag-menu, .ag-rich-select, .ag-filter, .mini-popover, .columns-panel, .charge-popover, .date-editor, .confirm-dialog, .modal-backdrop, .toast, [role='dialog'], [role='menu'], [role='listbox']",
+        )
+      )
+        return;
+      close();
+    };
     // Esc closes only the topmost layer: a popover/menu/field that handled it calls preventDefault first
     const esc = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
@@ -679,14 +721,17 @@ export default function ShipmentGridPage() {
         return;
       }
       if (document.querySelector(".ag-cell-inline-editing, .confirm-dialog, .modal-backdrop")) return;
-      setPeek(null);
+      close();
     };
     window.addEventListener("tracker:peek", open);
     window.addEventListener("keydown", esc);
+    document.addEventListener("pointerdown", away);
     return () => {
       window.removeEventListener("tracker:peek", open);
       window.removeEventListener("keydown", esc);
+      document.removeEventListener("pointerdown", away);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- grids() reads refs
   }, [setPeek]);
   const ports = usePorts();
   const confirm = useConfirm();
@@ -1805,7 +1850,8 @@ export default function ShipmentGridPage() {
               defaultColDef={headerColDef}
               popupParent={document.body} // the header grid is one row tall: its filter menus were cut to one line
               domLayout="autoHeight"
-              tooltipShowDelay={350}
+              tooltipShowDelay={300}
+              tooltipShowMode="whenTruncated"
               suppressNoRowsOverlay
               alignedGrids={alignedWithSections}
               onGridReady={onHeaderReady}
@@ -1870,7 +1916,8 @@ export default function ShipmentGridPage() {
                 context={gridContext}
                 popupParent={document.body} // the date picker on the bottom row was cut off by the section
                 domLayout="autoHeight"
-              tooltipShowDelay={350}
+              tooltipShowDelay={300}
+              tooltipShowMode="whenTruncated"
                 headerHeight={0}
                 floatingFiltersHeight={0}
                 alignedGrids={() =>
@@ -1903,7 +1950,6 @@ export default function ShipmentGridPage() {
                 }}
                 onCellEditingStarted={(e) => e.data && announce(e.data.id, e.column.getColId(), true)}
                 onCellEditingStopped={onEditingStopped}
-                enterNavigatesVertically
                 enterNavigatesVerticallyAfterEdit
                 stopEditingWhenCellsLoseFocus
                 enableCellTextSelection
@@ -2159,7 +2205,7 @@ function MiniFieldButton({ row, field, label, ctx }: { row: Shipment; field: Min
         onClick={(e) => {
           e.stopPropagation();
           const r = e.currentTarget.getBoundingClientRect();
-          setAt({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 340) });
+          setAt({ top: r.bottom + 6, left: Math.min(r.left, window.innerWidth - 340) });
         }}
       >
         {label}

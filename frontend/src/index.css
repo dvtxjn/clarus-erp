@@ -2421,16 +2421,22 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 
 /* skeleton: the shape of the shipment page while it loads */
 .detail-skeleton { display: flex; flex-direction: column; gap: 16px; }
-.sk { background: var(--color-border-soft, var(--color-border)); border-radius: var(--radius-lg); }
+.sk { position: relative; overflow: hidden; background: var(--color-border-soft, var(--color-border)); border-radius: var(--radius-lg); }
 .sk-title { height: 24px; width: 40%; border-radius: var(--radius); }
 .sk-strip { height: 64px; }
 .sk-next { height: 56px; }
 .sk-stepper { height: 40px; }
 .sk-tabs { height: 32px; width: 60%; border-radius: var(--radius); }
 .sk-card { height: 180px; }
+.sk-money { height: 170px; }
 @media (prefers-reduced-motion: no-preference) {
-  .sk { animation: sk-pulse 1.2s ease-in-out infinite alternate; }
-  @keyframes sk-pulse { from { opacity: 1; } to { opacity: .55; } }
+  /* shimmer: a soft band sweeping across, 1.5s (transform only) */
+  .sk::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-surface) 55%, transparent), transparent);
+    animation: sk-shimmer 1.5s ease-in-out infinite;
+  }
+  @keyframes sk-shimmer { to { transform: translateX(100%); } }
 }
 
 /* tabs: same weight everywhere; one 2px underline slides to the open tab */
@@ -2470,4 +2476,53 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .check-chip.is-pending { opacity: .6; pointer-events: none; }
 .ag-cell { font-variant-numeric: tabular-nums; }
 .grid-skeleton { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
-.sk-row { height: 20px; border-radius: var(--radius-sm); }
+.sk-row { height: 16px; margin: 7px 0; border-radius: var(--radius-sm); } /* 16px bar in a 30px row */
+
+/* ============================================================
+   UX amendment A (2026-10-08)
+   ============================================================ */
+/* pills are neutral (1px border, surface, dark text); the colour is only in an 8px dot */
+.status-pill, .status-pill.status-cleared, .status-pill.status-ooc_done, .status-pill.status-billed, .status-pill.status-missing {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border);
+}
+.status-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--pill-dot, #3f76ff); }
+.status-pill.status-cleared, .status-pill.status-ooc_done { --pill-dot: #16a34a; }
+.status-pill.status-billed { --pill-dot: var(--color-text-muted); }
+.status-pill.status-missing { --pill-dot: #dc2626; }
+.status-pill.status-under_ooc, .status-pill.status-duty_paid { --pill-dot: #f59e0b; }
+.status-pill[class="status-pill"], .status-pill[class="status-pill "] { --pill-dot: var(--color-text-muted); }
+
+/* stepper glyphs, 14px: done = filled check circle, now = ring with a partial arc, pending = hollow ring, stuck = red */
+.step-dot, .step-done .step-dot, .step-now .step-dot, .step-alert .step-dot {
+  width: 14px; height: 14px; margin: 2px 0; border: none; box-shadow: none; background: var(--color-surface); color: var(--color-text-muted);
+}
+.step-dot svg { display: block; }
+.step-done .step-dot { color: #16a34a; }
+.step-now .step-dot { color: #3f76ff; }
+.step-alert .step-dot { color: #dc2626; }
+.step::before { top: 9px; }
+/* tabs: a fixed 40px strip; the open tab and its 2px underline are in the text colour (150ms slide), weight 500 */
+.detail-tabs { height: 40px; align-items: stretch; }
+.detail-tabs .tab { display: inline-flex; align-items: center; padding: 0 4px; font-weight: 500; }
+.detail-tabs .tab.active { color: var(--color-text); }
+.detail-tabs::after { background: var(--color-text); }
+/* popovers: fade + scale .95 → 1 in 150ms from the side of their trigger; above everything but dialogs, 6px off it */
+.mini-popover, .date-editor { transform-origin: top left; }
+.columns-panel { transform-origin: top right; z-index: 1000; }
+.mini-popover { z-index: 1000; }
+@media (prefers-reduced-motion: no-preference) {
+  .mini-popover, .date-editor, .columns-panel, .ag-popup-child:not(.ag-tooltip) { animation: pop-in 150ms cubic-bezier(.2, 0, 0, 1); }
+  @keyframes pop-in { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
+}
+/* Overview values: editable ones answer the pointer (4% grey, radius 4); read-only ones don't; empty is muted */
+.overview .edit-value, .stepper-foot .edit-value { border-color: transparent; border-radius: 4px; cursor: pointer; transition: background-color var(--dur-fast); }
+.overview .edit-value:hover, .stepper-foot .edit-value:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); border-color: transparent; }
+.overview .field-value:not(.edit-value):hover { background: none; }
+.edit-value.field-empty, .edit-value .field-empty { color: var(--color-text-muted); font-weight: 400; }
+.overflow-tip {
+  position: fixed; z-index: 1000; max-width: 360px; padding: 5px 8px; border-radius: 6px; pointer-events: none;
+  background: var(--color-text); color: var(--color-surface); font-size: 12px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere;
+  box-shadow: var(--shadow-md); transform-origin: top left;
+}
+@media (prefers-reduced-motion: no-preference) { .overflow-tip { animation: pop-in 150ms cubic-bezier(.2, 0, 0, 1); } }

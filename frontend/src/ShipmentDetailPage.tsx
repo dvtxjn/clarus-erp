@@ -39,6 +39,8 @@ function fmtMoney(v: string | null): string | null {
 
 /** Documents per shipment, last loaded — shared by the Overview's CFS / shipping line blocks. */
 const docsCache = new Map<number, ShipmentDocument[]>();
+/** Jobs already opened this session: reopening draws at once from here while a fresh copy loads behind it. */
+const shipmentCache = new Map<number, Shipment>();
 
 const TABS: Tab[] = ["overview", "customs", "documents", "history", "proforma"];
 
@@ -123,20 +125,23 @@ export function ShipmentDetail({
   useEffect(() => {
     // switching jobs in the peek: the old job stays (dimmed) until the new one has arrived — no blank flash
     let live = true;
-    setLoading(true);
+    const seen = shipmentCache.get(shipmentId);
+    if (seen) setShipment(seen);
+    setLoading(!seen); // dim (and skeleton) only for a job not seen yet
     // documents come with the first load, so the Overview draws complete (no late push-down)
-    setDocs(docsCache.get(shipmentId) ?? []);
+    if (seen) setDocs(docsCache.get(shipmentId) ?? []); // an unseen job: the old one's stay with it (dimmed) until both arrive
     setDrawer(null);
     const docsLoad = listDocuments(shipmentId)
       .then((all) => {
         docsCache.set(shipmentId, all);
-        if (live) setDocs(all);
       })
       .catch(() => {});
-    const one = getShipment(shipmentId).then(
-      (s) => {
+    // shipment and documents land together: the Money card never shows one job's figures with another's invoices
+    const one = Promise.all([getShipment(shipmentId), docsLoad]).then(
+      ([s]) => {
         if (!live) return;
         setShipment(s);
+        setDocs(docsCache.get(shipmentId) ?? []);
         setLoadErr(null);
       },
       (e) => {
@@ -150,6 +155,10 @@ export function ShipmentDetail({
       live = false;
     };
   }, [shipmentId, reloadKey]);
+
+  useEffect(() => {
+    if (shipment) shipmentCache.set(shipment.id, shipment);
+  }, [shipment]);
 
   // tabs: one underline that slides to the active tab (transform only), so the labels never shift
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -304,6 +313,7 @@ function DetailSkeleton({ peek }: { peek: boolean }) {
       <div className="sk sk-strip" />
       <div className="sk sk-next" />
       <div className="sk sk-stepper" />
+      <div className="sk sk-money" />
       <div className="sk sk-tabs" />
       <div className="sk sk-card" />
       <div className="sk sk-card" />
@@ -1108,7 +1118,7 @@ function InvoiceCard({
             onChange={() => send({ excluded: kept === charges.length ? charges.map((_, i) => i) : [] })}
           />
         )}
-        <span className="inv-name" title={d.generated_filename}>
+        <span className="inv-name">
           {name}
           {fields.carrier && <span className="inv-carrier"> · {fields.carrier}</span>}
         </span>
@@ -1422,7 +1432,9 @@ function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment
           const state = x.alert ? "alert" : x.done ? "done" : i === current ? "now" : "todo";
           return (
             <li key={x.label} className={`step step-${state}`} aria-current={i === current ? "step" : undefined}>
-              <span className="step-dot" aria-hidden="true">{state === "done" ? "✓" : state === "alert" ? "!" : ""}</span>
+              <span className="step-dot" aria-hidden="true">
+                <StepGlyph state={state} />
+              </span>
               <span className="step-label">{x.label}</span>
               <span className="step-sub">
                 {x.note ?? (x.done ? x.date ?? "Done" : i === current ? "Now" : "Pending")}
@@ -1446,6 +1458,31 @@ function ClearanceStepper({ s, onChange }: { s: Shipment; onChange: (s: Shipment
         </button>
       </div>
     </div>
+  );
+}
+
+/** The stepper's 14px glyphs (colour from the step's state; the word under it says the same). */
+function StepGlyph({ state }: { state: "done" | "now" | "todo" | "alert" }) {
+  if (state === "done")
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="7" fill="currentColor" />
+        <path d="M4 7.2 6 9.2 10 5" fill="none" stroke="var(--color-surface)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  if (state === "alert")
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14">
+        <circle cx="7" cy="7" r="7" fill="currentColor" />
+        <path d="M7 3.8v3.8" stroke="var(--color-surface)" strokeWidth="1.6" strokeLinecap="round" />
+        <circle cx="7" cy="10" r=".9" fill="var(--color-surface)" />
+      </svg>
+    );
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="7" cy="7" r="6" stroke={state === "now" ? "var(--color-border)" : "currentColor"} strokeWidth="1.5" />
+      {state === "now" && <path d="M7 1a6 6 0 0 1 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />}
+    </svg>
   );
 }
 
@@ -1659,7 +1696,7 @@ function EditField({
           />
         )
       ) : (
-        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}`} onClick={start} title="Click to edit">
+        <button type="button" className={`field-value edit-value${shown == null ? " field-empty" : ""}`} onClick={start} aria-label={`Edit ${label}`}>
           {shown ?? "—"}
         </button>
       )}

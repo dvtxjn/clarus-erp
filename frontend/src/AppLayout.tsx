@@ -1,6 +1,7 @@
 import { useDismiss } from "./useDismiss";
 import IdleLogout from "./IdleLogout";
 import UpdateCheck from "./UpdateCheck";
+import OverflowTip from "./OverflowTip";
 import ClarusLogo from "./ClarusLogo";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -307,6 +308,7 @@ export default function AppLayout() {
           <Outlet />
           <IdleLogout />
           <UpdateCheck />
+          <OverflowTip />
         </SidebarSlotContext.Provider>
       </main>
     </div>
