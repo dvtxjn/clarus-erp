@@ -1,5 +1,9 @@
 # Release notes
 
+## v1.4.4 — tracker toolbar and page link
+- Tracker: **+ Add Shipment** stays a visible button. Only while the peek is open does it move into **More ▾**.
+- Page link: `?peek=` always matches the job showing in the peek, even after fast clicks or arrow keys. A slow load from the previous job can no longer overwrite the current one.
+
 ## v1.4.3 — bagdu's pass on v1.4.2
 - Tracker with the peek open: the toolbar is one row (Live · search · **More ▾** · + Add). Group by, the column views and the other buttons are in More. **More ▾** opens on top and the peek stays open.
 - Grid: only one cell is ever outlined, across all client tables.

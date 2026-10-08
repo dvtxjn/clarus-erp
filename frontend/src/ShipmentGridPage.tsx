@@ -667,8 +667,9 @@ export default function ShipmentGridPage() {
   const setPeekFull = useCallback(
     (full: boolean) =>
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          // from the address bar itself, not the render's copy: quick row moves never write an old peek back
+          const next = new URLSearchParams(window.location.search);
           if (full) next.set("full", "1");
           else next.delete("full");
           return next;
@@ -680,8 +681,9 @@ export default function ShipmentGridPage() {
   const setPeek = useCallback(
     (id: number | null) =>
       setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
+        () => {
+          // from the address bar itself, not the render's copy: quick row moves never write an old peek back
+          const next = new URLSearchParams(window.location.search);
           if (id) next.set("peek", String(id));
           else {
             next.delete("peek");
@@ -1845,9 +1847,11 @@ export default function ShipmentGridPage() {
             </div>
           </details>
         )}
+        {/* peek open: Add moves into More (closed: it's the visible button) */}
+        <button className="more-add" onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? "Cancel" : "+ Add Shipment"}</button>
         </div>
         </div>
-        <button onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? "Cancel" : "+ Add Shipment"}</button>
+        <button className="toolbar-add" onClick={() => setShowAddForm((v) => !v)}>{showAddForm ? "Cancel" : "+ Add Shipment"}</button>
       </div>
 
       {showImport && <TrackerImportPanel onApplied={refresh} onClose={() => setShowImport(false)} />}

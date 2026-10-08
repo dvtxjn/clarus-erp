@@ -121,11 +121,12 @@ export function ShipmentDetail({
     () =>
       listDocuments(shipmentId).then((all) => {
         docsCache.set(shipmentId, all);
-        setDocs(all);
+        if (shipmentId === idRef.current) setDocs(all); // switched jobs meanwhile: don't show the old one's
       }),
     [shipmentId],
   );
-  const reload = useCallback(() => Promise.all([getShipment(shipmentId).then(setShipment), loadDocs()]).then(() => {}), [shipmentId, loadDocs]);
+  // a reload that lands after the peek moved to another job only refreshes the cache, never the panel
+  const reload = useCallback(() => Promise.all([getShipment(shipmentId).then(onSaved), loadDocs()]).then(() => {}), [shipmentId, loadDocs, onSaved]);
 
   useEffect(() => {
     // switching jobs in the peek: the old job stays (dimmed) until the new one has arrived — no blank flash
