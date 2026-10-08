@@ -1090,9 +1090,7 @@ input::placeholder, textarea::placeholder { color: var(--color-text-muted); opac
 }
 .charge-popover-head { font-size: 11px; font-weight: 600; color: var(--color-text-muted); margin-bottom: 6px; }
 
-.doc-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
-/* both columns end on one line, like the overview: the last card in each stretches */
-.doc-col > .doc-group:last-child { flex: 1; }
+.doc-columns { display: flex; flex-direction: column; gap: 14px; }
 .doc-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .doc-group { overflow: hidden; }
 .doc-group-head { display: flex; align-items: center; gap: 4px; padding: 7px 10px; font-weight: 600; font-size: 12.5px; border-bottom: 1px solid var(--color-border); background: var(--color-subtle); }
@@ -2167,15 +2165,11 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 .overview > * { min-width: 0; }
 .ov-duty { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ov-ship { order: 1; } .ov-duty { order: 2; } .ov-billing { order: 3; } .overview > .fpod { order: 4; } .ov-notes { order: 5; }
-.ov-col { display: contents; } /* narrow: the stacks dissolve, so the order above applies */
-/* wide: shipment + IGM & ICD | duty, notes, billing — about the same height; each stack ends flush, containers full width under both (client, 2026-10-08) */
+/* Overview: Shipment & movement across the page, containers under it (client, 2026-10-08) */
 @container (min-width: 1100px) {
-  .overview { gap: 16px; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: stretch; }
-  .ov-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-  .ov-col > * { order: 0; }
-  .ov-col > :last-child { flex: 1; } /* both stacks end on the same line */
-  .ov-duty { gap: 16px; }
-  .overview > .fpod { grid-column: 1 / -1; order: 0; }
+  .overview { gap: 16px; }
+  .ov-ship > .field-grid, .ov-ship #igm-details > .field-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .overview .ov-ship .field-grid .field-row:nth-last-child(2):nth-child(odd) { border-bottom: 1px solid var(--color-border-soft); }
 }
 
 /* Tier 1: key strip, next step + stepper, money tiles */
@@ -2672,12 +2666,11 @@ body:has(.toolbar-more-list.is-open, .columns-panel, .tools-menu[open], .chip-fo
 .money-value-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .money-value-line .money-value { min-width: 0; }
 .money-value-line .status-pill { flex: none; margin: 0; font-size: 11px; padding: 1px 8px; }
-/* Proforma tab: no progress card; the money card takes the row, its three rows side by side when there's room (client, 2026-10-08) */
-@container (min-width: 1100px) { .tier1.no-flow > .money-card { grid-column: 1 / -1; } }
-@container (min-width: 700px) {
-  .tier1.no-flow > .money-card { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .tier1.no-flow .money-row { border-top: none; border-left: 1px solid var(--color-border-soft); }
-  .tier1.no-flow .money-row:first-child { border-left: none; }
-}
 /* "IGM & ICD details" toggle sits at the left of its bar; only Fetch goes to the right (client, 2026-10-08) */
 .icegate-bar .fold-toggle { margin-left: 0; padding: 0 6px 0 2px; font-size: 12.5px; }
+/* CFS / Shipping line as their own tab: the charges panel sits in the page, not under the Money card (client, 2026-10-08) */
+.charge-drawer.charge-tab { margin: 0; }
+.charge-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px dashed var(--color-border); border-radius: var(--radius-md, 8px); color: var(--color-text-muted); font-size: 13px; }
+.detail-page.pf-wide > .detail-top { grid-column: 1 / -1; }
+.detail-page.pf-wide { row-gap: 0; }
+.detail-page.pf-wide > .detail-main, .detail-page.pf-wide > .pf-preview-col { margin-top: 0; }

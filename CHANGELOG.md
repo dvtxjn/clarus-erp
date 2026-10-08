@@ -1,5 +1,14 @@
 # Release notes
 
+## v1.6.0 — 08 Oct 2026
+
+- Shipment page: Customs duty, CFS and Shipping line are now their own tabs, next to Overview.
+- Overview: Shipment & movement runs full width (notes and short remark sit inside it), with containers below.
+- The progress chart and the Duty / CFS / Shipping line status box show only on Overview.
+- Billing settings moved into the Proforma & Billing tab.
+- The section tabs run across the full page width, also when the Proforma preview is open.
+- Documents: the group boxes (Basic, CFS / yard, Customs, Shipping line) are stacked in one column.
+
 ## v1.5.11 — Overview: IGM & ICD details back, no empty holes
 - IGM & ICD details are open again at every screen width (they were folded shut below 1600px wide). The "IGM & ICD details" toggle sits at the left of its line, not in the middle. Fetch stays on the right.
 - Overview, wide screens: two columns that end on the same line. Left: Shipment & movement with the IGM & ICD details. Right: Customs duty, Notes and Billing settings. Containers run full width under both. No more empty block under a short card, and no full-width Billing settings with its controls spread across the page.

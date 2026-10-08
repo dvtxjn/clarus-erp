@@ -295,9 +295,9 @@ export default function DocumentManagerPanel({
       ) : checklist.length === 0 ? (
         <div className="tracker-empty">No documents yet.</div>
       ) : (
-        // two columns of group cards (client, 2026-09-29): basic + CFS | customs + shipping line
+        // group cards stacked in one column (client, 2026-10-08): basic, CFS, customs, shipping line, other
         <div className="doc-columns">
-          {[["basic", "cfs"], ["customs", "line", "other"]].map((ids) => (
+          {[["basic", "cfs", "customs", "line", "other"]].map((ids) => (
             <div className="doc-col" key={ids[0]}>
               {DOCUMENT_GROUPS.filter((g) => ids.includes(g.id)).map((g) => {
                 const rows = checklist

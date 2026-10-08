@@ -32,11 +32,14 @@ export default function ProformaPanel({
   shipment,
   onShipmentChange,
   previewSlot = null,
+  settings,
 }: {
   shipment: Shipment;
   onShipmentChange: (s: Shipment) => void;
   /** wide page: the right half of the shipment page, where the invoice preview goes (client, 2026-10-08) */
   previewSlot?: HTMLElement | null;
+  /** the shipment's billing settings, shown here in place of the lone HSS switch (client, 2026-10-08) */
+  settings?: (refresh: () => void) => ReactNode;
 }) {
   const [prefillChargeId, setPrefillChargeId] = useState<number | null>(null);
   const [proformas, setProformas] = useState<Proforma[]>([]);
@@ -143,11 +146,11 @@ export default function ProformaPanel({
 
       {createError && <div role="alert" className="invoice-error">{createError}</div>}
       {shipment.is_hss && <RateMismatch seller={workingOf("seller")} buyer={workingOf("buyer")} />}
-      <HssSwitch shipment={shipment} onShipmentChange={onShipmentChange} onSaved={refresh} />
+      {settings ? settings(refresh) : <HssSwitch shipment={shipment} onShipmentChange={onShipmentChange} onSaved={refresh} />}
       {shipment.is_hss && (
         <div className="hss-banner">
           <strong>HSS shipment</strong> — two invoices: seller <b>{shipment.hss_seller ?? "?"}</b> and buyer{" "}
-          <b>{shipment.hss_buyer ?? "?"}</b>, always at the same bill rate. Change the parties on the Overview tab.
+          <b>{shipment.hss_buyer ?? "?"}</b>, always at the same bill rate. Change the parties in Billing settings.
         </div>
       )}
       {active?.bill_to && (

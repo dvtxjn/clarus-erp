@@ -21,7 +21,7 @@ import ShipmentHistory from "./ShipmentHistory";
 import { formatPort, usePorts } from "./ports";
 import DateInput from "./DateInput";
 
-type Tab = "overview" | "customs" | "documents" | "history" | "proforma";
+type Tab = "overview" | "duty" | "cfs" | "line" | "customs" | "documents" | "history" | "proforma";
 
 // sea ports: free days start at the POD inward; every other port is inland (ICD) — client, 2026-09-30
 const SEA_PORTS = new Set(["INMUN1", "INNSA1"]);
@@ -40,7 +40,7 @@ function fmtMoney(v: string | null): string | null {
 }
 
 
-const TABS: Tab[] = ["overview", "customs", "documents", "history", "proforma"];
+const TABS: Tab[] = ["overview", "duty", "cfs", "line", "customs", "documents", "history", "proforma"];
 
 export default function ShipmentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -118,7 +118,6 @@ export function ShipmentDetail({
 
   // the shipment's documents: the Money card and its charge drawer read them (cached per job: reopening draws at once)
   const [docs, setDocs] = useState<ShipmentDocument[]>(() => docsCache.get(shipmentId) ?? []);
-  const [drawer, setDrawer] = useState<MoneyGroup | null>(null);
   const [uploadType, setUploadType] = useState<DocumentType | undefined>();
   const loadDocs = useCallback(
     () =>
@@ -139,7 +138,6 @@ export function ShipmentDetail({
     setLoading(!seen); // dim (and skeleton) only for a job not seen yet
     // documents come with the first load, so the Overview draws complete (no late push-down)
     if (seen) setDocs(docsCache.get(shipmentId) ?? []); // an unseen job: the old one's stay with it (dimmed) until both arrive
-    setDrawer(null);
     const docsLoad = listDocuments(shipmentId)
       .then((all) => {
         docsCache.set(shipmentId, all);
@@ -275,7 +273,8 @@ export function ShipmentDetail({
       aria-busy={loading || undefined}
       inert={switching || undefined}
     >
-      <div className="detail-main">
+      {/* back link and the section tabs run across the whole page, above the Proforma split (client, 2026-10-08) */}
+      <div className="detail-top">
       {peek ? (
         peekBar
       ) : (
@@ -289,6 +288,16 @@ export function ShipmentDetail({
         <div className="detail-tabs" role="tablist" onKeyDown={tabKeys} aria-label="Shipment sections" ref={tabsRef}>
           <button role="tab" aria-selected={tab === "overview"} className={tab === "overview" ? "tab active" : "tab"} onClick={() => setTab("overview")}>
             Overview
+          </button>
+          {/* each payment has its own section (client, 2026-10-08) */}
+          <button role="tab" aria-selected={tab === "duty"} className={tab === "duty" ? "tab active" : "tab"} onClick={() => setTab("duty")}>
+            Customs duty
+          </button>
+          <button role="tab" aria-selected={tab === "cfs"} className={tab === "cfs" ? "tab active" : "tab"} onClick={() => setTab("cfs")}>
+            CFS
+          </button>
+          <button role="tab" aria-selected={tab === "line"} className={tab === "line" ? "tab active" : "tab"} onClick={() => setTab("line")}>
+            Shipping line
           </button>
           <button role="tab" aria-selected={tab === "customs"} className={tab === "customs" ? "tab active" : "tab"} onClick={() => setTab("customs")}>
             Customs timeline
@@ -307,46 +316,32 @@ export function ShipmentDetail({
         </div>
         </div>
       </header>
+      </div>
+      <div className="detail-main">
 
       {/* tier 1: the keys, what's next, where the clearance stands, and the three payments — at a glance */}
-      <div className={`tier1${tab === "proforma" ? " no-flow" : ""}`}>
+      <div className="tier1">
         <KeyStrip s={shipment} />
-        {/* the clearance progress isn't needed while billing (client, 2026-10-08) */}
-        {tab !== "proforma" && (
+        {/* the progress chart and the Duty / CFS / Shipping line statuses: Overview only (client, 2026-10-08) */}
+        {tab === "overview" && (
+          <>
           <section className="tier1-flow" aria-label="Clearance">
             <NextStepBar shipment={shipment} />
             <ClearanceStepper s={shipment} onChange={onSaved} />
           </section>
-        )}
         <MoneyCard
           s={shipment}
           docs={docs}
-          open={drawer}
-          onOpen={setDrawer}
-          onDuty={() => {
-            setTab("overview");
-            window.setTimeout(() =>
-              document.getElementById(`duty-${shipment.id}`)?.scrollIntoView({ block: "start", behavior: reducedMotion() ? "auto" : "smooth" }),
-            );
-          }}
+          onOpen={setTab}
+          onDuty={() => setTab("duty")}
           onUpload={(t) => {
             setUploadType(t);
             setTab("documents");
           }}
         />
-      </div>
-      <Collapse open={drawer != null} className="charge-drawer-wrap">
-        {drawer && (
-          <ChargeDrawer
-            group={drawer}
-            shipment={shipment}
-            docs={docs}
-            onChange={onSaved}
-            onSaved={reload}
-            onClose={() => setDrawer(null)}
-          />
+          </>
         )}
-      </Collapse>
+      </div>
 
       {shipment.cleared_date && !shipment.is_fully_cleared && (
         <div className="auth-error detail-stuck-banner">
@@ -359,11 +354,34 @@ export function ShipmentDetail({
 
       <div className="tab-body" key={tab}>
       {tab === "overview" && <OverviewTab shipment={shipment} onChange={onSaved} />}
+      {tab === "duty" && <DutyTab shipment={shipment} onChange={onSaved} />}
+      {(tab === "cfs" || tab === "line") && (
+        <ChargeDrawer
+          key={tab}
+          inline
+          group={tab}
+          shipment={shipment}
+          docs={docs}
+          onChange={onSaved}
+          onSaved={reload}
+          onClose={() => {}}
+          onUpload={(t) => {
+            setUploadType(t);
+            setTab("documents");
+          }}
+        />
+      )}
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} initialType={uploadType} />}
       {tab === "history" && <ShipmentHistory shipment={shipment} onChange={onSaved} />}
       {tab === "proforma" && isAdmin && (
-        <ProformaPanel shipment={shipment} onShipmentChange={onSaved} previewSlot={pfWide ? previewSlot : null} />
+        <ProformaPanel
+          shipment={shipment}
+          onShipmentChange={onSaved}
+          previewSlot={pfWide ? previewSlot : null}
+          // billing settings live with the invoice (client, 2026-10-08); a change reloads the drafts
+          settings={(refresh) => <BillingSettings s={shipment} onChange={(x) => { onSaved(x); refresh(); }} />}
+        />
       )}
       </div>
       </div>
@@ -418,10 +436,9 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
   const igmOpen = igmUser ?? true; // always shown unless folded by hand (client, 2026-10-08)
   const inland = !!s.port && !SEA_PORTS.has(s.port);
   return (
-    // two stacks side by side when wide (index.css): shipment (with IGM & ICD) | duty, notes, billing, so no card leaves a
-    // hole beside a taller one; containers full width under both. Narrow: one column (the stacks dissolve).
+    // Shipment & movement across the page (with the notes and IGM & ICD details), containers under it
+    // (client, 2026-10-08). Duty, CFS and Shipping line have their own tabs; billing settings are on Proforma.
     <div className="overview" ref={box}>
-      <div className="ov-col ov-col-main">
         <section className="detail-section ov-ship">
           <h3>Shipment &amp; movement</h3>
           <div className="field-grid">
@@ -444,6 +461,8 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
               display={s.shipping_line || (s.line_from_bl?.line ? `${s.line_from_bl.line} (from BL)` : null)}
               hint="Typed, or worked out from the MBL's format"
             />
+            <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
+            <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
           </div>
           {s.line_from_bl?.note && <p className="bl-note">{s.line_from_bl.note}</p>}
           {/* IGM details: internal fields — here only, not tracker columns (client, 2026-09-30). Filled on command
@@ -507,29 +526,27 @@ function OverviewTab({ shipment: s, onChange }: { shipment: Shipment; onChange: 
             </ul>
           )}
         </section>
-      </div>
-      <div className="ov-col ov-col-side">
-      <div className="ov-duty">
-        <section className="detail-section" id={`duty-${s.id}`}>
-          <h3>Customs duty</h3>
-          <EditField label="License" field="license" s={s} onChange={onChange} />
-          {inland && s.icegate?.icd?.be_location && <Field label="BE location" value={s.icegate.icd.be_location} hint="From the ICD BL status" />}
-          {inland && s.icegate?.icd?.importer && <Field label="Importer (ICD)" value={s.icegate.icd.importer} hint="From the ICD BL status" />}
-          <BeAmounts shipment={s} onChange={onChange} />
-        </section>
-      </div>
-      <section className="detail-section ov-notes">
-        <h3>Notes</h3>
-        <EditField label="Short remark" field="remark" s={s} onChange={onChange} />
-        <EditField label="Notes" field="remarks" s={s} onChange={onChange} multiline />
-      </section>
-      <BillingSettings s={s} onChange={onChange} />
-      </div>
       {/* every shipment's containers (from the sea IGM) with their free days — inland: from each container's
           arrival at the FPOD; sea port: from the INW (client, 2026-09-30) */}
       {s.port && (
         <FpodContainers key={s.icegate?.fetched_at ?? "none"} shipment={s} inland={inland} portLabel={formatPort(s.port, ports) || s.port} onRefreshed={onChange} wide={wide} />
       )}
+    </div>
+  );
+}
+
+/** Customs duty, its own tab (client, 2026-10-08): licence, ICD BE details and the BE amounts / final duty. */
+function DutyTab({ shipment: s, onChange }: { shipment: Shipment; onChange: (s: Shipment) => void }) {
+  const inland = !!s.port && !SEA_PORTS.has(s.port);
+  return (
+    <div className="overview duty-tab">
+      <section className="detail-section" id={`duty-${s.id}`}>
+        <h3>Customs duty</h3>
+        <EditField label="License" field="license" s={s} onChange={onChange} />
+        {inland && s.icegate?.icd?.be_location && <Field label="BE location" value={s.icegate.icd.be_location} hint="From the ICD BL status" />}
+        {inland && s.icegate?.icd?.importer && <Field label="Importer (ICD)" value={s.icegate.icd.importer} hint="From the ICD BL status" />}
+        <BeAmounts shipment={s} onChange={onChange} />
+      </section>
     </div>
   );
 }
@@ -1023,6 +1040,8 @@ function ChargeDrawer({
   onChange,
   onSaved,
   onClose,
+  inline = false,
+  onUpload,
 }: {
   group: MoneyGroup;
   shipment: Shipment;
@@ -1030,15 +1049,19 @@ function ChargeDrawer({
   onChange: (s: Shipment) => void;
   onSaved: () => Promise<void>;
   onClose: () => void;
+  /** shown as its own tab (CFS / Shipping line), not a drawer: no ✕, no Esc (client, 2026-10-08) */
+  inline?: boolean;
+  onUpload?: (t: DocumentType) => void;
 }) {
   const ro = useReadOnly(); // view-only login: no edit controls
   const cfg = INVOICE_GROUPS[group];
   const saveShipment = useSaveShipment();
   const [busy, setBusy] = useState(false);
-  useDismiss(null, true, onClose);
+  useDismiss(null, !inline, onClose);
   // focus moves to the drawer's heading on open and back to its Charges button on close
   const headRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
+    if (inline) return;
     const head = headRef.current;
     head?.focus({ preventScroll: true });
     return () => {
@@ -1046,7 +1069,7 @@ function ChargeDrawer({
       if (!a || a === document.body || head?.closest(".charge-drawer")?.contains(a) || !a.isConnected)
         document.querySelector<HTMLButtonElement>(`[data-charges="${group}"]`)?.focus();
     };
-  }, [group]);
+  }, [group, inline]);
   const { all, why, receipts } = groupDocs(group, docs);
   const paidField = group === "cfs" ? "cfs_paid_by_us" : "line_paid_by_us";
 
@@ -1075,7 +1098,7 @@ function ChargeDrawer({
         : "Paid by the client — we pass the invoice on";
 
   return (
-    <section className="charge-drawer" id="charge-drawer" aria-label={cfg.title}>
+    <section className={`charge-drawer${inline ? " charge-tab" : ""}`} id={inline ? undefined : "charge-drawer"} aria-label={cfg.title}>
       <header className="charge-drawer-head">
         <h3 ref={headRef} tabIndex={-1}>{cfg.title}</h3>
         <div className="charge-drawer-controls">
@@ -1100,12 +1123,24 @@ function ChargeDrawer({
               </select>
             </label>
           )}
-          <button type="button" className="charge-drawer-close" onClick={onClose} aria-label="Close charges" title="Close (Esc)">
-            ✕
-          </button>
+          {!inline && (
+            <button type="button" className="charge-drawer-close" onClick={onClose} aria-label="Close charges" title="Close (Esc)">
+              ✕
+            </button>
+          )}
         </div>
       </header>
       <div className="charge-drawer-body">
+        {inline && all.length === 0 && (
+          <div className="charge-empty">
+            <span>No {group === "cfs" ? "CFS" : "shipping line"} invoice attached yet.</span>
+            {onUpload && !ro && (
+              <button type="button" className="btn-secondary btn-sm" onClick={() => onUpload(cfg.uploadType)}>
+                Upload invoice
+              </button>
+            )}
+          </div>
+        )}
         {all.map((d) => (
           <InvoiceCard key={d.id} group={group} doc={d} notCounted={why(d)} onSaved={onSaved} />
         ))}
@@ -1607,20 +1642,18 @@ function StepGlyph({ state }: { state: "done" | "now" | "todo" | "alert" }) {
 
 /**
  * Money: Duty / CFS / Line, one fixed-height row each — the amount, its state in words, one action.
- * CFS and Line open the charge drawer under it; nothing attached = Upload.
+ * CFS and Line open their own tab; nothing attached = Upload.
  */
 function MoneyCard({
   s,
   docs,
-  open,
   onOpen,
   onDuty,
   onUpload,
 }: {
   s: Shipment;
   docs: ShipmentDocument[];
-  open: MoneyGroup | null;
-  onOpen: (g: MoneyGroup | null) => void;
+  onOpen: (g: MoneyGroup) => void;
   onDuty: () => void;
   onUpload: (t: DocumentType) => void;
 }) {
@@ -1630,18 +1663,13 @@ function MoneyCard({
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
   type Row = { key: string; label: string; dot: "ok" | "warn" | "todo" | "muted"; value: string; words?: boolean; meta: string; action: React.ReactNode; badge?: React.ReactNode };
 
+  // Charges opens that payment's own tab (client, 2026-10-08)
   const drawerBtn = (g: MoneyGroup) => (
-    <button
-      type="button"
-      className="link-btn money-action"
-      aria-expanded={open === g}
-      aria-controls={open === g ? "charge-drawer" : undefined}
-      data-charges={g}
-      onClick={() => onOpen(open === g ? null : g)}
-    >
-      Charges <span className={`money-caret${open === g ? " is-open" : ""}`} aria-hidden="true"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 3.75 5 6.25l2.5-2.5" /></svg></span>
+    <button type="button" className="link-btn money-action" data-charges={g} onClick={() => onOpen(g)}>
+      Charges
     </button>
   );
+
   const uploadBtn = (g: MoneyGroup) => ro ? null : (
     <button type="button" className="link-btn money-action" onClick={() => onUpload(INVOICE_GROUPS[g].uploadType)}>
       Upload
