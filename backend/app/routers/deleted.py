@@ -43,7 +43,7 @@ def _label(kind: str, obj) -> str:
     if kind == "document":
         return obj.generated_filename or obj.original_filename or obj.document_type.value
     if kind == "proforma":
-        return f"Proforma v{obj.version_number}" + (f" · {obj.name}" if obj.name else "")
+        return "Proforma" + (f" · {obj.name}" if obj.name else "")
     if kind == "container":
         return f"Container {obj.container_no}"
     if kind == "organization":
@@ -92,6 +92,12 @@ def restore_item(kind: Kind, item_id: int, db: Session = Depends(get_db), admin:
         from app.routers.extraction import name_taken
         if name_taken(db, obj.name, obj.id):
             raise HTTPException(status_code=400, detail=f"{obj.name} is already in the list again")
+    if kind == "proforma":  # one live invoice per shipment (per HSS party)
+        live = db.query(Proforma).filter(Proforma.shipment_id == obj.shipment_id, Proforma.id != obj.id,
+                                         Proforma.bill_to_role == obj.bill_to_role,
+                                         Proforma.status != "superseded").first()
+        if live:
+            raise HTTPException(status_code=400, detail="This shipment already has its live invoice — edit that one")
     if kind == "final_invoice":
         clash = db.query(FinalInvoice).filter(FinalInvoice.proforma_id == obj.proforma_id,
                                               FinalInvoice.kind == obj.kind,

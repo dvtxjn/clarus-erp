@@ -201,8 +201,8 @@ def test_typed_bill_rate_needs_no_10_paise_margin(client, admin_headers):
 
 
 def test_buyer_and_seller_share_the_bill_rate(client, admin_headers):
-    """Client, 2026-10-07: a rate typed on one HSS copy goes on the other; a new version
-    replaces the working invoice for that party (the old one becomes history)."""
+    """Client, 2026-10-07: a rate typed on one HSS copy goes on the other. 2026-10-08: each party has
+    one live invoice — no new versions."""
     h = admin_headers
     sid = client.post("/shipments", json={"mbl": "RATETEST0003", "consignee": "Earthman - Mahrishi", "container": "2"},
                       headers=h).json()["id"]
@@ -217,10 +217,8 @@ def test_buyer_and_seller_share_the_bill_rate(client, admin_headers):
     assert rows["buyer"]["bill_rate"] == rows["seller"]["bill_rate"] == rate
     assert rows["buyer"]["status"] == "draft" and rows["buyer"]["revisions"] == 1   # sent copy kept
 
-    again = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()
-    assert again["bill_rate"] == rate and again["bill_rate_manual"] is True
-    old = next(p for p in client.get(f"/shipments/{sid}/proformas", headers=h).json() if p["id"] == buyer["id"])
-    assert old["status"] == "superseded"
+    # one live invoice per party: no second version
+    assert client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).status_code == 409
 
 
 def test_bill_to_details_from_organization_repository(client, admin_headers):

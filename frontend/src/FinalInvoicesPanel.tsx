@@ -117,7 +117,7 @@ export default function FinalInvoicesPanel({ shipmentId, proforma }: { shipmentI
         </div>
         {proforma && (
           <button onClick={create} disabled={busy}>
-            {busy ? "Creating…" : `Create final invoices from ${proforma.name || `v${proforma.version_number}`}`}
+            {busy ? "Creating…" : "Create final invoices from this proforma"}
           </button>
         )}
       </div>

@@ -86,17 +86,12 @@ def test_child_of_deleted_shipment_needs_the_shipment_first(client, admin_header
     assert _restore(client, h, "document", doc["id"]).status_code == 200
 
 
-def test_proforma_draft_delete_restore_and_version_never_reused(client, admin_headers):
+def test_proforma_is_never_deleted(client, admin_headers):
     h = admin_headers
     sid = _ship(client, h, "SAFE0000004")
     p1 = client.post(f"/shipments/{sid}/proformas", headers=h).json()
-    assert client.delete(f"/proformas/{p1['id']}", headers=h).status_code == 204
-    assert _count("proformas", p1["id"]) == 1
-    assert client.get(f"/shipments/{sid}/proformas", headers=h).json() == []
-    p2 = client.post(f"/shipments/{sid}/proformas", headers=h).json()
-    assert p2["version_number"] == p1["version_number"] + 1
-    assert _restore(client, h, "proforma", p1["id"]).status_code == 200
-    assert {p["id"] for p in client.get(f"/shipments/{sid}/proformas", headers=h).json()} == {p1["id"], p2["id"]}
+    assert client.delete(f"/proformas/{p1['id']}", headers=h).status_code == 400
+    assert [p["id"] for p in client.get(f"/shipments/{sid}/proformas", headers=h).json()] == [p1["id"]]
 
 
 def test_final_invoice_draft_delete_and_restore(client, admin_headers):

@@ -225,9 +225,9 @@ def create_proforma(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_billing_access),
 ):
-    """Spec §5.2: every revision is a NEW record, never an overwrite.
-    HSS shipments: say whose copy it is (seller / buyer) — each gets its own invoice,
-    both billed to the BE importer (the buyer)."""
+    """One live invoice per shipment (client, 2026-10-08: no v1 / v2 — the invoice is edited in place, and a
+    sent copy is kept under its history). HSS shipments: one each for the seller and the buyer, both billed
+    to the BE importer (the buyer)."""
     payload = payload or ProformaCreate()
     shipment = locked_shipment(db, shipment_id)
     if not shipment:
@@ -249,6 +249,10 @@ def create_proforma(
     # read, the tracker's buyer / consignee). The seller/buyer role only says whose copy it is.
     bill_to = be_importer_name(shipment) or (shipment.hss_buyer if shipment.is_hss else shipment.consignee)
 
+    # one live invoice (per HSS party): it is edited, never replaced by a new version
+    if db.query(Proforma).filter(Proforma.shipment_id == shipment_id, Proforma.bill_to_role == role,
+                                 Proforma.status != ProformaStatus.SUPERSEDED).first():
+        raise HTTPException(status_code=409, detail="This shipment already has its invoice — edit it instead.")
     proforma = Proforma(
         shipment_id=shipment_id,
         version_number=next_version,
@@ -263,11 +267,6 @@ def create_proforma(
             "consignee": shipment.consignee,
         },
     )
-    # "New version" is kept as an option: the earlier working invoice for the same party becomes history
-    for prev in db.query(Proforma).filter(Proforma.shipment_id == shipment_id, Proforma.bill_to_role == role,
-                                          Proforma.status != ProformaStatus.SUPERSEDED):
-        record_change(db, "proformas", prev.id, "status", prev.status, ProformaStatus.SUPERSEDED, current_user.id)
-        prev.status = ProformaStatus.SUPERSEDED
     db.add(proforma)
     db.flush()
     partner = _hss_partner(db, proforma)
@@ -571,18 +570,12 @@ def delete_draft_proforma(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_billing_access),
 ):
-    """Delete a DRAFT proforma version (e.g. one started by mistake). Sent /
-    superseded versions are the record of what went to the client, so they
-    can't be deleted. Soft delete (restorable by the admin); recorded in the change history."""
+    """The invoice is never deleted (client, 2026-10-08): every shipment is billed, so its one live invoice
+    is edited instead. Kept as a route so an old screen gets a clear answer."""
     proforma = locked_proforma(db, proforma_id)
     if not proforma:
         raise HTTPException(status_code=404, detail="Proforma not found")
-    if proforma.status != ProformaStatus.DRAFT:
-        raise HTTPException(status_code=400, detail="Only draft versions can be deleted — sent ones are kept as history.")
-    record_change(db, "proformas", proforma.id, "deleted",
-                  f"v{proforma.version_number} draft, {len(proforma.line_items)} line item(s)", None, current_user.id)
-    soft_delete(db, proforma, current_user.id)
-    db.commit()
+    raise HTTPException(status_code=400, detail="The invoice isn't deleted — edit it instead.")
 
 
 def _hss_partner(db: Session, proforma: Proforma) -> Optional[Proforma]:

@@ -1,6 +1,7 @@
 import { fmtWhen } from "./dates";
 import { tabKeys } from "./tabKeys";
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   listProformas,
@@ -9,7 +10,6 @@ import {
   addProformaLineItem,
   removeProformaLineItem,
   updateProformaStatus,
-  deleteDraftProforma,
   updateProforma,
   updateProformaLineItem,
   fillProformaFromShipment,
@@ -31,12 +31,14 @@ import { usePhone } from "./usePhone";
 export default function ProformaPanel({
   shipment,
   onShipmentChange,
+  previewSlot = null,
 }: {
   shipment: Shipment;
   onShipmentChange: (s: Shipment) => void;
+  /** wide page: the right half of the shipment page, where the invoice preview goes (client, 2026-10-08) */
+  previewSlot?: HTMLElement | null;
 }) {
   const [prefillChargeId, setPrefillChargeId] = useState<number | null>(null);
-  const confirm = useConfirm();
   const [proformas, setProformas] = useState<Proforma[]>([]);
   const [charges, setCharges] = useState<ChargeMasterEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,7 +70,8 @@ export default function ProformaPanel({
 
   const [freshId, setFreshId] = useState<number | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
-  async function handleNewVersion(role?: "seller" | "buyer") {
+  // one live invoice per shipment (per HSS party), edited in place — never a v2 (client, 2026-10-08)
+  async function handleCreate(role?: "seller" | "buyer") {
     setCreateError(null);
     let created: Proforma;
     try {
@@ -82,140 +85,60 @@ export default function ProformaPanel({
     refresh();
   }
 
-  const [renaming, setRenaming] = useState(false);
-  const [newName, setNewName] = useState("");
-  async function saveName() {
-    if (!active) return;
-    const updated = await updateProforma(active.id, { name: newName.trim() || null });
-    setProformas((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-    setRenaming(false);
-  }
-
   const active = proformas.find((p) => p.id === activeId) ?? null;
   const [showOld, setShowOld] = useState(false);
   const working = proformas.filter((p) => p.status !== "superseded");
-  const shownTabs = showOld ? proformas : proformas.filter((p) => p.status !== "superseded" || p.id === activeId);
-  const oldCount = proformas.length - working.length;
+  // copies replaced before the one-invoice rule: read only, out of the way
+  const older = proformas.filter((p) => p.status === "superseded");
   const workingOf = (role: "seller" | "buyer") => working.filter((p) => p.bill_to_role === role).at(-1) ?? null;
   const partyName = (role: "seller" | "buyer") =>
     workingOf(role)?.party ?? (role === "seller" ? shipment.hss_seller : shipment.hss_buyer) ?? role;
-
-  async function handleDeleteDraft() {
-    if (!active || active.status !== "draft") return;
-    const ok = await confirm({
-      title: `Delete draft "${active.name || `v${active.version_number}`}"?`,
-      message: `Delete draft "${active.name || `v${active.version_number}`}"${active.line_items.length ? ` and its ${active.line_items.length} line item(s)` : ""}? It moves to Recently deleted — the admin can restore it.`,
-      confirmLabel: "Delete draft",
-      danger: true,
-    });
-    if (!ok) return;
-    await deleteDraftProforma(active.id);
-    const rest = proformas.filter((p) => p.id !== active.id);
-    setProformas(rest);
-    setActiveId(rest[0]?.id ?? null);
-  }
+  const tabLabel = (p: Proforma) =>
+    p.status === "superseded" ? `Earlier copy · ${fmtWhen(p.created_at)}` : p.bill_to_role ? `${p.party ?? p.bill_to_role} invoice` : "Invoice";
+  const tabs = [...working, ...(showOld ? older : older.filter((p) => p.id === activeId))];
+  const missingRoles = shipment.is_hss ? (["seller", "buyer"] as const).filter((r) => !workingOf(r)) : [];
 
   if (loading) return <div className="tracker-empty">Loading…</div>;
 
-  // versions, the bill-to and notes — top of the left column
+  // the invoice(s), the bill-to and notes — top of the left column
   const side = (
     <>
-      <div className="proforma-toolbar">
-        <div className="version-tabs">
-          {shownTabs.map((p) => (
-            <button
-              key={p.id}
-              className={p.id === activeId ? "tab active" : "tab"}
-              onClick={() => {
-                setActiveId(p.id);
-                setRenaming(false);
-              }}
-              title={p.bill_to ? `Bill to ${p.bill_to}` : undefined}
-            >
-              {p.bill_to_role && (
-                <span className={`party-badge party-${p.bill_to_role}`} translate="no">
-                  {p.party ?? p.bill_to_role}
-                </span>
-              )}
-              {p.name || `v${p.version_number}`} · {p.status}
-              {p.revisions > 0 && ` · edited ${p.revisions}×`}
-            </button>
-          ))}
-          {oldCount > 0 && (
-            <button type="button" className="link-button" onClick={() => setShowOld((v) => !v)} aria-pressed={showOld}>
-              {showOld ? "Hide old versions" : `Show old versions (${oldCount})`}
-            </button>
-          )}
-        </div>
-        <div className="proforma-toolbar-actions">
-          {active && !renaming && (
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                setNewName(active.name ?? "");
-                setRenaming(true);
-              }}
-            >
-              Rename
-            </button>
-          )}
-          {shipment.is_hss ? (
-            (["seller", "buyer"] as const).map((role) =>
-              workingOf(role) ? (
+      {(tabs.length > 1 || older.length > 0 || missingRoles.length > 0 || !working.length) && (
+        <div className="proforma-toolbar">
+          {(tabs.length > 1 || older.length > 0) && (
+            <div className="version-tabs">
+              {tabs.map((p) => (
                 <button
-                  key={role}
-                  className="btn-secondary"
-                  onClick={() => handleNewVersion(role)}
-                  title={`Start a fresh ${partyName(role)} invoice; the current one moves to old versions. Usually just edit the current one.`}
+                  key={p.id}
+                  className={p.id === activeId ? "tab active" : "tab"}
+                  onClick={() => setActiveId(p.id)}
+                  title={p.bill_to ? `Bill to ${p.bill_to}` : undefined}
                 >
-                  New {partyName(role)} version
+                  {tabLabel(p)}
+                  {p.status !== "superseded" && ` · ${p.status}`}
                 </button>
+              ))}
+              {older.length > 0 && (
+                <button type="button" className="link-button" onClick={() => setShowOld((v) => !v)} aria-pressed={showOld}>
+                  {showOld ? "Hide earlier copies" : `Earlier copies (${older.length})`}
+                </button>
+              )}
+            </div>
+          )}
+          {(missingRoles.length > 0 || (!shipment.is_hss && !working.length)) && (
+            <div className="proforma-toolbar-actions">
+              {shipment.is_hss ? (
+                missingRoles.map((role) => (
+                  <button key={role} onClick={() => handleCreate(role)} title={`HSS ${role}`}>
+                    + {partyName(role)} invoice
+                  </button>
+                ))
               ) : (
-                <button key={role} onClick={() => handleNewVersion(role)} title={`HSS ${role}`}>
-                  + {partyName(role)} invoice
-                </button>
-              ),
-            )
-          ) : working.length ? (
-            <button
-              className="btn-secondary"
-              onClick={() => handleNewVersion()}
-              title="Start a fresh proforma; the current one moves to old versions. Usually just edit the current one."
-            >
-              New version
-            </button>
-          ) : (
-            <button onClick={() => handleNewVersion()}>+ New proforma</button>
+                <button onClick={() => handleCreate()}>+ Create invoice</button>
+              )}
+            </div>
           )}
         </div>
-      </div>
-
-      {renaming && active && (
-        <form
-          className="rename-bar"
-          onSubmit={(e) => {
-            e.preventDefault();
-            saveName();
-          }}
-        >
-          <input
-            autoFocus
-            maxLength={80}
-            placeholder={`v${active.version_number}`}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Escape") return;
-              e.preventDefault();
-              setRenaming(false);
-            }}
-            aria-label="Proforma name"
-          />
-          <button type="submit">Save name</button>
-          <button type="button" className="btn-secondary" onClick={() => setRenaming(false)}>
-            Cancel
-          </button>
-        </form>
       )}
 
       {createError && <div role="alert" className="invoice-error">{createError}</div>}
@@ -234,7 +157,7 @@ export default function ProformaPanel({
         </p>
       )}
       {active && active.status === "superseded" && (
-        <p className="field-note">Old version — read only. Edit the current invoice instead.</p>
+        <p className="field-note">Earlier copy — read only. Edit the live invoice instead.</p>
       )}
       {active && <SentHistory proforma={active} />}
 
@@ -263,18 +186,19 @@ export default function ProformaPanel({
   return (
     <div className="proforma-panel">
       {!active ? (
-        <div className="pf-split">
+        <div className={`pf-split${previewSlot ? " pf-solo" : ""}`}>
           <aside className="pf-left">{side}</aside>
-          <section className="pf-right">
+          <PreviewSide slot={previewSlot}>
             <div className="tracker-empty">
-              No proforma yet — {shipment.is_hss ? "create the seller and/or buyer invoice." : "create the first version."}
+              No invoice yet — {shipment.is_hss ? "create the seller and buyer invoices." : "create it on the left."}
             </div>
             <FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />
-          </section>
+          </PreviewSide>
         </div>
       ) : (
         <ProformaVersion
           side={side}
+          previewSlot={previewSlot}
           finals={<FinalInvoicesPanel shipmentId={shipment.id} proforma={active} />}
           proforma={active}
           charges={charges}
@@ -284,7 +208,6 @@ export default function ProformaPanel({
           initialPane={wanted.current.final && active.id === wanted.current.pf ? "final" : "proforma"}
           prefillChargeId={prefillChargeId}
           onPrefilled={() => setPrefillChargeId(null)}
-          onDeleteDraft={handleDeleteDraft}
           onChange={(updated) => {
             setProformas((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
             if (shipment.is_hss) reloadQuietly();
@@ -469,8 +392,15 @@ function errorText(e: unknown): string {
   return typeof detail === "string" ? detail : "Something went wrong — please try again.";
 }
 
+/** The right half: in the page's own right column when there is one, else beside the controls. */
+function PreviewSide({ slot, children }: { slot: HTMLElement | null; children: ReactNode }) {
+  const right = <section className="pf-right">{children}</section>;
+  return slot ? createPortal(right, slot) : right;
+}
+
 function ProformaVersion({
   side,
+  previewSlot,
   finals,
   proforma,
   charges,
@@ -481,9 +411,9 @@ function ProformaVersion({
   prefillChargeId,
   onPrefilled,
   onChange,
-  onDeleteDraft,
 }: {
   side: ReactNode;
+  previewSlot: HTMLElement | null;
   finals: ReactNode;
   proforma: Proforma;
   charges: ChargeMasterEntry[];
@@ -494,7 +424,6 @@ function ProformaVersion({
   prefillChargeId: number | null;
   onPrefilled: () => void;
   onChange: (p: Proforma) => void;
-  onDeleteDraft: () => void;
 }) {
   const [chargeId, setChargeId] = useState<number | "">("");
   const [rate, setRate] = useState("");
@@ -812,11 +741,6 @@ function ProformaVersion({
               Mark as sent
             </button>
           )}
-          {isDraft && (
-            <button type="button" className="btn-ghost-danger" onClick={onDeleteDraft}>
-              Delete draft…
-            </button>
-          )}
         </div>
         {error && <div role="alert" className="invoice-error">{error}</div>}
         {blockedNotice}
@@ -858,7 +782,7 @@ function ProformaVersion({
   return (
     // split pane (client, 2026-09-30): everything you do on the left, one uniform column;
     // the invoice on the right — or the final invoices made from it
-    <div className="proforma-version pf-split">
+    <div className={`proforma-version pf-split${previewSlot ? " pf-solo" : ""}`}>
       <aside className="pf-left">
         {side}
           <div className="invoice-actions">
@@ -880,12 +804,6 @@ function ProformaVersion({
             {isDraft && proforma.line_items.length > 0 && (
               <button onClick={markSent}>
                 Mark as Sent
-              </button>
-            )}
-            {/* last, quiet and red: deleting is rare and asks first */}
-            {isDraft && (
-              <button type="button" className="btn-ghost-danger pf-delete-draft" onClick={onDeleteDraft}>
-                Delete draft…
               </button>
             )}
             {proforma.status === "sent" && (
@@ -914,7 +832,7 @@ function ProformaVersion({
           </button>
         </div>
       </aside>
-      <section className="pf-right">
+      <PreviewSide slot={previewSlot}>
         <div className="pf-pane-tabs" role="tablist" onKeyDown={tabKeys}>
           <button type="button" role="tab" aria-selected={pane === "proforma"} className={pane === "proforma" ? "on" : ""} onClick={() => setPane("proforma")}>
             Proforma
@@ -932,7 +850,7 @@ function ProformaVersion({
           {!invoice ? <div className="tracker-empty">Loading invoice…</div> : sheet(draft)}
       </InvoicePreview>
         )}
-      </section>
+      </PreviewSide>
     </div>
   );
 }
@@ -1097,7 +1015,6 @@ function InvoiceSheet({
           <KV k="Job" v={d.job} />
           <KV k="BE No / Date" v={[d.be_no, dmy(d.be_date)].filter(Boolean).join(" / ")} />
           <KV k="Port" v={d.port} />
-          <KV k="Version" v={d.name ? `${d.name} (v${d.version})` : `v${d.version}`} />
         </div>
       </div>
 
@@ -1391,8 +1308,8 @@ function EditCell({
 /**
  * The invoice as one A4 page in the right half, like a document preview (client, 2026-09-30).
  * The page is always A4 (794 × 1123 px at 96 dpi): an invoice taller than that is shrunk to
- * fit inside it, as the PDF is. "Fit page" scales the page to the pane; "100 %" shows it
- * full size to edit.
+ * fit inside it, as the PDF is. "Fit page" shows the whole page in the pane; "Fit width" makes it
+ * as wide as the pane (up to full size) and scrolls, to edit.
  */
 const A4_W = 794;
 const A4_H = 1123;
@@ -1431,7 +1348,13 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       if (key === fitted) return;
       fitted = key;
       const tall = () => c.getBoundingClientRect().height / unit;
-      const wide = () => (c.clientWidth ? c.scrollWidth / c.clientWidth : 1);
+      // how far the widest table (with its edit column) runs past the page's content width
+      const wide = () => {
+        const r = c.getBoundingClientRect();
+        let right = r.right;
+        for (const t of c.querySelectorAll("table")) right = Math.max(right, t.getBoundingClientRect().right);
+        return r.width ? Math.max(c.clientWidth ? c.scrollWidth / c.clientWidth : 1, (right - r.left) / r.width) : 1;
+      };
       const apply = (z: number) => {
         c.style.width = `${Math.round(inner / z)}px`;
         c.style.zoom = String(z);
@@ -1456,12 +1379,18 @@ function InvoicePreview({ children }: { children: ReactNode }) {
       }
     };
     const measure = () => {
-      const top = el.getBoundingClientRect().top + window.scrollY;
+      // the page's right column stays put while the left scrolls: the pane fills it to the window's foot
+      const col = el.closest(".pf-preview-col .pf-right");
+      const top = col
+        ? 12 + el.getBoundingClientRect().top - col.getBoundingClientRect().top
+        : el.getBoundingClientRect().top + window.scrollY;
       const h = Math.round(Math.max(480, window.innerHeight - top - 12));
       // only real changes: a 1-2 px wobble (scrollbar coming and going) must not re-lay out
       setPaneH((old) => (Math.abs(old - h) > 2 ? h : old));
       const fit = Math.min((el.clientWidth - 24) / A4_W, (h - 28) / A4_H);
-      const next = mode === "fit" ? Math.round(Math.max(0.3, fit) * 50) / 50 : 1;
+      // "Fit width": the page as wide as the pane (never past 100 %), scrolled down; never cut at the side
+      const width = Math.min(1, (el.clientWidth - 24) / A4_W);
+      const next = Math.floor(Math.max(0.3, mode === "fit" ? fit : width) * 50) / 50;
       setPageScale((old) => (Math.abs(old - next) >= 0.02 ? next : old));
     };
     measure();
@@ -1512,7 +1441,7 @@ function InvoicePreview({ children }: { children: ReactNode }) {
           Fit page
         </button>
         <button type="button" className={mode === "full" ? "on" : ""} onClick={() => pick("full")}>
-          100 %
+          Fit width
         </button>
       </div>
       <div className="invoice-preview" ref={pane} style={{ height: paneH }}>

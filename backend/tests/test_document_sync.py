@@ -279,14 +279,15 @@ def test_file_tagged_ooc_without_ooc_marking_does_not_tick_ooc(client, admin_hea
     assert client.get(f"/shipments/{sid}", headers=admin_headers).json()["ooc"] is False
 
 
-def test_delete_draft_proforma_only(client, admin_headers):
+def test_one_live_proforma_never_deleted(client, admin_headers):
+    """Client, 2026-10-08: one live invoice per shipment — no second version, and it can't be deleted."""
     h = admin_headers
     sid = client.post("/shipments", json={"mbl": "PFDEL1"}, headers=h).json()["id"]
     p1 = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
-    p2 = client.post(f"/shipments/{sid}/proformas", headers=h).json()["id"]
+    assert client.post(f"/shipments/{sid}/proformas", headers=h).status_code == 409
+    assert client.delete(f"/proformas/{p1}", headers=h).status_code == 400
     client.patch(f"/proformas/{p1}", json={"status": "sent"}, headers=h)
-    assert client.delete(f"/proformas/{p1}", headers=h).status_code == 400  # sent: kept
-    assert client.delete(f"/proformas/{p2}", headers=h).status_code == 204
+    assert client.delete(f"/proformas/{p1}", headers=h).status_code == 400
     assert [p["id"] for p in client.get(f"/shipments/{sid}/proformas", headers=h).json()] == [p1]
 
 

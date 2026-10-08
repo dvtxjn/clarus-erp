@@ -1,5 +1,11 @@
 # Release notes
 
+## v1.5.5 — one live invoice; the invoice takes the right half
+- Proforma: each shipment has one live invoice (one each for seller and buyer on HSS), edited in place. No v1 / v2, no "New version" and no "Delete draft": an invoice is always made, so it can't be deleted. A sent copy is still kept under "Sent copies" when it's edited again. Copies replaced before this change stay read only under "Earlier copies".
+- Proforma & Billing tab, wide screens: the invoice preview fills the right half of the page, top to bottom, and stays in place while you scroll. The job's cards and the proforma controls are on the left.
+- The invoice page is never cut off at the side. "100 %" is now "Fit width" (as wide as the pane, up to full size), and the edit column (section + ✕) fits on the page.
+- The actions box: four buttons in two rows, with the note across the full width under them.
+
 ## v1.5.4 — design fixes, checked on screen
 - Shipment Overview, wide screens: cards end where their content ends. Billing settings no longer has an empty block at its bottom.
 - Checklist chips: an unticked chip's label is centred. Ticked and unticked chips are the same width, so nothing moves when you click one.

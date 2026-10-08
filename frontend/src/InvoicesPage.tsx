@@ -351,14 +351,14 @@ function ProformaRegister() {
   }, [f, attempt]);
 
   const set = (k: keyof RegisterFilters, v: string) => setF((x) => ({ ...x, [k]: v || undefined }));
-  // latest version of each proforma only, unless asked (or filtering to Superseded)
+  // the live invoice of each shipment only, unless asked (or filtering to earlier copies)
   const [oldVersions, setOldVersions] = useState(false);
   const everything = rows ?? [];
   const openProforma = (r: ProformaRegisterRow) =>
     setPeek({
       kind: "proforma",
       id: r.id,
-      title: `Proforma ${r.name || `v${r.version}`}${r.job ? ` · Job ${r.job}` : ""}${r.bill_to ? ` · ${r.bill_to}` : ""}`,
+      title: `Proforma${r.name ? ` ${r.name}` : ""}${r.job ? ` · Job ${r.job}` : ""}${r.bill_to ? ` · ${r.bill_to}` : ""}`,
       shipmentId: r.shipment_id,
       proformaId: r.id,
     });
@@ -383,13 +383,13 @@ function ProformaRegister() {
           <option value="">Any status</option>
           <option value="draft">Draft</option>
           <option value="sent">Sent</option>
-          <option value="superseded">Superseded</option>
+          <option value="superseded">Earlier copies</option>
         </select>
         <input list="org-names" aria-label="Bill to" placeholder="Bill to (type or pick)…" value={f.client ?? ""} onChange={(e) => set("client", e.target.value)} />
         <input aria-label="Search" placeholder="Job, MBL, BE, name…" value={f.q ?? ""} onChange={(e) => set("q", e.target.value)} />
         <label className="inline-check">
           <input type="checkbox" checked={oldVersions} onChange={(e) => setOldVersions(e.target.checked)} />
-          Show old versions{!oldVersions && hiddenOld > 0 ? ` (${hiddenOld})` : ""}
+          Show earlier copies{!oldVersions && hiddenOld > 0 ? ` (${hiddenOld})` : ""}
         </label>
         <span className="inv-filters-actions">
           <button
@@ -430,7 +430,7 @@ function ProformaRegister() {
                 />
               </th>
               <th>Job · BL · BE</th>
-              <th>Version</th>
+              <th>Invoice</th>
               <th>Date</th>
               <th>Bill to</th>
               <th className="num">Grand total</th>
@@ -481,7 +481,7 @@ function ProformaRegister() {
                 <td>
                   {r.role && <span className={`party-badge party-${r.role}`}>{r.role}</span>}{" "}
                   <button type="button" className="inv-peek-open" onClick={() => openProforma(r)} title="Preview">
-                    {r.name || `v${r.version}`}
+                    {r.status === "superseded" ? "Earlier copy" : r.name || "Proforma"}
                   </button>
                 </td>
                 <td>{date(r.date)}</td>

@@ -169,6 +169,19 @@ export function ShipmentDetail({
     if (shipment) shipmentCache.set(shipment.id, shipment);
   }, [shipment]);
 
+  // Proforma tab on a wide page: the invoice preview takes the whole right half, top to bottom, and
+  // everything else moves to the left half (client, 2026-10-08)
+  const [pageEl, setPageEl] = useState<HTMLDivElement | null>(null);
+  const [previewSlot, setPreviewSlot] = useState<HTMLElement | null>(null);
+  const [pageW, setPageW] = useState(0);
+  useEffect(() => {
+    if (!pageEl) return;
+    const ro = new ResizeObserver(() => setPageW(pageEl.clientWidth));
+    ro.observe(pageEl);
+    return () => ro.disconnect();
+  }, [pageEl]);
+  const pfWide = tab === "proforma" && isAdmin && pageW >= 1100;
+
   const [slowSwitch, setSlowSwitch] = useState(false);
   const isSwitching = loading && !!shipment && shipment.id !== shipmentId;
   useEffect(() => {
@@ -257,10 +270,12 @@ export function ShipmentDetail({
   return (
     <div
       key={shipment.id}
-      className={`detail-page${peek && !full ? " detail-peek" : ""}${loading ? " is-stale" : ""}`}
+      ref={setPageEl}
+      className={`detail-page${peek && !full ? " detail-peek" : ""}${loading ? " is-stale" : ""}${pfWide ? " pf-wide" : ""}`}
       aria-busy={loading || undefined}
       inert={switching || undefined}
     >
+      <div className="detail-main">
       {peek ? (
         peekBar
       ) : (
@@ -349,8 +364,12 @@ export function ShipmentDetail({
       {tab === "customs" && <CustomsTimeline shipmentId={shipment.id} shipment={shipment} />}
       {tab === "documents" && <DocumentManagerPanel shipment={shipment} onShipmentChanged={reload} initialType={uploadType} />}
       {tab === "history" && <ShipmentHistory shipment={shipment} onChange={onSaved} />}
-      {tab === "proforma" && isAdmin && <ProformaPanel shipment={shipment} onShipmentChange={onSaved} />}
+      {tab === "proforma" && isAdmin && (
+        <ProformaPanel shipment={shipment} onShipmentChange={onSaved} previewSlot={pfWide ? previewSlot : null} />
+      )}
       </div>
+      </div>
+      {pfWide && <aside className="pf-preview-col" ref={setPreviewSlot} aria-label="Invoice preview" />}
     </div>
   );
 }

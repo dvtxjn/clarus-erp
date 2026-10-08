@@ -39,7 +39,9 @@ def _ship(client, h, mbl, be_dt):
 
 
 def _invoice_duty(client, h, sid):
-    pid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"}, headers=h).json()["id"]
+    live = client.get(f"/shipments/{sid}/proformas", headers=h).json()  # one live invoice: reuse it
+    pid = live[0]["id"] if live else client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "buyer"},
+                                                 headers=h).json()["id"]
     client.post(f"/proformas/{pid}/fill-from-shipment", headers=h)
     return client.get(f"/proformas/{pid}/invoice", headers=h).json()["customs_duty"]
 
