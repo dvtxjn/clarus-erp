@@ -1,5 +1,16 @@
 # Release notes
 
+## v1.7.6 — 9 Oct 2026
+
+**Stamp duty is checked against the receipt.**
+- Upload the stamp duty receipt and the ERP reads the amount paid and the BE number.
+  - Nhava Sheva MH challan: read from the PDF text.
+  - Mundra SHCIL certificate (always a scan): read with free OCR on our own server. No outside service sees it.
+- The amount counts only when the figure and the amount in words agree. Otherwise you're asked to type it.
+- Duty tab → **Stamp duty**: Calculated vs Paid (receipt), with Edit for a misread amount.
+- The reimbursement invoice won't issue until the receipt is attached, it's for this BE, paid = calculated, and the invoice's Stamp Duty line = paid.
+- A mismatch is flagged on upload as well.
+
 ## v1.7.5 — 2026-10-09
 - **Fixed invoice sections.** Bond and documentation charges always go under Billed by Clarus (taxable). Customs duty and stamp duty always go under Reimbursement. CFS can still go either way per shipment. The section picker is greyed out for these charges on proformas and on the Rates screen.
 - The old "Bond Charges (Reimbursement)" charge is switched off; use Bond Charges. Existing proforma lines are not changed.

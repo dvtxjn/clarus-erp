@@ -572,6 +572,17 @@ def _with_final_duty(db: Session, shipment: Shipment) -> Shipment:
     duty = customs_duty(shipment, latest_challan(db, shipment.be_no, shipment.be_dt)) if shipment.be_no else None
     shipment.final_duty = None if duty is None else {
         "total": str(duty["total"]), "interest": str(duty["interest"]), "source": duty["source"]}
+    # stamp duty: what the ERP works out vs what the receipt says was paid (client, 2026-10-09)
+    from app.invoice.build import stamp_duty, stamp_receipt
+    due = stamp_duty(shipment, duty["total"] if duty else None)
+    receipt = stamp_receipt(shipment)
+    shipment.stamp_duty = {
+        "due": None if due is None else str(due),
+        "paid": None if receipt is None or receipt.amount_total is None else str(receipt.amount_total),
+        "receipt_id": receipt.id if receipt else None,
+        "edited": bool(receipt and receipt.amounts_edited),
+        "be_no": ((receipt.extraction or {}).get("fields") or {}).get("be_no") if receipt else None,
+    }
     # why the shipping line stays off the cost inclusion (read only; the Overview's Money card says "Left out")
     from app.invoice.autofill import client_line_excluded_by, line_excluded_by
     shipment.line_excluded_by = None if shipment.line_paid_by_us else line_excluded_by(db, shipment)

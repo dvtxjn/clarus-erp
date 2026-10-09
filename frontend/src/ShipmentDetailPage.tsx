@@ -605,10 +605,88 @@ function DutyTab({ shipment: s, docs, onChange, onDocs, onUpload }: {
           ))}
           {msg && <Toast ok={msg.ok} stamp={msg}>{msg.text}</Toast>}
         </div>
+        <StampDutyBlock s={s} onDocs={onDocs} onUpload={onUpload} />
         </div>
         </div>
       </section>
       </CopyRows.Provider>
+    </div>
+  );
+}
+
+/** Stamp duty paid (read off the receipt — the Mundra certificate by OCR) vs what the ERP works out.
+ * The reimbursement invoice can't be issued until the two agree (client, 2026-10-09). */
+function StampDutyBlock({ s, onDocs, onUpload }: { s: Shipment; onDocs: () => Promise<void>; onUpload: (t: DocumentType) => void }) {
+  const ro = useReadOnly();
+  const sd = s.stamp_duty;
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!sd || (sd.due !== null && Number(sd.due) === 0 && !sd.receipt_id)) return null; // no stamp duty at this port
+  const mismatch = sd.paid !== null && sd.due !== null && Number(sd.paid) !== Number(sd.due);
+  const wrongBe = !!sd.be_no && !!s.be_no && sd.be_no !== s.be_no;
+
+  async function save() {
+    const v = value.replace(/,/g, "").trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(v)) return setError("Enter the amount as a number");
+    setBusy(true);
+    try {
+      await correctInvoiceAmounts(s.id, sd!.receipt_id!, v, "0");
+      setEditing(false);
+      await onDocs();
+    } catch {
+      setError("Couldn't save.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="amount-block stamp-duty">
+      <div className="amount-block-head">
+        <span className="amount-block-title">Stamp duty</span>
+        {!ro && !sd.receipt_id && (
+          <button type="button" className="btn-secondary" onClick={() => onUpload("stamp_duty")}>
+            Upload receipt
+          </button>
+        )}
+      </div>
+      <Field label="Calculated" value={sd.due !== null ? fmtMoney(sd.due) : null} hint="Mundra: 0.1% of AV · Nhava Sheva: 0.1% of AV + duty" amount />
+      {!sd.receipt_id ? (
+        <Field label="Paid (receipt)" value="Not attached" copy={[]} />
+      ) : editing ? (
+        <div className="field">
+          <span className="field-label">Paid (receipt)</span>
+          <span className="receipt-edit">
+            <input className="amount-input" inputMode="decimal" aria-label="Stamp duty paid" value={value}
+              onChange={(e) => setValue(e.target.value)} onKeyDown={escCancel(() => setEditing(false))}
+              onKeyUp={(e) => e.key === "Enter" && save()} />
+            <button type="button" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+            <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+          </span>
+        </div>
+      ) : (
+        <div className="field">
+          <span className="field-label">Paid (receipt)</span>
+          <span className="receipt-amt">
+            {sd.paid !== null ? fmtMoney(sd.paid) : <span className="field-empty">not read — enter it</span>}
+            {sd.edited && <span className="edited-tag">corrected</span>}
+            {!ro && (
+              <button type="button" className="link-btn" onClick={() => { setEditing(true); setValue(sd.paid ?? ""); setError(null); }}>
+                Edit
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+      {(mismatch || wrongBe) && (
+        <span className="auth-error" role="alert">
+          {wrongBe ? `Receipt is for BE ${sd.be_no}, not ${s.be_no}. ` : ""}
+          {mismatch ? `Paid ${fmtMoney(sd.paid)} ≠ calculated ${fmtMoney(sd.due)} — the reimbursement invoice won't issue until they match.` : ""}
+        </span>
+      )}
+      {error && <span className="auth-error" role="alert">{error}</span>}
     </div>
   );
 }

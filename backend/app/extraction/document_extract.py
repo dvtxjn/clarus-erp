@@ -22,6 +22,7 @@ from app.extraction.do_pdf import scan_do_text
 from app.extraction.invoice_number import invoice_identity
 from app.extraction.receipt_pdf import scan_receipt_text
 from app.extraction.shipping_line_pdf import scan_shipping_line_text
+from app.extraction.stamp_pdf import scan_stamp_text
 
 BE_TYPES = {
     DocumentType.ASSESSED_BILL_OF_ENTRY,
@@ -97,7 +98,28 @@ def extract_ooc_details(first_page_words: list, first_page_text: str) -> dict[st
     }
 
 
+def extract_stamp_duty(path: str) -> dict[str, Any]:
+    """MH challan (text) as is; the Mundra SHCIL certificate is always a scan -> OCR."""
+    try:
+        with pdfplumber.open(path) as pdf:
+            text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+    except Exception as e:
+        return {"error": f"Couldn't read PDF: {e}"}
+    fields = scan_stamp_text(text) if text.strip() else {}
+    if fields.get("amount_paid") is None:
+        from app.extraction.ocr import ocr_text  # only scans pay for it
+        scanned = ocr_text(path)
+        if scanned:
+            fields = scan_stamp_text(scanned)
+            fields["ocr"] = True
+        elif not fields:
+            fields = {"amount_paid": None, "ocr_failed": True}
+    return fields
+
+
 def extract_document_fields(document_type: DocumentType, path: str) -> dict[str, Any]:
+    if document_type == DocumentType.STAMP_DUTY:
+        return extract_stamp_duty(path)
     if document_type not in BE_TYPES | INVOICE_TYPES | RECEIPT_TYPES | DO_TYPES:
         return {}
     try:

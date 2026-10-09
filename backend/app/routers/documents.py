@@ -224,8 +224,8 @@ def correct_invoice_amounts(shipment_id: int, document_id: int, payload: Invoice
                                             ShipmentDocument.shipment_id == shipment.id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    if doc.document_type not in INVOICE_DOC_TYPES + RECEIPT_DOC_TYPES:
-        raise HTTPException(status_code=400, detail="Only CFS / shipping line invoices and receipts have amounts to correct")
+    if doc.document_type not in INVOICE_DOC_TYPES + RECEIPT_DOC_TYPES + (DocumentType.STAMP_DUTY,):
+        raise HTTPException(status_code=400, detail="Only CFS / shipping line invoices, receipts and stamp duty have amounts to correct")
     new = {"amount_before_tax": payload.amount_before_tax, "gst_amount": payload.gst_amount,
            "amount_total": payload.amount_before_tax + payload.gst_amount}
     for field, value in new.items():

@@ -108,6 +108,7 @@ export interface Shipment {
   /** Shipping line worked out from the MBL's format; note = why ICEGATE may not find it as typed. */
   line_from_bl?: { line: string; note: string | null } | null;
   // duty as actually payable: BE duty + challan interest, or the OOC copy's total (detail responses only)
+  stamp_duty?: { due: string | null; paid: string | null; receipt_id: number | null; edited: boolean; be_no: string | null } | null;
   final_duty?: { total: string; interest: string; source: "challan" | "ooc" | "be" } | null;
   line_excluded_by?: string | null; // why the line is left off the cost inclusion (single-shipment GET only)
   line_client_excluded_by?: string | null; // client default: "<org>'s setting" = left out, null = included

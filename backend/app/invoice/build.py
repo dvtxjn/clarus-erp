@@ -145,6 +145,17 @@ def ooc_duty(shipment: Shipment) -> Optional[Decimal]:
     return _doc_amount(shipment, DocumentType.OOC_BILL_OF_ENTRY, "tot_amount")
 
 
+def stamp_receipt(shipment: Shipment):
+    """The latest stamp duty receipt attached (MH challan / SHCIL certificate), or None."""
+    docs = [d for d in shipment.documents if d.document_type == DocumentType.STAMP_DUTY and not d.is_deleted]
+    return max(docs, key=lambda d: d.id) if docs else None
+
+
+def stamp_duty_due(shipment: Shipment) -> Optional[Decimal]:
+    """Stamp duty as the ERP works it out at invoice time (Nhava Sheva on the OOC total)."""
+    return stamp_duty(shipment, ooc_duty(shipment))
+
+
 def customs_duty(shipment: Shipment, challan: Optional[DutyChallan]) -> Optional[dict]:
     """{total, gst, basic, interest, source}. Customs duty total, by what's available:
       1. OOC copy: its total amount — the final amount paid, no exception (client, 2026-10-08);

@@ -19,9 +19,9 @@ RUN npm run build
 # --- 2. backend ---
 # pinned to Debian 12 (bookworm): the Postgres apt repo line below must match the Debian release
 FROM python:3.11-slim-bookworm
-# pg_dump / pg_restore 18 (same as the database), fonts for the PDFs
+# pg_dump / pg_restore 18 (same as the database), fonts for the PDFs, libGL/glib for OpenCV (OCR)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates gnupg fonts-dejavu-core \
+ && apt-get install -y --no-install-recommends curl ca-certificates gnupg fonts-dejavu-core libgl1 libglib2.0-0 \
  && install -d /usr/share/postgresql-common/pgdg \
  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
@@ -29,7 +29,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+ && python -c "import rapidocr_onnxruntime"  # OCR loads, or the build stops here (prod untouched)
 COPY backend/ ./
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
 ENV APP_ENV=production PYTHONUNBUFFERED=1 FRONTEND_DIST=/app/frontend/dist \

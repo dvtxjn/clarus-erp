@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import ChargeCategory
 from app.invoice.build import (
-    GST_DIFFERENCE_CODE, bill_to_organization, bill_to_name, container_count, ooc_duty,
+    GST_DIFFERENCE_CODE, bill_to_organization, bill_to_name, container_count, ooc_duty, stamp_duty_due, stamp_receipt,
 )
 from app.invoice.company import bank as company_bank, company as company_details, terms as final_terms
 from app.models.final_invoice import FinalInvoice, InvoiceCounter
@@ -199,6 +199,39 @@ def duty_problem(inv: FinalInvoice) -> Optional[str]:
         return "Customs Duty must match the OOC copy's total duty — attach the OOC BE first"
     if any(_d(ln.get("non_gst_value")) != ooc for ln in lines):
         return f"Customs Duty must be the OOC copy's total ₹{ooc:,.2f}"
+    return None
+
+
+STAMP_CODE = "SD"
+
+
+def is_stamp_line(ln: dict) -> bool:
+    code = ln.get("code")
+    return code == STAMP_CODE or (code is None and str(ln.get("description") or "").strip().lower().startswith("stamp duty"))
+
+
+def stamp_problem(inv: FinalInvoice) -> Optional[str]:
+    """Why a reimbursement invoice can't be issued over its Stamp Duty, or None (client, 2026-10-09):
+    the amount billed = the ERP's calculation = the amount on the stamp duty receipt."""
+    lines = [ln for ln in (inv.lines or []) if is_stamp_line(ln)]
+    if inv.kind != "reimbursement" or not lines:
+        return None
+    s = inv.shipment
+    receipt = stamp_receipt(s)
+    if receipt is None:
+        return "Stamp duty receipt not attached — attach it before issuing"
+    paid = receipt.amount_total
+    if paid is None:
+        return "Couldn't read the amount on the stamp duty receipt — enter it on the document first"
+    paid = Decimal(paid)
+    read_be = ((receipt.extraction or {}).get("fields") or {}).get("be_no")
+    if read_be and s.be_no and read_be != s.be_no:
+        return f"The stamp duty receipt is for BE {read_be}, not {s.be_no}"
+    due = stamp_duty_due(s)
+    if due is not None and paid != due:
+        return f"Stamp duty paid ₹{paid:,.2f} doesn't match the calculated ₹{due:,.2f} — check before issuing"
+    if any(_d(ln.get("non_gst_value")) != paid for ln in lines):
+        return f"Stamp Duty on the invoice must be the amount paid, ₹{paid:,.2f}"
     return None
 
 

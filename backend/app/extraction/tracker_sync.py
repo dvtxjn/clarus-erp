@@ -60,6 +60,26 @@ def kg_to_mts(kg: Any) -> Optional[str]:
         return None
 
 
+def _stamp_duty_checks(sync, shipment: Shipment, document: ShipmentDocument, fields: dict) -> None:
+    """Stamp duty receipt: keep the amount paid on the document (editable by hand) and say
+    straight away if it isn't what the ERP works out (client, 2026-10-09)."""
+    from app.invoice.build import stamp_duty_due  # build imports extraction modules
+    if not document.amounts_edited:
+        paid = _money(fields.get("amount_paid"))
+        document.amount_before_tax, document.gst_amount, document.amount_total = paid, None, paid
+    if fields.get("amount_paid") is None:
+        if fields.get("amount_digits") is not None and fields.get("amount_words") is not None:
+            sync.notes.append(f"Stamp duty receipt: the figure ({fields['amount_digits']:,.0f}) and the amount in "
+                              f"words ({fields['amount_words']:,}) disagree — check the receipt and enter the amount.")
+        else:
+            sync.notes.append("Couldn't read the stamp duty amount from this receipt — enter it on the document.")
+    if fields.get("be_no") and shipment.be_no and fields["be_no"] != shipment.be_no:
+        sync.notes.append(f"BE No on the stamp duty receipt ({fields['be_no']}) differs from the tracker ({shipment.be_no}).")
+    due, paid = stamp_duty_due(shipment), document.amount_total
+    if due is not None and paid is not None and Decimal(paid) != due:
+        sync.notes.append(f"Stamp duty paid ₹{Decimal(paid):,.2f} doesn't match the calculated ₹{due:,.2f}.")
+
+
 def _money(v: Any) -> Optional[Decimal]:
     try:
         return Decimal(str(v)) if v not in (None, "") else None
@@ -199,6 +219,8 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
                               "(or send us a sample so it reads next time).")
         if fields.get("be_no") and shipment.be_no and fields["be_no"] != shipment.be_no:
             sync.notes.append(f"BE No on the {what} receipt ({fields['be_no']}) differs from the tracker ({shipment.be_no}).")
+    if t == DocumentType.STAMP_DUTY and not fields.get("error"):
+        _stamp_duty_checks(sync, shipment, document, fields)
     if t == DocumentType.SHIPPING_LINE_RECEIPT:
         sync.set("line_paid", True)  # the line has been paid
 

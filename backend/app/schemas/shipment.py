@@ -150,6 +150,7 @@ class ShipmentUpdate(BaseModel):
 class ShipmentOut(ShipmentBase):
     icegate: Optional[dict[str, Any]] = None       # ICEGATE read-out (read only)
     line_from_bl: Optional[dict[str, Any]] = None  # {"line", "note"} from the MBL's format (computed)
+    stamp_duty: Optional[dict[str, Any]] = None    # {"due", "paid", "receipt_id", "edited", "be_no"}; single-shipment only
     final_duty: Optional[dict[str, Any]] = None    # {"total", "interest", "source"}; single-shipment responses only
     line_excluded_by: Optional[str] = None         # why the line is left off the cost inclusion; single-shipment only
     line_client_excluded_by: Optional[str] = None  # client default: "<org>'s setting" = left out, None = included
