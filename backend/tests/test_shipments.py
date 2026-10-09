@@ -119,3 +119,15 @@ def test_names_list_every_client_once(client, admin_headers):
         assert client.post("/shipments", json={"mbl": mbl, "client": name}, headers=h).status_code == 201
     names = client.get("/shipments/names", headers=h).json()["clients"]
     assert "Zeta Tyres" in names and "ZETA TYRES" not in names
+
+
+def test_names_include_active_organizations(client, admin_headers):
+    h = admin_headers
+    assert client.post("/organizations", json={"name": "Org Picker Traders"}, headers=h).status_code in (200, 201)
+    from app.core.database import SessionLocal
+    from app.models.organization import OrganizationEntry
+    with SessionLocal() as db:
+        db.add(OrganizationEntry(name="Gone Org Picker", is_active=False))
+        db.commit()
+    orgs = client.get("/shipments/names", headers=h).json()["organizations"]
+    assert "Org Picker Traders" in orgs and "Gone Org Picker" not in orgs

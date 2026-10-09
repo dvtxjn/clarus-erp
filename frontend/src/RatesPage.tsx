@@ -1,4 +1,5 @@
 import Toast from "./Toast";
+import { OrgPicker } from "./OrgPicker";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   createCharge,
@@ -389,12 +390,12 @@ function HssRules({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
             <div className="hss-rule-parties">
               <label>
                 <span>Seller</span>
-                <input value={p.seller} placeholder="any seller" disabled={!canEdit} onChange={(e) => change(i, (x) => ({ ...x, seller: e.target.value }))} />
+                <OrgPicker label="Seller" value={p.seller} placeholder="any seller" disabled={!canEdit} onChange={(v) => change(i, (x) => ({ ...x, seller: v }))} />
               </label>
               <span className="hss-arrow">→</span>
               <label>
                 <span>Buyer (BE importer)</span>
-                <input value={p.buyer} placeholder="MAHRISHI RECYCLERS" disabled={!canEdit} onChange={(e) => change(i, (x) => ({ ...x, buyer: e.target.value }))} />
+                <OrgPicker label="Buyer" value={p.buyer} placeholder="Buyer — type to search…" disabled={!canEdit} onChange={(v) => change(i, (x) => ({ ...x, buyer: v }))} />
               </label>
               <span className={`hss-check ${Math.abs(st - bt) < 1 ? "ok" : "diff"}`}>
                 Seller copy ₹{Math.round(st).toLocaleString("en-IN")} · Buyer copy ₹{Math.round(bt).toLocaleString("en-IN")} (incl. GST)
@@ -699,7 +700,7 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
             </label>
             <label>
               <span>BE importer</span>
-              <input value={l.importer_name ?? ""} disabled={!canEdit} onChange={(e) => change(i, { importer_name: e.target.value })} />
+              <OrgPicker label="Importer" value={l.importer_name ?? ""} disabled={!canEdit} onChange={(v) => change(i, { importer_name: v })} />
             </label>
             <label className="toggle-row">
               <span>{l.is_active ? "Active" : "Closed"}</span>
@@ -733,7 +734,7 @@ function Licences({ charges, canEdit }: { charges: ChargeMasterEntry[]; canEdit:
                       </select>
                     </td>
                     <td>
-                      <input className="rate-input" value={r.seller ?? ""} placeholder="any" disabled={!canEdit} onChange={(e) => setRow(i, j, { seller: e.target.value || null })} />
+                      <OrgPicker label="Seller (HSS)" className="rate-input" value={r.seller ?? ""} placeholder="any" disabled={!canEdit} onChange={(v) => setRow(i, j, { seller: v || null })} />
                     </td>
                     <td>
                       <select value={r.port ?? ""} disabled={!canEdit} onChange={(e) => setRow(i, j, { port: e.target.value || null })}>

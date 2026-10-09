@@ -96,7 +96,7 @@ export async function listShipments(filters: ShipmentFilters = {}): Promise<Ship
 }
 
 /** Every client / consignee ever used (one spelling each), for the Add Shipment pickers. */
-export async function getShipmentNames(): Promise<{ clients: string[]; consignees: string[] }> {
+export async function getShipmentNames(): Promise<{ clients: string[]; consignees: string[]; organizations: string[] }> {
   const { data } = await client.get("/shipments/names");
   return data;
 }

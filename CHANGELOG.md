@@ -1,5 +1,13 @@
 # Release notes
 
+## v1.7.10 — 9 Oct 2026
+
+**Seller, buyer, client and consignee fields pick from Organizations.**
+- Organizations is the central list of parties. Every seller / buyer / client / consignee box now offers it as a dropdown: Add Shipment, the grid's Client and Consignee cells, the HSS seller / buyer on a shipment, and HSS rules and licences in Rates.
+- Typing still works. A name that matches an organization in a different case snaps to the saved spelling. A new name shows "not in Organizations" so it can be added there.
+- Grid cells still take paste and the formula bar.
+- Only active organizations are listed. Everyone sees the names only; GSTIN and addresses stay billing-only.
+
 ## v1.7.9 — 9 Oct 2026
 
 **Faster on a slow connection.**

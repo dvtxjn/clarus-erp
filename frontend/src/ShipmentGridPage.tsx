@@ -1,4 +1,5 @@
 import { useDismiss } from "./useDismiss";
+import { OrgCellEditor, OrgPicker } from "./OrgPicker";
 import { fmtWhen } from "./dates";
 import LoadError from "./LoadError";
 import { tabKeys } from "./tabKeys";
@@ -514,8 +515,8 @@ function buildColumnDefs(ports: Port[], tab: Tab, trackerCols: TrackerColumn[], 
     },
     { ...text("license", "Lic", 84), headerTooltip: "License" },
     // grouped by client, each section's bar already names it
-    ...(byClient ? [] : [text("client", "Client", 124)]),
-    text("consignee", "Consignee", 168),
+    ...(byClient ? [] : [{ ...text("client", "Client", 124), cellEditor: OrgCellEditor }]),
+    { ...text("consignee", "Consignee", 168), cellEditor: OrgCellEditor },
     {
       // POD and Port were the same information; one column, shown with the port name
       field: "port",
@@ -1665,7 +1666,7 @@ export default function ShipmentGridPage() {
         const hit = values.find((v) => v.toLowerCase() === String(value).toLowerCase());
         if (hit === undefined) return setMessage({ kind: "error", text: `“${pasted}” isn't one of the ${name} choices.` });
         value = hit;
-      } else if (def.cellEditor) {
+      } else if (def.cellEditor && def.cellEditor !== OrgCellEditor) {  // client / consignee: plain text
         return setMessage({ kind: "error", text: `${name} can't be pasted into — double-click to change it.` });
       } else if (typeof def.valueParser === "function") {
         const oldValue = api.getCellValue({ rowNode: node, colKey: col });
@@ -2305,38 +2306,8 @@ function ClientName({ name, onRename }: { name: string; onRename: (newName: stri
   );
 }
 
-/**
- * Type-to-search picker over every client / consignee ever used (client, 2026-10-07). A name that
- * matches one in the list except for capitals takes the list's spelling; anything else is a new name.
- */
-function PickOrAdd(props: { label: string; options: string[]; value: string; onChange: (v: string) => void }) {
-  const id = `pick-${props.label.toLowerCase()}`;
-  const typed = props.value.trim();
-  const known = props.options.find((o) => o.toUpperCase() === typed.toUpperCase());
-  return (
-    <span className="pick-or-add">
-      <input
-        list={id}
-        aria-label={props.label}
-        placeholder={`${props.label} — type to search…`}
-        autoComplete="off"
-        spellCheck={false}
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        onBlur={() => known && known !== props.value && props.onChange(known)}
-      />
-      <datalist id={id}>
-        {props.options.map((o) => (
-          <option key={o} value={o} />
-        ))}
-      </datalist>
-      {typed && !known && <span className="field-note">new {props.label.toLowerCase()}</span>}
-    </span>
-  );
-}
-
 function AddShipmentForm({ onCreated }: { onCreated: () => void }) {
-  const [names, setNames] = useState<{ clients: string[]; consignees: string[] }>({ clients: [], consignees: [] });
+  const [names, setNames] = useState<{ clients: string[]; consignees: string[] }>({ clients: [], consignees: [] }); // used before, offered after the client list
   useEffect(() => {
     getShipmentNames()
       .then(setNames)
@@ -2383,8 +2354,8 @@ function AddShipmentForm({ onCreated }: { onCreated: () => void }) {
           </option>
         ))}
       </select>
-      <PickOrAdd label="Client" options={names.clients} value={client} onChange={setClient} />
-      <PickOrAdd label="Consignee" options={names.consignees} value={consignee} onChange={setConsignee} />
+      <OrgPicker label="Client" extra={names.clients} value={client} onChange={setClient} />
+      <OrgPicker label="Consignee" extra={names.consignees} value={consignee} onChange={setConsignee} />
       <button type="submit" disabled={submitting}>
         {submitting ? "Creating…" : "Create Shipment"}
       </button>
@@ -2591,7 +2562,7 @@ function formulaCell(api: GridApi<Shipment> | undefined, rowId: number, colId: s
   const text = shown == null || typeof shown === "object" ? (raw == null || typeof raw === "object" ? "" : String(raw)) : String(shown);
   // plain text cells only: dates / numbers / ticks keep their own editors (a typed string would be wrong there)
   const textCell = def.cellDataType === "text" || (def.cellDataType == null && (raw == null || typeof raw === "string"));
-  const editable = col.isCellEditable(node) && !def.cellEditor && textCell;
+  const editable = col.isCellEditable(node) && (!def.cellEditor || def.cellEditor === OrgCellEditor) && textCell;
   const name = def.headerName ?? colId;
   return {
     // a row without a job number names itself by its BL: "Job (none yet) · BL 275469216"

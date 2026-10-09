@@ -124,6 +124,11 @@ def shipment_names(db: Session = Depends(get_db), current_user: User = Depends(g
             if name:
                 counts.setdefault(name.upper(), {})[name] = counts.get(name.upper(), {}).get(name, 0) + n
         out[field + "s"] = sorted((max(v, key=v.get) for v in counts.values()), key=str.upper)
+    # the central client list (Organizations): every seller / buyer / client picker offers these.
+    # Names only — GSTIN, addresses etc. stay with billing access.
+    from app.models.organization import OrganizationEntry
+    out["organizations"] = [n for (n,) in db.query(OrganizationEntry.name).filter(OrganizationEntry.is_active.is_(True))
+                            .order_by(OrganizationEntry.name)]
     return out
 
 

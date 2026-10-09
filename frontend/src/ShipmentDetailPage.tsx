@@ -1,4 +1,5 @@
 import Toast from "./Toast";
+import { OrgPicker } from "./OrgPicker";
 import { fmtDay, fmtDayShort, fmtWhen, MONTHS } from "./dates";
 import LoadError from "./LoadError";
 import { tabKeys } from "./tabKeys";
@@ -1018,8 +1019,8 @@ function HssEditor({ shipment: s, onChange }: { shipment: Shipment; onChange: (s
       )}
       {s.is_hss && editing && (
         <div className="hss-edit-form">
-          <input placeholder="Seller" value={seller} onChange={(e) => setSeller(e.target.value)} aria-label="HSS seller" />
-          <input placeholder="Buyer" value={buyer} onChange={(e) => setBuyer(e.target.value)} aria-label="HSS buyer" />
+          <OrgPicker label="HSS seller" placeholder="Seller — type to search…" value={seller} onChange={setSeller} />
+          <OrgPicker label="HSS buyer" placeholder="Buyer — type to search…" value={buyer} onChange={setBuyer} />
           <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>
             Cancel
           </button>
