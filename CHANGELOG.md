@@ -1,5 +1,12 @@
 # Release notes
 
+## v1.7.9 — 9 Oct 2026
+
+**Faster on a slow connection.**
+- The app and every API response are now sent compressed. The first load drops from 1.9 MB to about 0.5 MB.
+- The grid and React libraries are in their own files. After a release the browser keeps them and downloads only the changed app code (about 95 KB instead of 1.8 MB).
+- Live updates are not compressed, so they still arrive instantly.
+
 ## v1.7.8 — 9 Oct 2026
 
 **OCR is the last resort, never the source.**

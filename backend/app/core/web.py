@@ -65,7 +65,22 @@ def cors_origins() -> list[str]:
     return ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4173"]
 
 
+class Compress:
+    """Gzip pages, the app's JS/CSS and API JSON (the 1.8 MB app -> ~0.5 MB; matters on a slow
+    connection). Not the live-updates stream: gzip would hold its events back until a buffer fills."""
+
+    def __init__(self, app):
+        from starlette.middleware.gzip import GZipMiddleware
+        self.app, self.gzip = app, GZipMiddleware(app, minimum_size=1024)
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not scope["path"].startswith("/realtime/stream"):
+            return await self.gzip(scope, receive, send)
+        return await self.app(scope, receive, send)
+
+
 def install(app: FastAPI) -> None:
     app.add_middleware(SpaFallback)
     app.add_middleware(BodyLimit)
     app.add_middleware(SecurityHeaders)
+    app.add_middleware(Compress)
