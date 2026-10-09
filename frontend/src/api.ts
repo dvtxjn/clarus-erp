@@ -152,7 +152,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return data;
 }
 
-export type AlertKind = "deadline" | "free_days" | "documents" | "icegate";
+export type AlertKind = "deadline" | "free_days" | "documents" | "icegate" | "cfs_invoice";
 export interface ShipmentAlert {
   kind: AlertKind;
   severity: "overdue" | "urgent" | "soon";

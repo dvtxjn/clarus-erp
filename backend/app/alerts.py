@@ -1,12 +1,13 @@
 """
 Dashboard alerts — "Needs attention" (client, 2026-09-30).
 
-Three kinds, all for live shipments (no Cleared Date yet):
+Kinds, all for live shipments (no Cleared Date yet):
 - deadline:  ETA marked "d" — the shipment must be moved to the CFS 4 days before the ETA.
 - free_days: 14 free days at the POD, counted from the inward date inclusive (INW = day 1).
              Sea ports only: for inland ports (Panipat, Garhi, …) the INW is the sea-port inward and
              the free days start on arrival at the FPOD after the rail leg — counted later from the
              client's FPOD inward sheet (P5).
+- cfs_invoice: we pay the CFS (Nhava Sheva usually) and it's out of charge, but the CFS invoice isn't attached.
 - documents: BE not filed yet, the ship is close (ETA within 7 days, or already inward) and
              basic documents on the checklist aren't attached in the ERP yet. Wording is "not attached",
              never "missing": the papers have arrived, they just aren't uploaded (client, 2026-09-30).
@@ -173,6 +174,20 @@ def documents_alert(s, required: Iterable[tuple], uploaded: set, today: date) ->
     return {**_base(s), "kind": "documents", "severity": "urgent" if inw or left <= 2 else "soon",
             "days_left": left, "due": s.eta.isoformat() if s.eta else None,
             "text": f"Not attached yet: {names} (BE not filed, {when})", "missing": [t.value for t in missing]}
+
+
+def cfs_invoice_alert(s, uploaded: set, today: date) -> Optional[dict]:
+    """CFS paid by us (Nhava Sheva usually, client 2026-10-09): from OOC on, until the CFS tax invoice is
+    attached — so it isn't forgotten (we pay it and bill it on)."""
+    if not s.cfs_paid_by_us or DocumentType.CFS_TAX_INVOICE in uploaded:
+        return None
+    if not (s.ooc or s.ooc_date or s.cfs_inv_received):
+        return None
+    since = (today - s.ooc_date).days if s.ooc_date else 0
+    text = ("CFS invoice received but not attached yet (we pay the CFS)" if s.cfs_inv_received
+            else "CFS invoice not attached yet (we pay the CFS)" + (f" — OOC {_days(since)} ago" if since > 0 else ""))
+    return {**_base(s), "kind": "cfs_invoice", "severity": "urgent" if since >= 2 else "soon",
+            "days_left": -since, "due": s.ooc_date.isoformat() if s.ooc_date else None, "text": text}
 
 
 def lookup_alert(s, today: date) -> Optional[dict]:

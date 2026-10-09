@@ -283,6 +283,7 @@ def get_alerts(db: Session = Depends(get_db), current_user: User = Depends(get_c
             alerts.fpod_alert(s, boxes[s.id], today),
             alerts.documents_alert(s, required, uploaded[s.id], today),
             alerts.lookup_alert(s, today),
+            alerts.cfs_invoice_alert(s, uploaded[s.id], today),
         ):
             if alert:
                 found.append(alert)
@@ -361,12 +362,22 @@ def create_shipment(payload: ShipmentCreate, db: Session = Depends(get_db), curr
             shipment.apply_hss_from_consignee()
     else:
         shipment.is_hss = explicit_hss
+    if "cfs_paid_by_us" not in payload.model_fields_set:
+        shipment.apply_port_defaults()  # Nhava Sheva: CFS paid by us
     shipment.status = shipment.status or ShipmentStatus.TO_BE_FILED
     shipment.status = proven_status(shipment)
     db.add(shipment)
     db.commit()
     db.refresh(shipment)
     return shipment
+
+
+def _port_defaults(db: Session, shipment: Shipment, old_port: Optional[str], user_id: Optional[int]) -> None:
+    before = (shipment.cfs_paid_by_us, shipment.tds_on_cfs)
+    if shipment.apply_port_defaults(old_port):
+        record_change(db, "shipments", shipment.id, "cfs_paid_by_us", before[0], True, user_id)
+        if not before[1]:
+            record_change(db, "shipments", shipment.id, "tds_on_cfs", before[1], True, user_id)
 
 
 @router.patch("/{shipment_id}", response_model=ShipmentOut)
@@ -404,12 +415,16 @@ def update_shipment(
     if custom:
         _apply_custom_fields(db, shipment, custom, current_user.id)
     evidence_changed = False
+    old_port = shipment.port
     for field, new_value in changes.items():
         old_value = getattr(shipment, field)
         if old_value != new_value:
             record_change(db, "shipments", shipment.id, field, old_value, new_value, current_user.id)
             setattr(shipment, field, new_value)
             evidence_changed |= field in EVIDENCE_FIELDS
+
+    if "port" in changes and "cfs_paid_by_us" not in changes:
+        _port_defaults(db, shipment, old_port, current_user.id)
 
     # HSS follows the consignee name ("SELLER - BUYER") unless set in this edit
     if "consignee" in changes and not {"is_hss", "hss_seller", "hss_buyer"} & set(changes):

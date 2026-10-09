@@ -8,6 +8,7 @@ const KINDS: { id: AlertKind; label: string }[] = [
   { id: "free_days", label: "Free days" },
   { id: "documents", label: "Not attached" },
   { id: "icegate", label: "ICEGATE" },
+  { id: "cfs_invoice", label: "CFS invoice" },
 ];
 const SEVERITY = { overdue: "Overdue", urgent: "Urgent", soon: "Soon" } as const;
 const SHOWN = 6;
@@ -95,7 +96,7 @@ export default function NeedsAttention() {
         <p className="field-note">Checking deadlines, free days and documents…</p>
       ) : alerts.length === 0 ? (
         <p className="attention-empty">
-          All clear: no “d” deadlines, free-day limits, documents not attached, ICEGATE queries or IGMs missing near the ETA.
+          All clear: no “d” deadlines, free-day limits, documents or CFS invoices not attached, ICEGATE queries or IGMs missing near the ETA.
         </p>
       ) : (
         <>
@@ -108,7 +109,7 @@ export default function NeedsAttention() {
                 <span className="attention-sev">{SEVERITY[a.severity]}</span>
                 <span className="attention-who">
                   <span className="attention-line">
-                    <Link className="attention-job" to={`/shipments/${a.shipment_id}${a.kind === "documents" ? "?tab=documents" : a.kind === "icegate" ? "?tab=customs" : ""}`} translate="no">
+                    <Link className="attention-job" to={`/shipments/${a.shipment_id}${a.kind === "documents" || a.kind === "cfs_invoice" ? "?tab=documents" : a.kind === "icegate" ? "?tab=customs" : ""}`} translate="no">
                       {a.job ? `Job ${a.job}` : `BL ${a.mbl || "—"}`}
                     </Link>
                     {!a.job && <span className="field-note">no job no.</span>}

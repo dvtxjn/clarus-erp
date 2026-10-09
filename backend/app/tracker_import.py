@@ -317,11 +317,14 @@ def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:
         s = db.get(Shipment, item["shipment_id"])
         r = by_row[item["row"]]
         fields = {c["field"] for c in item["changes"]}
+        old_port = s.port
         for f in fields - {"is_billed"}:
             record_change(db, "shipments", s.id, f, getattr(s, f), r[f], user_id)
             setattr(s, f, r[f])
         if "consignee" in fields:
             s.apply_hss_from_consignee()
+        if "port" in fields and s.apply_port_defaults(old_port):  # Nhava Sheva: CFS paid by us
+            record_change(db, "shipments", s.id, "cfs_paid_by_us", False, True, user_id)
         if "is_billed" in fields:
             _set_billed(db, s, bool(r["is_billed"]), now, user_id)
         elif fields & EVIDENCE_FIELDS:
@@ -337,6 +340,7 @@ def apply(db: Session, rows: list[dict], user_id: Optional[int]) -> dict:
         billed = r.pop("is_billed", False)
         s = Shipment(**r, hs_code_id=hs.id if hs else None)
         s.apply_hss_from_consignee()
+        s.apply_port_defaults()
         s.status = proven_status(s)
         db.add(s)
         db.flush()

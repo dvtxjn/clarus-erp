@@ -39,6 +39,9 @@ def split_hss(consignee):
 CFS_TDS_RATE = Decimal("0.02")
 
 
+# ports where we usually pay the CFS ourselves (client, 2026-10-09); Mundra and Delhi usually not
+CFS_PAID_BY_US_PORTS = {"INNSA1"}
+
 class Shipment(SoftDeleteMixin, Base):
     """
     Core shipment record. Field list is the confirmed 26-field set from
@@ -256,6 +259,18 @@ class Shipment(SoftDeleteMixin, Base):
             return []
         return [n for (n,) in db.query(ShipmentContainer.container_no)
                 .filter(ShipmentContainer.shipment_id == self.id).order_by(ShipmentContainer.id)]
+
+    def apply_port_defaults(self, old_port: Optional[str] = None) -> bool:
+        """Nhava Sheva: we usually pay the CFS (client, 2026-10-09) — a live job arriving at a port in
+        CFS_PAID_BY_US_PORTS gets "CFS paid by us" (and TDS on CFS) switched on. Only when the port changes,
+        so a job switched off by hand stays off. True if it switched it on."""
+        port = (self.port or "").upper()
+        if (port not in CFS_PAID_BY_US_PORTS or port == (old_port or "").upper() or self.cleared_date
+                or self.cfs_paid_by_us):
+            return False
+        self.cfs_paid_by_us = True
+        self.tds_on_cfs = True
+        return True
 
     def apply_hss_from_consignee(self) -> None:
         """Set HSS + seller/buyer from the consignee name ('SELLER - BUYER')."""

@@ -297,21 +297,23 @@ function ChecklistCell(p: ICellRendererParams<Shipment, unknown, GridContext> & 
     <span className="checklist-cell">
       {p.flags.map(([f, label, tip]) => {
         const on = busy === f ? !s[f] : !!s[f];
+        // we pay the CFS (Nhava Sheva usually): the CFS invoice is ours to collect — marked until received
+        const due = f === "cfs_inv_received" && !on && s.cfs_paid_by_us;
         return (
           <button
             key={f}
             type="button"
-            className={`check-chip${on ? " is-on" : ""}${busy === f ? " is-pending" : ""}`}
+            className={`check-chip${on ? " is-on" : ""}${due ? " is-due" : ""}${busy === f ? " is-pending" : ""}`}
             aria-pressed={on}
             aria-busy={busy === f || undefined}
-            title={`${tip}: ${on ? "Yes" : "No"} — click to change`}
+            title={due ? "We pay the CFS — CFS invoice not received yet. Click when it is." : `${tip}: ${on ? "Yes" : "No"} — click to change`}
             onClick={() => {
               // the chip flips only once the change goes ahead — a cancelled "are you sure?" leaves it as it was
               Promise.resolve(p.context.toggleFlag(s, f, () => setBusy(f))).finally(() => setBusy(null));
             }}
           >
             {/* the tick's room is always kept: ticking never widens the chip past the fitted column */}
-            <span className="check-tick" aria-hidden="true">✓</span>
+            <span className="check-tick" aria-hidden="true">{due ? "!" : "✓"}</span>
             {label}
           </button>
         );

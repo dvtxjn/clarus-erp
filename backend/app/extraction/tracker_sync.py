@@ -182,7 +182,10 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         hawb = fields.get("hawb")
         if hawb and hawb.replace(" ", "").upper() not in (shipment.mbl or "").replace(" ", "").upper():
             sync.fill("hbl", hawb)  # HBL is usually typed into the MBL cell after a slash
+        old_port = shipment.port
         sync.fill("port", fields.get("port_code"))
+        if shipment.apply_port_defaults(old_port):  # Nhava Sheva: CFS paid by us
+            record_change(sync.db, "shipments", shipment.id, "cfs_paid_by_us", False, True, sync.user_id)
         if fields.get("cont_count") not in (None, "0"):
             sync.fill("container", fields.get("cont_count"), report=False)
         # The BE's gross weight is always taken as correct. It's printed in KGS;

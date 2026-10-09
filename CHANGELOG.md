@@ -1,5 +1,13 @@
 # Release notes
 
+## v1.7.11 — 9 Oct 2026
+
+**Don't forget the CFS invoice (Nhava Sheva).**
+- Nhava Sheva jobs now default to **CFS paid by us** (with TDS on CFS). Mundra and Delhi don't. Switch it off on a job where the client pays; it stays off.
+- It switches on when the port becomes Nhava Sheva: when a job is added, edited, imported from the tracker, or read from a BE. Cleared jobs are not changed.
+- Grid: when we pay the CFS and the invoice isn't received yet, the **CFS Inv** chip turns amber with a **!**.
+- Needs attention: a new **CFS invoice** item from OOC on, until the CFS tax invoice is attached. It opens the job's Documents tab.
+
 ## v1.7.10 — 9 Oct 2026
 
 **Seller, buyer, client and consignee fields pick from Organizations.**

@@ -2475,6 +2475,8 @@ button.btn-secondary.link-danger:hover:not(:disabled), button.btn-danger:hover:n
 }
 
 /* FE audit v1 — C2/C3/C4 */
+.check-chip.is-due { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); padding-right: 6px; }
+.check-chip.is-due .check-tick { visibility: visible; width: auto; font-weight: 700; }
 .check-chip.is-pending { opacity: .6; pointer-events: none; }
 .ag-cell { font-variant-numeric: tabular-nums; }
 .grid-skeleton { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; }
