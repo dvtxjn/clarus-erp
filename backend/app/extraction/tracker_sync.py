@@ -64,6 +64,13 @@ def _stamp_duty_checks(sync, shipment: Shipment, document: ShipmentDocument, fie
     """Stamp duty receipt: keep the amount paid on the document (editable by hand) and say
     straight away if it isn't what the ERP works out (client, 2026-10-09)."""
     from app.invoice.build import stamp_duty_due  # build imports extraction modules
+    from app.extraction.stamp_pdf import pick_for_be
+    if "certificates" in fields:  # this job's certificate out of the file's
+        fields.update(pick_for_be(fields, shipment.be_no))
+        if len(fields["certificates"]) > 1:
+            sync.notes.append(f"This file holds {len(fields['certificates'])} stamp duty certificates — "
+                              + ("used the one for this BE." if fields.get("amount_paid") is not None
+                                 else "none could be matched to this BE; enter the amount."))
     if not document.amounts_edited:
         paid = _money(fields.get("amount_paid"))
         document.amount_before_tax, document.gst_amount, document.amount_total = paid, None, paid

@@ -20,13 +20,14 @@ from typing import Optional
 
 log = logging.getLogger(__name__)
 
-MAX_PAGES = 2
+MAX_PAGES = 4
+LONG_SIDE_PX = 1700  # phone-camera scans come as 2000-4000 pt pages: render every page to this size
 TIMEOUT_S = 90
 _ONE_AT_A_TIME = threading.Lock()
 
 
 def ocr_text(path: str, timeout: int = TIMEOUT_S) -> Optional[str]:
-    """The scan's text, one OCR'd line per line (first MAX_PAGES pages), or None."""
+    """The scan's text, one OCR'd line per line, pages split by a form feed (first MAX_PAGES), or None."""
     try:
         with _ONE_AT_A_TIME:
             r = subprocess.run([sys.executable, "-m", "app.extraction.ocr", str(path)], capture_output=True,
@@ -48,8 +49,11 @@ def _run(path: str) -> None:
     engine = RapidOCR(det_model_path=None, det_limit_side_len=960, det_limit_type="max")
     pdf = pdfium.PdfDocument(path)
     for i in range(min(len(pdf), MAX_PAGES)):
-        image = pdf[i].render(scale=2).to_pil().convert("RGB")
+        w, h = pdf[i].get_size()
+        image = pdf[i].render(scale=min(2.0, LONG_SIDE_PX / max(w, h))).to_pil().convert("RGB")
         result, _ = engine(np.array(image))
+        if i:
+            print("\f")
         for row in result or []:
             print(row[1])
 

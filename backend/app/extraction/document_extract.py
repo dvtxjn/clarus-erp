@@ -22,7 +22,7 @@ from app.extraction.do_pdf import scan_do_text
 from app.extraction.invoice_number import invoice_identity
 from app.extraction.receipt_pdf import scan_receipt_text
 from app.extraction.shipping_line_pdf import scan_shipping_line_text
-from app.extraction.stamp_pdf import scan_stamp_text
+from app.extraction.stamp_pdf import scan_stamp_pages
 
 BE_TYPES = {
     DocumentType.ASSESSED_BILL_OF_ENTRY,
@@ -102,18 +102,18 @@ def extract_stamp_duty(path: str) -> dict[str, Any]:
     """MH challan (text) as is; the Mundra SHCIL certificate is always a scan -> OCR."""
     try:
         with pdfplumber.open(path) as pdf:
-            text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            pages = [p.extract_text() or "" for p in pdf.pages]
     except Exception as e:
         return {"error": f"Couldn't read PDF: {e}"}
-    fields = scan_stamp_text(text) if text.strip() else {}
-    if fields.get("amount_paid") is None:
+    fields = scan_stamp_pages(pages) if any(p.strip() for p in pages) else {}
+    if fields.get("amount_paid") is None and not any(c.get("amount_paid") for c in fields.get("certificates", [])):
         from app.extraction.ocr import ocr_text  # only scans pay for it
         scanned = ocr_text(path)
         if scanned:
-            fields = scan_stamp_text(scanned)
+            fields = scan_stamp_pages(scanned.split("\f"))
             fields["ocr"] = True
         elif not fields:
-            fields = {"amount_paid": None, "ocr_failed": True}
+            fields = {"amount_paid": None, "certificates": [], "ocr_failed": True}
     return fields
 
 

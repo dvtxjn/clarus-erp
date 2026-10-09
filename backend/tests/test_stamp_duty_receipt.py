@@ -89,3 +89,25 @@ def test_receipt_for_another_be_blocks(client, admin_headers):
                 headers=h)
     r = client.post(f"/final-invoices/{ri['id']}/issue", headers=h)
     assert r.status_code == 400 and "BE 1234567" in r.json()["detail"]
+
+
+def test_ocr_number_quirks_and_label_order():
+    # figure above its label, dots for commas
+    f = scan_stamp_text("Stamp Duty Paid By\n973\nStamp Duty Amount(Rs.)\n(Nine Hundred And Seventy Three only)\nBE NO: 3522039")
+    assert f["amount_paid"] == 973
+    f = scan_stamp_text("Stamp Duty Amount(Rs.)\n1.035\n(One Thousand And Thirty Five only)")
+    assert f["amount_paid"] == 1035
+    f = scan_stamp_text("Amount In\nOne Thousand Six Hundred Sixty Eight Rupees Only\nTotal\n1.668.00 words")
+    assert f["amount_paid"] == 1668
+
+
+def test_file_with_several_certificates_picks_this_be():
+    from app.extraction.stamp_pdf import pick_for_be, scan_stamp_pages
+    page = "Stamp Duty Amount(Rs.)\n{n}\n({w} only)\nBENO:{be}DTD:26/09/2026"
+    f = scan_stamp_pages([page.format(n="1,987", w="One Thousand Nine Hundred And Eighty Seven", be="3323824"),
+                          page.format(n="1,592", w="One Thousand Five Hundred And Ninety Two", be="3332286")])
+    assert len(f["certificates"]) == 2
+    assert pick_for_be(f, "3332286")["amount_paid"] == 1592
+    assert pick_for_be(f, "3323824")["amount_paid"] == 1987
+    other = pick_for_be(f, "9999999")  # none for this BE: typed by hand, warned
+    assert other["amount_paid"] is None and other["be_no"] == "3323824"

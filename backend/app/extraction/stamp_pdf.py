@@ -60,10 +60,41 @@ def words_to_number(words: Optional[str]) -> Optional[int]:
 
 
 def _amount(raw: Optional[str]) -> Optional[Decimal]:
+    """'1,372' / '1492.00' / OCR's '1.035' and '1.668.00' (dots for commas) -> Decimal."""
+    if not raw:
+        return None
+    raw = raw.replace(",", ".").strip(".")
+    parts = raw.split(".")
+    if len(parts) > 1 and len(parts[-1]) == 2:  # paise
+        whole, paise = parts[:-1], parts[-1]
+    else:
+        whole, paise = parts, None
+    if any(len(p) != 3 for p in whole[1:]):  # a dot that isn't a thousands separator
+        return None
     try:
-        return Decimal(raw.replace(",", "")) if raw else None
+        return Decimal("".join(whole) + (f".{paise}" if paise else ""))
     except InvalidOperation:
         return None
+
+
+_NUMBER_LINE = re.compile(r"^\s*(?:Rs\.?\s*)?([\d][\d.,]*)\s*/?-?\s*$")
+
+
+def _shcil_figure(text: str) -> Optional[str]:
+    """The number on its own line next to 'Stamp Duty Amount(Rs.)' — OCR puts it after the
+    label or, on some scans, before it."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if re.search(r"Stamp\s*Duty\s*Amount", line, re.I):
+            same = re.search(r"Amount\s*\(?\s*Rs\.?\s*\)?\s*[:|]?\s*([\d][\d.,]*)\s*$", line, re.I)
+            if same:
+                return same.group(1)
+            for j in (i + 1, i - 1, i + 2, i - 2):
+                if 0 <= j < len(lines):
+                    m = _NUMBER_LINE.match(lines[j])
+                    if m:
+                        return m.group(1)
+    return None
 
 
 def scan_stamp_text(text: str) -> dict[str, Any]:
@@ -72,13 +103,12 @@ def scan_stamp_text(text: str) -> dict[str, Any]:
     shcil = "STAMP DUTY AMOUNT" in re.sub(r"\s+", " ", upper) or "STAMPDUTYAMOUNT" in upper.replace(" ", "")
     digits = words = None
     if shcil:
-        m = re.search(r"Stamp\s*Duty\s*Amount\s*\(?\s*Rs\.?\s*\)?\s*[:|]?\s*([\d,]+(?:\.\d{1,2})?)", flat, re.I)
-        digits = m.group(1) if m else None
+        digits = _shcil_figure(text)
         w = re.search(r"\(\s*([A-Za-z ]+?)\s*only\s*\)?", flat, re.I)
         words = w.group(1) if w else None
     else:  # MH GRAS challan
-        m = (re.search(r"\bTotal\s*:?\s*([\d,]+\.\d{2})", flat)
-             or re.search(r"Stamp\s+Duty\s+([\d,]+\.\d{2})", flat))
+        m = (re.search(r"\bTotal\s*:?\s*([\d.,]+\.\d{2})", flat)
+             or re.search(r"Stamp\s+Duty\s+([\d.,]+\.\d{2})", flat))
         digits = m.group(1) if m else None
         w = re.search(r"Amount\s+In\s+([A-Za-z ]+?)\s+Rupees\s+Only", flat, re.I)
         words = w.group(1) if w else None
@@ -95,3 +125,30 @@ def scan_stamp_text(text: str) -> dict[str, Any]:
         "be_no": be.group(1) if be else None,
         "certificate_no": cert.group(1) if cert else (grn.group(1) if grn else None),
     }
+
+
+def scan_stamp_pages(pages: list[str]) -> dict[str, Any]:
+    """A receipt file can hold several certificates, one a page, often for other BEs too (one
+    payment, several jobs). Each page is read on its own; pick_for_be() chooses this job's."""
+    certs = [c for c in (dict(scan_stamp_text(p), page=i + 1) for i, p in enumerate(pages))
+             if c["amount_digits"] is not None or c["amount_words"] is not None or c["be_no"]]
+    out = {"kind": certs[0]["kind"] if certs else None, "certificates": certs}
+    out.update(pick_for_be(out, None))
+    return out
+
+
+def pick_for_be(fields: dict, be_no: Optional[str]) -> dict[str, Any]:
+    """{amount_paid, be_no, certificate_no} for this BE out of the file's certificates:
+    the one(s) printed with this BE; else the only one there is. Several, none for this BE -> no
+    amount (typed by hand), and be_no = one it is for, so the 'differs' warning shows."""
+    certs = fields.get("certificates") or []
+    mine = [c for c in certs if be_no and c["be_no"] == be_no]
+    if not mine and len(certs) == 1:
+        mine = certs
+    if not mine:
+        other = next((c["be_no"] for c in certs if c["be_no"]), None)
+        return {"amount_paid": None, "be_no": other, "certificate_no": None}
+    amounts = [c["amount_paid"] for c in mine]
+    return {"amount_paid": None if None in amounts else sum(amounts), "be_no": mine[0]["be_no"],
+            "certificate_no": ", ".join(c["certificate_no"] for c in mine if c["certificate_no"]) or None,
+            "amount_digits": mine[0]["amount_digits"], "amount_words": mine[0]["amount_words"]}

@@ -1,5 +1,13 @@
 # Release notes
 
+## v1.7.7 — 9 Oct 2026
+
+**Stamp duty reading, tested on 44 real receipts from Drive: 40 read, the other 4 ask for the amount.**
+- Phone-camera scans (pages 3–5× normal size) are shrunk before reading. They read better and use less memory.
+- Files holding several certificates (one payment, several jobs) are read page by page. The one for this job's BE is used.
+- OCR quirks handled: "1.035" for 1,035, and the amount printed above its label.
+- No amount is ever guessed: when the figure and the words disagree, it asks.
+
 ## v1.7.6 — 9 Oct 2026
 
 **Stamp duty is checked against the receipt.**
