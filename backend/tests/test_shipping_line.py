@@ -189,6 +189,13 @@ def test_exam_charge_follows_under_examination_and_payer_chain(client, admin_hea
     spid = client.post(f"/shipments/{sid}/proformas", json={"bill_to_role": "seller"}, headers=h).json()["id"]
     sinv = client.get(f"/proformas/{spid}/invoice", headers=h).json()
     assert sinv["grand_total_label"] == f"HKR pays {sinv['bill_to']['name']}"
+    # the seller pays the buyer the whole amount incl. Royalty + GST Difference (client, 2026-10-09);
+    # the buyer pays Clarus only Clarus's charges
+    assert sinv["seller_pays_total"] and sinv["payable_total"] == sinv["match_total"]
+    assert not inv["seller_pays_total"] and inv["payable_total"] == inv["grand_total"]
+    from app.invoice.pdf import render_pdf
+    from app.invoice.xlsx import render_xlsx
+    assert render_pdf(sinv)[:4] == b"%PDF" and render_xlsx(sinv)[:2] == b"PK"
 
 
 def test_restore_removed_shipping_line(client, admin_headers):

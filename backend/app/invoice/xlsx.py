@@ -21,6 +21,18 @@ BOX = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 COLS = 6  # A..F, like the template
 
 
+
+def _grand(ws, r: int, label: str, amount) -> None:
+    g = ws.cell(r, 1, "GRAND TOTAL — " + label.upper())
+    g.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    g.alignment = Alignment(horizontal="right", vertical="center", wrap_text=True)
+    v = ws.cell(r, 6, _d(amount))
+    v.font = Font(name="Arial", size=12, bold=True, color="FFFFFF")
+    v.number_format = RUPEE
+    for col in range(1, COLS + 1):
+        ws.cell(r, col).fill = PatternFill("solid", fgColor=BRAND)
+    ws.row_dimensions[r].height = 22
+
 def _d(v):
     return float(Decimal(v)) if v not in (None, "") else None
 
@@ -250,18 +262,23 @@ def render_xlsx(inv: dict) -> bytes:
                 r += 1
             grand_row = r
             ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
-            g = ws.cell(r, 1, "GRAND TOTAL — " + inv["grand_total_label"].upper())
-            g.font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
-            g.alignment = Alignment(horizontal="right", vertical="center", wrap_text=True)
-            v = ws.cell(r, 6, _d(inv["grand_total"]))
-            v.font = Font(name="Arial", size=12, bold=True, color="FFFFFF")
-            v.number_format = RUPEE
-            for col in range(1, COLS + 1):
-                ws.cell(r, col).fill = PatternFill("solid", fgColor=BRAND)
-            ws.row_dimensions[r].height = 22
+            if inv.get("seller_pays_total"):  # seller copy: a plain line; the grand total incl. Royalty comes below
+                g = ws.cell(r, 1, "Total — Clarus charges")
+                g.font, g.alignment = Font(name="Arial", size=10, bold=True, color=DARK), Alignment(horizontal="right")
+                v = ws.cell(r, 6, _d(inv["grand_total"]))
+                v.font, v.number_format = Font(name="Arial", size=11, bold=True, color=DARK), RUPEE
+                for col in range(1, COLS + 1):
+                    ws.cell(r, col).fill = PatternFill("solid", fgColor=SUBTOTAL)
+            else:
+                _grand(ws, r, inv["grand_total_label"], inv["grand_total"])
             r += 2
     assert grand_row is not None
-    if inv.get("match_total"):  # HSS: both copies must show the same figure here
+    if inv.get("seller_pays_total"):
+        ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
+        _grand(ws, r, inv["grand_total_label"] + " (incl. Royalty & GST Difference — same on both copies)",
+               inv["match_total"])
+        r += 2
+    elif inv.get("match_total"):  # HSS: both copies must show the same figure here
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=5)
         m = ws.cell(r, 1, "TOTAL INCL. ROYALTY & GST DIFFERENCE (same on the seller's and buyer's copies)")
         m.font, m.alignment = Font(name="Arial", size=10, bold=True, color=DARK), Alignment(horizontal="right", wrap_text=True)

@@ -1,5 +1,13 @@
 # Release notes
 
+## v1.7.12 — 9 Oct 2026
+
+**HSS seller copy: the grand total is the whole amount.**
+- The seller pays the buyer the total **including Royalty and GST Difference**. The buyer keeps those and pays Clarus. The seller copy's highlighted Grand Total ("<seller> pays <buyer>") is now that full figure, the same on both copies.
+- Clarus's own charges show above it as a plain "Total — Clarus charges" line.
+- Buyer copy unchanged: the buyer pays Clarus the Clarus charges.
+- Same on screen, phone, PDF, Excel and the proforma register.
+
 ## v1.7.11 — 9 Oct 2026
 
 **Don't forget the CFS invoice (Nhava Sheva).**

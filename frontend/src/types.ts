@@ -432,6 +432,8 @@ export interface InvoiceView {
   grand_total: string; // payable to Clarus: Billed by Clarus + Reimbursement
   match_total: string | null; // HSS: + Royalty + GST Difference; must be the same on the seller's and buyer's copies
   grand_total_label: string;
+  seller_pays_total: boolean; // HSS seller copy: the grand total is the whole amount incl. Royalty + GST Difference
+  payable_total: string; // the highlighted figure
   round_off: string; // grand total is rounded to the rupee; this is the +/− paise // "<seller> pays <buyer> pays CLARUS LOGISTICS LLP"
   is_hss: boolean;
   customs_duty: { interest: string; total: string; source: "challan" | "ooc" | "be"; challan_uploaded_at: string | null; challan_today: boolean } | null;

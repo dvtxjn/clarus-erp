@@ -650,7 +650,7 @@ def proforma_register(fy: Optional[str] = None, month: Optional[str] = None, sta
             "id": p.id, "shipment_id": p.shipment_id, "job": s.job, "mbl": s.mbl, "be_no": s.be_no,
             "version": p.version_number, "name": p.name, "status": p.status.value, "role": p.bill_to_role,
             "bill_to": inv["bill_to"]["name"], "date": p.created_at.date().isoformat() if p.created_at else None,
-            "grand_total": inv["grand_total"],
+            "grand_total": inv["payable_total"],
         })
     fys = sorted({fy_of(p.created_at.date()) for p in db.query(Proforma).all() if p.created_at}, reverse=True)
     return {"proformas": rows, "financial_years": fys}

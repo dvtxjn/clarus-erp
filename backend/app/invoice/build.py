@@ -500,6 +500,11 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
     challan = latest_challan(db, s.be_no, s.be_dt)
     duty = customs_duty(s, challan)
     value = value_summary(proforma)
+    matched = match_total(proforma)
+    # Seller copy (client, 2026-10-09): the seller pays the buyer the WHOLE amount, incl. Royalty and GST
+    # Difference (the buyer keeps those and pays Clarus) — so that is the grand total; Clarus's charges are
+    # shown above it as a plain line. Buyer copy: the buyer pays Clarus the grand total, as before.
+    seller_copy = bool(s.is_hss and proforma.bill_to_role == "seller" and seller and matched is not None)
     return {
         "company": company_details(),
         "title": "PROFORMA INVOICE",
@@ -541,8 +546,10 @@ def build_invoice(proforma: Proforma) -> dict[str, Any]:
                   "bill_rate_manual": bool(proforma.bill_rate_manual)} if s.is_hss else None,
         "grand_total": _money(round_off(grand)[0]),
         "round_off": _money(round_off(grand)[1]),  # + / − paise to the rupee
-        "match_total": _money(match_total(proforma)),  # HSS: incl. Royalty + GST Difference; same on both copies
+        "match_total": _money(matched),  # HSS: incl. Royalty + GST Difference; same on both copies
         "grand_total_label": grand_total_label,
+        "seller_pays_total": seller_copy,
+        "payable_total": _money(matched if seller_copy else round_off(grand)[0]),  # the highlighted figure
         "notes": proforma_notes(),
         "bank": company_bank(),
     }

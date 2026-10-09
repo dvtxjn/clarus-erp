@@ -732,7 +732,7 @@ function ProformaVersion({
         {side}
         <div className="m-total">
           <span className="m-total-label">{invoice?.grand_total_label ?? "Grand total"}</span>
-          <strong>{invoice ? `₹${inr(invoice.grand_total)}` : "…"}</strong>
+          <strong>{invoice ? `₹${inr(invoice.payable_total)}` : "…"}</strong>
           <span className={`final-status s-${proforma.status === "sent" ? "issued" : "draft"}`}>{proforma.status}</span>
         </div>
         <div className="m-actions">
@@ -1188,12 +1188,28 @@ function InvoiceSheet({
                 {editable && <td />}
               </tr>
             )}
-            <tr className="inv-grand">
-              <td colSpan={6}>Grand Total — {inv.grand_total_label}</td>
-              <td className="num">₹{inr(inv.grand_total)}</td>
-              {editable && <td />}
-            </tr>
-            {inv.match_total != null && (
+            {inv.seller_pays_total ? (
+              <tr className="inv-match">
+                <td colSpan={6}>Total — Clarus charges</td>
+                <td className="num">₹{inr(inv.grand_total)}</td>
+                {editable && <td />}
+              </tr>
+            ) : (
+              <tr className="inv-grand">
+                <td colSpan={6}>Grand Total — {inv.grand_total_label}</td>
+                <td className="num">₹{inr(inv.grand_total)}</td>
+                {editable && <td />}
+              </tr>
+            )}
+            {inv.seller_pays_total && inv.match_total != null ? (
+              <tr className="inv-grand">
+                <td colSpan={6}>
+                  Grand Total — {inv.grand_total_label} (incl. Royalty &amp; GST Difference — same on both copies)
+                </td>
+                <td className="num">₹{inr(inv.match_total)}</td>
+                {editable && <td />}
+              </tr>
+            ) : inv.match_total != null && (
               <tr className="inv-match">
                 <td colSpan={6}>Total incl. Royalty &amp; GST Difference — must be the same on the seller's and buyer's copies</td>
                 <td className="num">₹{inr(inv.match_total)}</td>
@@ -1525,13 +1541,13 @@ function PhoneLines({
         </section>
       ))}
       <div className="m-grand">
-        <span>{invoice.grand_total_label}</span>
-        <strong>₹{inr(invoice.grand_total)}</strong>
+        <span>{invoice.grand_total_label}{invoice.seller_pays_total && " (incl. Royalty & GST Difference)"}</span>
+        <strong>₹{inr(invoice.payable_total)}</strong>
       </div>
       {invoice.match_total != null && (
         <div className="m-match">
-          <span>Incl. Royalty &amp; GST Difference (must match the other copy)</span>
-          <strong>₹{inr(invoice.match_total)}</strong>
+          <span>{invoice.seller_pays_total ? "Clarus charges" : "Incl. Royalty & GST Difference (must match the other copy)"}</span>
+          <strong>₹{inr(invoice.seller_pays_total ? invoice.grand_total : invoice.match_total)}</strong>
         </div>
       )}
       {open && <LineSheet line={open} onClose={() => setOpen(null)} onSave={onSave} onRemove={onRemove} />}

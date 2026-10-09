@@ -210,16 +210,30 @@ def _charges(inv) -> list:
                   colWidths=[WIDTH * 0.78, WIDTH * 0.22])
         r.setStyle(_style())
         out.append(r)
-    g = Table([[_p("GRAND TOTAL — " + inv["grand_total_label"].upper(), 9, True, colors.white, TA_RIGHT),
-                _p(inr(inv["grand_total"]), 10, True, colors.white, TA_RIGHT, width=WIDTH * 0.22)]],
-              colWidths=[WIDTH * 0.78, WIDTH * 0.22])
-    g.setStyle(_style(("BACKGROUND", (0, 0), (-1, -1), BRAND_C), ("TOPPADDING", (0, 0), (-1, -1), 4),
-                      ("BOTTOMPADDING", (0, 0), (-1, -1), 4)))
-    out += [g]
+    def grand(label: str, amount) -> Table:
+        g = Table([[_p("GRAND TOTAL — " + label.upper(), 9, True, colors.white, TA_RIGHT),
+                    _p(inr(amount), 10, True, colors.white, TA_RIGHT, width=WIDTH * 0.22)]],
+                  colWidths=[WIDTH * 0.78, WIDTH * 0.22])
+        g.setStyle(_style(("BACKGROUND", (0, 0), (-1, -1), BRAND_C), ("TOPPADDING", (0, 0), (-1, -1), 4),
+                          ("BOTTOMPADDING", (0, 0), (-1, -1), 4)))
+        return g
+
+    seller_pays = inv.get("seller_pays_total")
+    if seller_pays:  # seller copy: Clarus's charges are a plain line; the grand total comes after Royalty / GST Diff.
+        c = Table([[_p("Total — Clarus charges", 8.5, True, align=TA_RIGHT),
+                    _p(inr(inv["grand_total"]), 9.5, True, align=TA_RIGHT, width=WIDTH * 0.22)]],
+                  colWidths=[WIDTH * 0.78, WIDTH * 0.22])
+        c.setStyle(_style(("BACKGROUND", (0, 0), (-1, -1), SUB_C)))
+        out += [c]
+    else:
+        out += [grand(inv["grand_total_label"], inv["grand_total"])]
     rest = [s for s in shown if not s["counts_in_total"]]
     if rest:
         out += [Spacer(1, 4), section_table(rest)]
-    if inv.get("match_total"):  # HSS: both copies must show the same figure here
+    if seller_pays:
+        out += [Spacer(1, 4), grand(inv["grand_total_label"] + " (incl. Royalty & GST Difference)", inv["match_total"])]
+        out += [_p("Same total on the seller's and buyer's copies.", 7.5, align=TA_RIGHT)]
+    elif inv.get("match_total"):  # HSS: both copies must show the same figure here
         m = Table([[_p("TOTAL INCL. ROYALTY &amp; GST DIFFERENCE (same on the seller's and buyer's copies)", 8.5, True, align=TA_RIGHT),
                     _p(inr(inv["match_total"]), 9.5, True, align=TA_RIGHT, width=WIDTH * 0.22)]],
                   colWidths=[WIDTH * 0.78, WIDTH * 0.22])
