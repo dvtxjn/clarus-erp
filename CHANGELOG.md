@@ -1,5 +1,19 @@
 # Release notes
 
+## v1.7.8 — 9 Oct 2026
+
+**OCR is the last resort, never the source.**
+- Digital PDFs are always read from their text, as before. OCR runs only when a file has no text at all (a scan).
+- Now covers scanned BEs / OOC copies, CFS and shipping line invoices, receipts and DOs, not just stamp duty.
+- Anything read by OCR is marked **Read by OCR** on the document, with a note that OCR can be wrong.
+- Checks before anything read by OCR is used:
+  - It only fills blanks. It never overwrites a value already on the shipment; a difference is reported instead.
+  - Invoice amounts count only if before tax + GST = total. Otherwise they're not used (**OCR · not used**) and you type them.
+  - A receipt's amount counts only if it equals the invoices' total.
+  - DO container numbers count only if their check digit adds up.
+  - Stamp duty: the figure and the amount in words must agree (as before).
+- Tested on 13 scanned BLs and invoices and 16 digital files from Drive: all 16 digital files were read from their text, with no OCR.
+
 ## v1.7.7 — 9 Oct 2026
 
 **Stamp duty reading, tested on 44 real receipts from Drive: 40 read, the other 4 ask for the amount.**

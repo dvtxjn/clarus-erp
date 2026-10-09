@@ -5,6 +5,10 @@ Read fields out of a document at upload time, by document type:
     IGST, total duty) + for OOC copies: OOC date and examination date/time
   - CFS proforma / tax invoice -> BE/BL no and the CFS amounts (cfs_pdf.py)
 
+The digital text is always the source. OCR (ocr.py) is the last mile, only for a scan with no
+text at all: its fields carry "ocr": True and tracker_sync treats them as unverified —
+blanks only, cross-checked, and marked "read by OCR, may be wrong".
+
 Never raises: an unreadable PDF just yields {"error": ...}.
 """
 from __future__ import annotations
@@ -18,6 +22,7 @@ import pdfplumber
 from app.core.enums import DocumentType
 from app.extraction.be_pdf import normalize_date, read_pdf, scan_be_text
 from app.extraction.cfs_pdf import scan_cfs_text
+from app.liners import container_check_digit_ok
 from app.extraction.do_pdf import scan_do_text
 from app.extraction.invoice_number import invoice_identity
 from app.extraction.receipt_pdf import scan_receipt_text
@@ -129,6 +134,23 @@ def extract_document_fields(document_type: DocumentType, path: str) -> dict[str,
         return {"error": f"Couldn't read PDF: {e}"}
 
     text = "\n".join(pages)
+    ocr = False
+    if not text.strip():  # a scan: last mile
+        from app.extraction.ocr import ocr_text
+        scanned = ocr_text(path)
+        if not scanned:
+            return {"ocr_failed": True}
+        pages, words, ocr = scanned.split("\f"), [], True
+        text = "\n".join(pages)
+    fields = _scan(document_type, text, pages, words)
+    if ocr:
+        fields["ocr"] = True
+        if document_type in DO_TYPES:  # a misread container number fails its check digit
+            fields["containers"] = {c: v for c, v in (fields.get("containers") or {}).items() if container_check_digit_ok(c)}
+    return fields
+
+
+def _scan(document_type: DocumentType, text: str, pages: list, words: list) -> dict[str, Any]:
     if document_type in DO_TYPES:
         return scan_do_text(text)
     if document_type in RECEIPT_TYPES:

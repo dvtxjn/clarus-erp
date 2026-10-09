@@ -87,6 +87,10 @@ def _stamp_duty_checks(sync, shipment: Shipment, document: ShipmentDocument, fie
         sync.notes.append(f"Stamp duty paid ₹{Decimal(paid):,.2f} doesn't match the calculated ₹{due:,.2f}.")
 
 
+OCR_NOTE = ("This file is a scan, read by OCR — OCR can be wrong. Its figures only filled blanks (nothing was "
+            "overwritten) and amounts were used only where they cross-check. Please check them against the file.")
+
+
 def _money(v: Any) -> Optional[Decimal]:
     try:
         return Decimal(str(v)) if v not in (None, "") else None
@@ -162,6 +166,14 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
 
     if fields.get("error"):
         sync.notes.append(fields["error"])
+    # A scan read by OCR (the last mile — digital text is the source): its figures only fill blanks,
+    # never overwrite, and amounts count only when they cross-check
+    ocr = bool(fields.get("ocr"))
+    put = sync.fill if ocr else sync.set
+    if ocr:
+        sync.notes.append(OCR_NOTE)
+    elif fields.get("ocr_failed"):
+        sync.notes.append("This file is a scan and OCR couldn't read it — enter its details by hand.")
 
     if t in BE_TYPES and not fields.get("error"):
         sync.fill("be_no", fields.get("be_no"))
@@ -175,12 +187,12 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
             sync.fill("container", fields.get("cont_count"), report=False)
         # The BE's gross weight is always taken as correct. It's printed in KGS;
         # the tracker keeps the sheet's format, e.g. 84885 -> "84.885 MTS".
-        sync.set("gross_wt", kg_to_mts(fields.get("gross_wt")))
-        sync.set("assessable_value", _money(fields.get("tot_ass_val")))
-        sync.set("igst_amount", _money(fields.get("igst")))
+        put("gross_wt", kg_to_mts(fields.get("gross_wt")))
+        put("assessable_value", _money(fields.get("tot_ass_val")))
+        put("igst_amount", _money(fields.get("igst")))
         # duty without interest: the OOC's total less its INT (client, 2026-10-08)
         total, intr = _money(fields.get("tot_amount")), _money(fields.get("interest"))
-        sync.set("duty_amount", total - intr if total is not None and intr else total)
+        put("duty_amount", total - intr if total is not None and intr else total)
         # Client rule (2026-09-29): customs duty always carries IGST — none found = a problem to check
         if fields.get("tot_amount") and not _money(fields.get("igst")):
             fields["gst_missing"] = True
@@ -196,6 +208,13 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         if not document.amounts_edited:  # never overwrite figures someone corrected by hand
             before, gst = _money(fields.get("cfs_before_tax")), _money(fields.get("cfs_gst"))
             total = _money(fields.get("cfs_after_tax"))
+            if ocr and not (None not in (before, gst, total) and abs(before + gst - total) <= 1):
+                if any(v is not None for v in (before, gst, total)):
+                    sync.notes.append(f"OCR read this {what} as before tax {before}, GST {gst}, total {total}, but "
+                                      "they don't add up — not used. Enter the amounts by hand.")
+                fields["ocr_unverified"] = True
+                fields["charges"] = []  # nor its charge lines
+                before = gst = total = None
             document.amount_before_tax, document.gst_amount = before, gst
             document.amount_total = before + gst if before is not None and gst is not None else total
         if t in LINE_TYPES:
@@ -205,23 +224,31 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
         before_totals = {f: getattr(shipment, f) for f in totals}
         recompute_invoice_totals(db, shipment, changed_by_id)
         sync.updated += [f for f in totals if getattr(shipment, f) != before_totals[f]]
-        if all(fields.get(k) is None for k in ("cfs_before_tax", "cfs_gst", "cfs_after_tax")):
+        if all(fields.get(k) is None for k in ("cfs_before_tax", "cfs_gst", "cfs_after_tax")) and not ocr:
             sync.notes.append(f"Couldn't read any amounts from this {what} — it may be a scan or an "
                               "unfamiliar layout. Enter the amounts by hand (Overview → Edit) or send us a sample.")
         # Client rule (2026-09-29): every CFS / shipping line invoice has GST — none found = a problem
-        if (fields.get("cfs_before_tax") or fields.get("cfs_after_tax")) and not _money(fields.get("cfs_gst")):
+        if (fields.get("cfs_before_tax") or fields.get("cfs_after_tax")) and not _money(fields.get("cfs_gst")) and not ocr:
             fields["gst_missing"] = True
             sync.notes.append(f"GST not found on this {what} — these invoices always have GST; check the figures "
                               "(scan, wrong document, or a layout we don't read yet).")
-        if fields.get("cfs_sanity_ok") is False:
+        if fields.get("cfs_sanity_ok") is False and not fields.get("ocr_unverified"):
             sync.notes.append(f"The {what} amounts don't add up (before tax + GST ≠ total) — please check the figures.")
 
     if t in RECEIPT_TYPES and not fields.get("error"):
         what = "CFS" if t == DocumentType.CFS_RECEIPT else "shipping line"
         if not document.amounts_edited:
             paid = _money(fields.get("amount_paid"))
+            if ocr and paid is not None:  # verified only when it is the invoice total to the rupee
+                billed = shipment.cfs_amount_total if t == DocumentType.CFS_RECEIPT else shipment.line_amount_total
+                if billed is None or abs(paid - Decimal(billed)) > 1:
+                    sync.notes.append(f"OCR read ₹{paid:,.2f} paid, which doesn't match the {what} invoices "
+                                      f"({'none read yet' if billed is None else f'₹{Decimal(billed):,.2f}'}) — not used. "
+                                      "Enter it on the Overview.")
+                    fields["ocr_unverified"] = True
+                    paid = None
             document.amount_before_tax, document.gst_amount, document.amount_total = paid, None, paid
-        if fields.get("amount_paid") is None:
+        if fields.get("amount_paid") is None and not ocr:
             sync.notes.append(f"Couldn't read the amount paid from this {what} receipt — enter it on the Overview "
                               "(or send us a sample so it reads next time).")
         if fields.get("be_no") and shipment.be_no and fields["be_no"] != shipment.be_no:
@@ -239,13 +266,13 @@ def apply_tracker_sync(db: Session, shipment: Shipment, document: ShipmentDocume
     elif t == DocumentType.OOC_BILL_OF_ENTRY:
         sync.set("ooc", True)
         sync.set("duty_paid", True)
-        sync.set("ooc_date", parse_ddmmyyyy(fields.get("ooc_date")))
+        put("ooc_date", parse_ddmmyyyy(fields.get("ooc_date")))
         if not fields.get("error"):
             if fields.get("under_examination") is not None:
                 sync.set("under_examination", fields["under_examination"])
             else:
                 sync.notes.append("Couldn't find the Processing Details table — examination not read.")
-            sync.set("examination_at", fields.get("examination_at"))
+            put("examination_at", fields.get("examination_at"))
         sync.advance(ShipmentStatus.OOC_DONE)
     elif t == DocumentType.CFS_TAX_INVOICE:
         sync.set("cfs_inv_received", True)

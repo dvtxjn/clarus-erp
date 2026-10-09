@@ -672,6 +672,11 @@ function StampDutyBlock({ s, onDocs, onUpload }: { s: Shipment; onDocs: () => Pr
           <span className="receipt-amt">
             {sd.paid !== null ? fmtMoney(sd.paid) : <span className="field-empty">not read — enter it</span>}
             {sd.edited && <span className="edited-tag">corrected</span>}
+            {sd.ocr && !sd.edited && sd.paid !== null && (
+              <span className="edited-tag" title="The receipt is a scan, read by OCR — OCR can be wrong. The figure and the amount in words agreed; check it against the receipt.">
+                read by OCR
+              </span>
+            )}
             {!ro && (
               <button type="button" className="link-btn" onClick={() => { setEditing(true); setValue(sd.paid ?? ""); setError(null); }}>
                 Edit

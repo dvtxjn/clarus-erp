@@ -360,6 +360,18 @@ export default function DocumentManagerPanel({
                                 {row.documents.length > 1 ? `File ${n + 1}` : "File"}
                               </span>{" "}
                               <PdfKindBadge kind={d.pdf_kind} />
+                              {d.extraction?.fields?.ocr === true && (
+                                <span
+                                  className="pdf-kind pdf-kind-partly"
+                                  title={
+                                    d.extraction?.fields?.ocr_unverified === true
+                                      ? "Scan read by OCR — the figures didn't cross-check, so they weren't used. Enter them by hand."
+                                      : "Scan read by OCR — OCR can be wrong. Its figures only filled blanks; check them against the file."
+                                  }
+                                >
+                                  {d.extraction?.fields?.ocr_unverified === true ? "OCR · not used" : "Read by OCR"}
+                                </span>
+                              )}
                               {d.extraction?.fields?.gst_missing === true && (
                                 <span className="pdf-kind pdf-kind-scanned" title="These invoices always have GST — check the figures (Overview → correct amounts)">
                                   No GST

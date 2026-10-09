@@ -581,6 +581,7 @@ def _with_final_duty(db: Session, shipment: Shipment) -> Shipment:
         "paid": None if receipt is None or receipt.amount_total is None else str(receipt.amount_total),
         "receipt_id": receipt.id if receipt else None,
         "edited": bool(receipt and receipt.amounts_edited),
+        "ocr": bool(receipt and ((receipt.extraction or {}).get("fields") or {}).get("ocr")),
         "be_no": ((receipt.extraction or {}).get("fields") or {}).get("be_no") if receipt else None,
     }
     # why the shipping line stays off the cost inclusion (read only; the Overview's Money card says "Left out")
