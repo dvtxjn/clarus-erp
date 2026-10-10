@@ -1,5 +1,11 @@
 # Release notes
 
+## v1.7.13 — 10 Oct 2026
+
+**No more reloading.**
+- Adding a document (shipping line invoice, CFS invoice, …) now updates the open shipment by itself when it finishes reading: Charges, the Overview's money card and the proforma all show the new charges, whichever tab you're on. Before, only the Documents tab refreshed.
+- Leaving a page and coming back keeps it as you left it: Shipments reopens the same job in the side panel, on the same tab (Charges, Proforma, …), with the same filters. The same works for every page in the sidebar. Clicking the page you're already on starts it fresh.
+
 ## v1.7.12 — 9 Oct 2026
 
 **HSS seller copy: the grand total is the whole amount.**

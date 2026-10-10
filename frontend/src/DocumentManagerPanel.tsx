@@ -100,8 +100,7 @@ export default function DocumentManagerPanel({
         if (job.shipmentId !== shipment.id) return;
         if (job.status === "done") {
           if (job.showResult && job.doc) setLastUpload(job.doc);
-          refresh();
-          onShipmentChanged(); // fields read from the PDF may have changed the shipment
+          refresh(); // the shipment page reloads the job itself (it listens whichever tab is open)
         } else if (job.showResult) {
           setError(`Couldn't add ${job.fileName}: ${job.error}`);
         }

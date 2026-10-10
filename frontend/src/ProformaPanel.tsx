@@ -34,8 +34,11 @@ export default function ProformaPanel({
   onShipmentChange,
   previewSlot = null,
   settings,
+  docsVersion = 0,
 }: {
   shipment: Shipment;
+  /** goes up each time a document added to this job finishes reading */
+  docsVersion?: number;
   onShipmentChange: (s: Shipment) => void;
   /** wide page: the right half of the shipment page, where the invoice preview goes (client, 2026-10-08) */
   previewSlot?: HTMLElement | null;
@@ -66,6 +69,11 @@ export default function ProformaPanel({
   }
 
   useEffect(refresh, [shipment.id]);
+  // a document added to this job (e.g. a shipping line / CFS invoice) fills the draft: show it without a reload
+  useEffect(() => {
+    if (docsVersion) reloadQuietly();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [docsVersion]);
 
   // after a change, reload quietly: a bill rate typed on one HSS invoice is copied to the other
   function reloadQuietly() {

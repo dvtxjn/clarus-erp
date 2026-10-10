@@ -31,11 +31,33 @@ const ICONS = {
   users: icon(<><circle cx="6" cy="5.5" r="2.5" /><path d="M1.5 13.5c.6-2.4 2.3-3.5 4.5-3.5s3.9 1.1 4.5 3.5M11 3.5a2.2 2.2 0 0 1 0 4.2M12.5 10.3c1 .5 1.7 1.6 2 3.2" /></>),
 };
 
+// where each page was left (path + ?peek / ?tab / filters): going to the Dashboard and back reopens the
+// shipment exactly as it was (client, 2026-10-10). Clicking the page you're already on starts it fresh.
+const lastUrl = new Map<string, string>();
+const sectionOf = (path: string) => path.split("/").filter(Boolean)[0] ?? "";
+
+function useBackTo(to: string): string {
+  const { pathname } = useLocation();
+  const section = sectionOf(to);
+  return sectionOf(pathname) === section ? to : lastUrl.get(section) ?? to;
+}
+
 function Item({ to, label, i }: { to: string; label: string; i: keyof typeof ICONS }) {
+  const back = useBackTo(to);
   return (
-    <NavLink to={to} className={({ isActive }) => (isActive ? "active" : "")} title={label}>
+    <NavLink to={back} className={({ isActive }) => (isActive ? "active" : "")} title={label}>
       {ICONS[i]}
       <span className="nav-label">{label}</span>
+    </NavLink>
+  );
+}
+
+function TabLink({ to, label, i }: { to: string; label: string; i: keyof typeof ICONS }) {
+  const back = useBackTo(to);
+  return (
+    <NavLink to={back}>
+      {ICONS[i]}
+      <span>{label}</span>
     </NavLink>
   );
 }
@@ -49,7 +71,10 @@ const PAGE_TITLES: Record<string, string> = {
 export default function AppLayout() {
   const { user, logout } = useAuth();
   useEffect(() => setPresenceEnabled(!user?.read_only), [user?.read_only]);
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    lastUrl.set(sectionOf(pathname), pathname + search);
+  }, [pathname, search]);
   const [moreOpen, setMoreOpen] = useState(false); // phone: the "More" sheet
   useEffect(() => setMoreOpen(false), [pathname]);
   useDismiss(null, moreOpen, () => setMoreOpen(false));
@@ -253,9 +278,9 @@ export default function AppLayout() {
       </aside>
       {/* phones: bottom tabs instead of the sidebar (thumb reach); the rest sits under "More" */}
       <nav className="m-tabbar" aria-label="Main">
-        <NavLink to="/shipments">{ICONS.shipments}<span>Shipments</span></NavLink>
-        <NavLink to="/dashboard">{ICONS.dashboard}<span>Dashboard</span></NavLink>
-        {user?.role === "admin" && <NavLink to="/invoices">{ICONS.invoices}<span>Invoicing</span></NavLink>}
+        <TabLink to="/shipments" i="shipments" label="Shipments" />
+        <TabLink to="/dashboard" i="dashboard" label="Dashboard" />
+        {user?.role === "admin" && <TabLink to="/invoices" i="invoices" label="Invoicing" />}
         <button type="button" className={moreOpen ? "active" : ""} aria-expanded={moreOpen} onClick={() => setMoreOpen((o) => !o)}>
           {icon(<><circle cx="3.5" cy="8" r="1.1" /><circle cx="8" cy="8" r="1.1" /><circle cx="12.5" cy="8" r="1.1" /></>)}
           <span>More</span>

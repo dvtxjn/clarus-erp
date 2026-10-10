@@ -18,6 +18,7 @@ import { useSaveShipment } from "./useSaveShipment";
 import { SHIPMENT_STATUS_LABELS, docShort, type DocumentType, type InvoiceCharge, type Shipment, type ShipmentDocument } from "./types";
 import DocumentManagerPanel from "./DocumentManagerPanel";
 import ProformaPanel from "./ProformaPanel";
+import { useUploadQueue } from "./uploadQueue";
 import FpodContainers from "./FpodContainers";
 import ShipmentHistory from "./ShipmentHistory";
 import { formatPort, usePorts } from "./ports";
@@ -85,6 +86,8 @@ function BackLink() {
  * The shipment: a page of its own, or (peek) a panel over the tracker — open a row,
  * glance, close, next row (client, 2026-09-29).
  */
+const peekTab: { current: Tab } = { current: "overview" };
+
 export function ShipmentDetail({
   shipmentId,
   onClose,
@@ -116,9 +119,11 @@ export function ShipmentDetail({
   // why the load failed: 404 = gone; anything else (network, 500) gets a Retry, never "doesn't exist"
   const [loadErr, setLoadErr] = useState<"gone" | "failed" | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [localTab, setLocalTab] = useState<Tab>("overview"); // peek panel: no URL of its own
+  // peek panel: no URL of its own — the tab is remembered, so leaving for the Dashboard and coming back
+  // reopens it where it was (client, 2026-10-10)
+  const [localTab, setLocalTab] = useState<Tab>(() => peekTab.current);
   const tab = tabProp ?? localTab;
-  const setTab = onTab ?? setLocalTab;
+  const setTab = onTab ?? ((t: Tab) => { peekTab.current = t; setLocalTab(t); });
   // a status row on the Overview opens Charges at its own section
   const [chargeFocus, setChargeFocus] = useState<"duty" | MoneyGroup | null>(null);
   const openCharges = (g: "duty" | MoneyGroup) => {
@@ -145,6 +150,19 @@ export function ShipmentDetail({
   );
   // a reload that lands after the peek moved to another job only refreshes the cache, never the panel
   const reload = useCallback(() => Promise.all([getShipment(shipmentId).then(onSaved), loadDocs()]).then(() => {}), [shipmentId, loadDocs, onSaved]);
+
+  // an upload (background tray) finishing for this job refreshes every tab in place — charges, invoices,
+  // proforma — whichever tab is open; no page reload, nothing else on the page changes (client, 2026-10-10)
+  const queue = useUploadQueue();
+  const [docsVersion, setDocsVersion] = useState(0);
+  useEffect(
+    () =>
+      queue.onFinished((job) => {
+        if (job.shipmentId !== idRef.current || job.status !== "done") return;
+        reload().finally(() => setDocsVersion((v) => v + 1));
+      }),
+    [queue.onFinished, reload],
+  );
 
   useEffect(() => {
     // switching jobs in the peek: the old job stays (dimmed) until the new one has arrived — no blank flash
@@ -403,6 +421,7 @@ export function ShipmentDetail({
       {tab === "proforma" && isAdmin && (
         <ProformaPanel
           shipment={shipment}
+          docsVersion={docsVersion}
           onShipmentChange={onSaved}
           previewSlot={pfWide ? previewSlot : null}
           // billing settings live with the invoice (client, 2026-10-08); a change reloads the drafts
